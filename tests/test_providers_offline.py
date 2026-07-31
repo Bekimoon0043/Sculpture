@@ -1,8 +1,11 @@
 """Offline provider tests: all three providers through the real dispatch path.
 
-IMPORTANT — the stubbed SDK clients (RecordedAnthropicTransport /
-RecordedOpenAITransport from conftest.py) are TEST INFRASTRUCTURE, not a
-production fake. They let the REAL production code path run offline:
+Stated plainly: the injected SDK clients (InjectedAnthropicTransport /
+InjectedOpenAITransport from conftest.py) are MOCKS that pretend to be a
+provider. They are hand-constructed, not recorded, and mirror the SDK
+response shape as ASSUMED, not as verified (see LIMITATIONS.md — this
+assumption is retired only by the live gate run). What these tests prove is
+the real production code path AROUND the SDK call:
 estimate -> BudgetEnforcer.pre_dispatch_check -> dispatch -> real token/cost
 math from pricing.yaml -> ai_calls persistence. Production always builds real
 SDK clients and requires real API calls; nothing here bypasses that.
@@ -17,7 +20,7 @@ from app.ai.providers.kimi_provider import KimiProvider
 from app.ai.providers.openai_provider import OpenAIProvider
 from app.core.budget import BudgetEnforcer
 
-# (provider class, recorded input tokens, recorded output tokens, expected cost)
+# (provider class, injected input tokens, injected output tokens, expected cost)
 # Costs are hand-computed from config/pricing.yaml (2026-07-v1):
 #   anthropic claude-sonnet-4-5 $3.00/$15.00 per 1M: (12*3 + 3*15)/1e6 = 0.000081
 #   openai    gpt-4o           $2.50/$10.00 per 1M: (12*2.5 + 3*10)/1e6 = 0.00006

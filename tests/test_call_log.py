@@ -1,7 +1,9 @@
 """Call-log tests (Rule 8): the full logged dispatch round-trip.
 
-Uses the recorded SDK transports from conftest.py — test infrastructure that
-lets the REAL production dispatch path run offline (see conftest comment).
+Uses the injected SDK transports from conftest.py — hand-constructed mocks
+that pretend to be a provider's SDK client (see the plain-language conftest
+comment). They let the REAL production dispatch path run offline; the assumed
+SDK response shape they mirror is verified only by the live gate run.
 """
 
 from __future__ import annotations

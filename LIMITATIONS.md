@@ -79,4 +79,19 @@ ACTION line telling you to record it here.
 **Operator: if the gate reports a vision failure, replace the line below with
 what the gate printed (provider, model, and the exact error), and date it.**
 
-- _(no vision failures recorded yet — fill in from gate output if one appears)_
+- _(no vision failures found yet — fill in from gate output if one appears)_
+
+## 7. Offline test transports mirror an ASSUMED SDK response shape
+
+The offline test suite (`tests/conftest.py`: `InjectedAnthropicTransport`,
+`InjectedOpenAITransport`) uses **hand-constructed** response objects — mocks
+that pretend to be a provider's SDK client. They mirror the anthropic/openai
+SDK response shape (content blocks / choices / usage) **as assumed, not as
+verified against a real API response**.
+
+Consequence: if a real SDK response shape differs from the assumption, the
+offline suite **passes while production fails**. This limitation is retired
+only by the live Phase 1 gate run with real API keys — the gate exercises the
+real SDKs against the real endpoints. Until that run passes, treat the
+offline suite as proof of the dispatch path *around* the SDK call, never as
+proof of the SDK call itself.

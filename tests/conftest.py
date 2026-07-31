@@ -60,14 +60,20 @@ def db(tmp_path) -> Database:
 
 
 # ---------------------------------------------------------------------------
-# Recorded SDK transports — TEST INFRASTRUCTURE, NOT PRODUCTION FAKERY.
+# Injected SDK transports — hand-constructed fakes. Stated plainly:
+# these ARE mocks that pretend to be a provider's SDK client. They are
+# legitimate test infrastructure, but they are mocks, and we call them that.
 #
-# These stubs stand in for the anthropic/openai SDK *client objects* so the
-# offline suite can exercise the REAL production code path (estimate -> cap
-# check -> dispatch -> real cost math -> DB logging) without network or keys.
-# The response objects mirror the exact attribute shape the SDKs return
-# (content blocks / choices / usage). Production code never sees these:
-# providers build real SDK clients unless a client is injected by a test.
+# They are HAND-CONSTRUCTED, not recorded: no real API response was ever
+# captured to build them. They mirror the SDK response shape AS ASSUMED
+# (content blocks / choices / usage), not as verified. If a real SDK shape
+# differs, this suite passes while production fails — see LIMITATIONS.md.
+# That assumption is retired only by the live gate run with real API keys.
+#
+# What they DO prove: the real production code path around the SDK call —
+# estimate -> BudgetEnforcer.pre_dispatch_check -> dispatch -> real token/cost
+# math from pricing.yaml -> ai_calls persistence. Production always builds
+# real SDK clients; a transport can only be injected by a test.
 # ---------------------------------------------------------------------------
 
 from types import SimpleNamespace  # noqa: E402
@@ -76,8 +82,9 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))  # noqa: E402
 import make_test_image  # noqa: E402
 
 
-class RecordedAnthropicTransport:
-    """Mimics anthropic.Anthropic: .messages.create(**kwargs) -> Message-like."""
+class InjectedAnthropicTransport:
+    """Hand-constructed mock of anthropic.Anthropic:
+    .messages.create(**kwargs) -> object shaped like the assumed Message."""
 
     def __init__(self, text: str, input_tokens: int, output_tokens: int,
                  error: Exception | None = None) -> None:
@@ -98,8 +105,9 @@ class RecordedAnthropicTransport:
         return self._response
 
 
-class RecordedOpenAITransport:
-    """Mimics openai.OpenAI: .chat.completions.create(**kwargs) -> response."""
+class InjectedOpenAITransport:
+    """Hand-constructed mock of openai.OpenAI (also used for Kimi, which is
+    OpenAI-compatible): .chat.completions.create(**kwargs) -> assumed shape."""
 
     def __init__(self, text: str, input_tokens: int, output_tokens: int,
                  error: Exception | None = None) -> None:
@@ -124,12 +132,12 @@ class RecordedOpenAITransport:
 
 @pytest.fixture()
 def anthropic_transport():
-    return RecordedAnthropicTransport
+    return InjectedAnthropicTransport
 
 
 @pytest.fixture()
 def openai_transport():
-    return RecordedOpenAITransport
+    return InjectedOpenAITransport
 
 
 @pytest.fixture()

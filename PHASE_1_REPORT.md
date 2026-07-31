@@ -43,8 +43,9 @@ Amendments 1–6:
   (`budget: {amount, currency, fx_date}` via `$defs/money`, replacing
   `budget_etb_max`) + `meta.spec_hash` (Amendment 1 unit of record).
 - **Tests** — 36 offline tests (units, budget, pricing, call log, schema,
-  all three providers via recorded SDK transports). All pass with NO API
-  keys and NO network.
+  all three providers via injected, hand-constructed SDK transports — mocks
+  that pretend to be a provider's SDK client; see LIMITATIONS.md §7). All
+  pass with NO API keys and NO network.
 - **Gate** — `scripts/gate_phase1.py` (design below).
 - **Docs** — README, DECISIONS (ADR-001…008), LIMITATIONS, operator guide.
 
@@ -84,8 +85,10 @@ Six numbered sections, exit 0 only on full PASS:
 - **No API keys in the sandbox** → the live 3-provider text/vision calls
   could not be exercised here. What WAS proven locally instead: the complete
   dispatch path (estimate → cap check → dispatch → cost → logging) against
-  recorded SDK response objects in the offline test suite, the honest
-  missing-key FAIL path in the gate itself, and the full cap-halt machinery.
+  injected hand-constructed SDK transports in the offline test suite — mocks,
+  mirroring the SDK response shape as ASSUMED, not as verified — plus the
+  honest missing-key FAIL path in the gate itself, and the full cap-halt
+  machinery.
 - **No Docker in the sandbox** → `docker compose up --build -d` could not be
   run here. The Dockerfile/compose file are static and simple, but the
   operator's machine performs the first real build.
