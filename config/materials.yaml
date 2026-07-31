@@ -1,0 +1,28 @@
+# materials.yaml — LuxuryForm Studio v1 starter material library
+# Real, fabrication-grade starter set for LuxuryCon's typical palette.
+# Units are explicit in every field name (Rule 6: unitless numbers are a bug).
+materials:
+  stainless_316l_sheet:
+    name: "316L stainless steel sheet"
+    category: metal
+    density_kg_per_m3: 8000
+    min_wall_mm: 3
+    stock_size_mm: {length: 3000, width: 1500}
+  basalt_slab:
+    name: "Basalt slab"
+    category: stone
+    density_kg_per_m3: 2700
+    min_wall_mm: 20
+    stock_size_mm: {length: 2400, width: 1200}
+  cast_concrete_c35_45:
+    name: "C35/45 cast concrete"
+    category: concrete
+    density_kg_per_m3: 2400
+    min_wall_mm: 75
+    stock_size_mm: null   # cast in place — no stock sheet/slab size
+  bronze_cast:
+    name: "Cast bronze"
+    category: metal
+    density_kg_per_m3: 8800
+    min_wall_mm: 6
+    stock_size_mm: null   # cast — no stock sheet/slab size

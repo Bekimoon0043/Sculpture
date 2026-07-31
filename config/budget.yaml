@@ -1,0 +1,8 @@
+# budget.yaml — LuxuryForm Studio v1 (Amendment 2: spend caps)
+# Hard spend ceilings enforced inside the provider layer BEFORE any API call
+# is dispatched. On breach the system halts, persists its state, and reports.
+# It never silently continues.
+session_cap_usd: 5.00        # hard ceiling per council/run session
+day_cap_usd: 25.00           # hard ceiling per UTC calendar day
+max_vision_iterations: 6     # hard cap on critique loop rounds (enforced Phase 5, validated now)
+on_breach: halt_and_report   # halt, persist state, report; never silently continue

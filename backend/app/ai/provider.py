@@ -1,0 +1,142 @@
+"""AI provider abstraction (SPEC section F).
+
+One interface for Anthropic, OpenAI and Kimi. Every concrete provider
+implements ``_raw_complete`` / ``_raw_vision`` (the real SDK call); the public
+``complete`` / ``vision`` methods live on the ABC and route EVERY call through
+``ai/call_log.py`` — estimate, cap check, timed dispatch, real cost, full
+logging. There is no code path that talks to a provider unlogged.
+"""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.core.budget import BudgetEnforcer
+    from app.core.config import PricingConfig
+    from app.db.database import Database
+
+
+@dataclass(frozen=True)
+class ProviderResponse:
+    provider: str
+    model: str
+    text: str
+    tokens_in: int
+    tokens_out: int
+    latency_ms: float
+    cost_usd: float
+    pricing_version: str
+
+
+@dataclass(frozen=True)
+class RawResult:
+    """What a provider SDK call returns before logging/costing."""
+
+    text: str
+    tokens_in: int
+    tokens_out: int
+
+
+class ProviderError(Exception):
+    """Honest provider failure. Carries the provider and the raw message."""
+
+    def __init__(self, provider: str, message: str) -> None:
+        super().__init__(f"{provider}: {message}")
+        self.provider = provider
+        self.raw_message = message
+
+
+class AIProvider(ABC):
+    """Base class wiring every call through the logged, capped dispatch path."""
+
+    name: str
+    env_var: str
+
+    def __init__(
+        self,
+        api_key: str | None,
+        *,
+        text_model: str,
+        vision_model: str,
+        db: "Database",
+        pricing: "PricingConfig",
+        budget: "BudgetEnforcer | None" = None,
+    ) -> None:
+        self.api_key = api_key
+        self.text_model = text_model
+        self.vision_model = vision_model
+        self._db = db
+        self._pricing = pricing
+        self._budget = budget
+
+    # -- public interface: routes through ai/call_log.py ----------------------
+
+    def complete(
+        self,
+        prompt: str,
+        *,
+        purpose: str,
+        model: str | None = None,
+        max_tokens: int = 256,
+        temperature: float = 0.0,
+        session_id: str,
+    ) -> ProviderResponse:
+        from app.ai import call_log
+
+        return call_log.execute(
+            self,
+            kind="text",
+            prompt=prompt,
+            image_path=None,
+            purpose=purpose,
+            model=model or self.text_model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            session_id=session_id,
+        )
+
+    def vision(
+        self,
+        prompt: str,
+        image_path: Path,
+        *,
+        purpose: str,
+        model: str | None = None,
+        max_tokens: int = 256,
+        session_id: str,
+    ) -> ProviderResponse:
+        from app.ai import call_log
+
+        return call_log.execute(
+            self,
+            kind="vision",
+            prompt=prompt,
+            image_path=image_path,
+            purpose=purpose,
+            model=model or self.vision_model,
+            max_tokens=max_tokens,
+            temperature=0.0,
+            session_id=session_id,
+        )
+
+    @abstractmethod
+    def health(self) -> dict:
+        """{configured: bool, reason: str} — never includes key material."""
+
+    # -- implemented by concrete providers: the real SDK call -----------------
+
+    @abstractmethod
+    def _raw_complete(
+        self, prompt: str, model: str, max_tokens: int, temperature: float
+    ) -> RawResult:
+        """One real text API call via the official SDK."""
+
+    @abstractmethod
+    def _raw_vision(
+        self, prompt: str, image_path: Path, model: str, max_tokens: int
+    ) -> RawResult:
+        """One real vision API call via the official SDK."""

@@ -1,0 +1,45 @@
+# council.yaml — LuxuryForm Studio v1
+# Council role -> provider assignments, verbatim from the approved
+# First Action document section 4. Changeable in one line by the operator.
+# Every decision-critical role is servable by at least two providers; the
+# three decision-critical roles run on two providers in parallel with the
+# Arbiter surfacing material disagreement (never averaging it away).
+
+roles:
+  researcher:
+    primary: kimi
+    parallel: openai
+  designer:
+    primary: anthropic
+    parallel: openai
+  geometrist:
+    primary: anthropic
+    parallel: kimi
+  engineer:
+    primary: openai
+    parallel: anthropic
+  critic:
+    primary: openai
+    parallel: kimi
+    # Hard rule (build order section 5): the Critic never runs on the
+    # provider that produced the design. Resolved dynamically per session;
+    # the primary/parallel above are the static defaults only.
+    dynamic_rule: "never same provider as the design's producer"
+  arbiter:
+    primary: openai
+    parallel: anthropic
+  vision_critique:
+    providers: [anthropic, openai]
+    fallback: kimi
+
+# Default models per provider. OPERATOR: set to a model your account can access.
+model_defaults:
+  anthropic:
+    text: claude-sonnet-4-5
+    vision: claude-sonnet-4-5
+  openai:
+    text: gpt-4o
+    vision: gpt-4o
+  kimi:
+    text: kimi-k2-0905-preview
+    vision: moonshot-v1-8k-vision-preview

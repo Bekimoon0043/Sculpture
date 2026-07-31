@@ -1,0 +1,250 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://luxuryform.internal/schemas/design_spec/v1.json",
+  "title": "LuxuryForm Design Spec v1",
+  "description": "Machine-readable contract between the AI Council and the Geometry Engine. Amended per operator Amendments 1, 3 and 4: meta.spec_hash (unit of record), required hydraulic_network, and currency-aware budget replacing budget_etb_max.",
+  "type": "object",
+  "required": ["meta", "form_language", "massing", "materials", "water",
+               "hydraulic_network",
+               "site", "fabrication", "constraints", "confidence", "assumptions"],
+  "additionalProperties": false,
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["spec_id", "schema_version", "project_id", "seed",
+                   "created_by", "provider", "designdna_precedents"],
+      "properties": {
+        "spec_id":        { "type": "string", "format": "uuid" },
+        "schema_version": { "const": "1.0.0" },
+        "project_id":     { "type": "string", "format": "uuid" },
+        "seed":           { "type": "integer", "description": "Determinism seed (Rule 5)" },
+        "spec_hash":      { "type": "string", "description": "Amendment 1: content hash of this Spec — the persisted, reproducible unit of record" },
+        "created_by":     { "const": "DESIGNER" },
+        "provider":       { "type": "string", "enum": ["anthropic", "openai", "kimi"] },
+        "alternative_no": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "designdna_precedents": {
+          "type": "array",
+          "description": "Rule: designer must state what it reused and what it changed",
+          "items": {
+            "type": "object",
+            "required": ["designdna_id", "reused", "deliberately_different"],
+            "properties": {
+              "designdna_id":          { "type": "string" },
+              "reused":                { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+              "deliberately_different":{ "type": "array", "items": { "type": "string" }, "minItems": 1 }
+            }
+          }
+        }
+      }
+    },
+    "form_language": {
+      "type": "object",
+      "required": ["concept", "silhouette", "proportion_system", "symmetry"],
+      "properties": {
+        "concept":      { "type": "string", "maxLength": 500 },
+        "cultural_basis": { "type": "string", "description": "e.g. Ethiopian lotus motif, abstracted" },
+        "silhouette":   { "type": "string", "enum": ["vertical", "horizontal", "radial", "terraced", "freeform"] },
+        "proportion_system": {
+          "type": "object",
+          "required": ["system", "ratio"],
+          "properties": {
+            "system": { "type": "string", "enum": ["golden", "root2", "modular", "integer", "custom"] },
+            "ratio":  { "type": "number", "exclusiveMinimum": 1.0 },
+            "notes":  { "type": "string" }
+          }
+        },
+        "symmetry": { "type": "string", "enum": ["radial", "bilateral", "none"] },
+        "symmetry_order": { "type": "integer", "minimum": 2, "description": "Required if radial" }
+      }
+    },
+    "massing": {
+      "type": "object",
+      "required": ["elements"],
+      "properties": {
+        "elements": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/element" }
+        }
+      }
+    },
+    "materials": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["material_id", "name", "category"],
+        "properties": {
+          "material_id": { "type": "string", "description": "Must exist in config/materials.yaml" },
+          "name":        { "type": "string" },
+          "category":    { "type": "string", "enum": ["metal", "stone", "concrete", "composite", "glass", "water"] },
+          "finish":      { "type": "string" }
+        }
+      }
+    },
+    "water": {
+      "type": "object",
+      "required": ["has_water"],
+      "properties": {
+        "has_water": { "type": "boolean" },
+        "choreography": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "nozzle_elements", "flow_L_per_s", "jet_height_m"],
+            "properties": {
+              "name":            { "type": "string" },
+              "nozzle_elements": { "type": "array", "items": { "type": "string" },
+                                   "description": "element_ids carrying nozzles" },
+              "flow_L_per_s":    { "type": "number", "exclusiveMinimum": 0 },
+              "jet_height_m":    { "type": "number", "exclusiveMinimum": 0 },
+              "sequence":        { "type": "string", "enum": ["constant", "pulsed", "programmed"] }
+            }
+          }
+        },
+        "reservoir_element_id": { "type": "string" },
+        "makeup_water": { "type": "boolean", "description": "Auto top-up for evaporation" }
+      }
+    },
+    "hydraulic_network": {
+      "type": "object",
+      "description": "Amendment 3 (REQUIRED): pipe/pump/nozzle network for every water feature",
+      "required": ["nodes", "edges"],
+      "properties": {
+        "nodes": {"type": "array", "minItems": 2, "items": {
+          "type": "object", "required": ["node_id", "type", "elevation_m"],
+          "properties": {
+            "node_id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+            "type": {"enum": ["source", "pump", "manifold", "nozzle", "weir", "drain", "overflow"]},
+            "elevation_m": {"type": "number"},
+            "element_id": {"type": "string", "description": "massing element this node belongs to"},
+            "pump_curve_ref": {"type": "string", "description": "required when type=pump"},
+            "nozzle_bore_mm": {"type": "number", "description": "required when type=nozzle"}
+          }}},
+        "edges": {"type": "array", "minItems": 1, "items": {
+          "type": "object",
+          "required": ["edge_id", "from_node", "to_node", "diameter_mm", "length_m",
+                       "material", "elevation_change_m"],
+          "properties": {
+            "edge_id": {"type": "string"},
+            "from_node": {"type": "string"}, "to_node": {"type": "string"},
+            "diameter_mm": {"type": "number", "exclusiveMinimum": 0},
+            "length_m": {"type": "number", "exclusiveMinimum": 0},
+            "material": {"type": "string", "description": "pipe material, sets roughness"},
+            "fittings": {"type": "array", "items": {"type": "object",
+              "required": ["type", "count"],
+              "properties": {"type": {"enum": ["elbow_90", "elbow_45", "tee", "valve_gate",
+                "valve_check", "reducer", "entrance", "exit"]},
+                             "count": {"type": "integer", "minimum": 1}}}},
+            "elevation_change_m": {"type": "number"}
+          }}}
+      }},
+    "lighting": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "mount_element_id", "count"],
+        "properties": {
+          "type":             { "type": "string", "enum": ["underwater_led", "uplight", "linear_cove", "spot"] },
+          "mount_element_id": { "type": "string" },
+          "count":            { "type": "integer", "minimum": 1 },
+          "color_K":          { "type": "integer", "minimum": 1800, "maximum": 10000 }
+        }
+      }
+    },
+    "site": {
+      "type": "object",
+      "required": ["climate_zone", "design_wind_m_per_s", "frost_risk"],
+      "properties": {
+        "climate_zone":        { "type": "string" },
+        "design_wind_m_per_s": { "type": "number", "minimum": 0 },
+        "frost_risk":          { "type": "boolean", "description": "Drives freeze/thaw checks" },
+        "seismic_zone":        { "type": "string" },
+        "viewing_distance_m":  { "type": "number", "exclusiveMinimum": 0,
+                                 "description": "Detail below this scale is removed by the critic" }
+      }
+    },
+    "fabrication": {
+      "type": "object",
+      "required": ["method", "max_module_m", "max_lift_kg"],
+      "properties": {
+        "method":      { "type": "string", "enum": ["sheet_metal", "stone_slab", "cast_concrete", "hybrid"] },
+        "max_module_m": {
+          "type": "object", "required": ["x", "y", "z"],
+          "description": "Transport limit, metres",
+          "properties": { "x": {"type":"number"}, "y": {"type":"number"}, "z": {"type":"number"} }
+        },
+        "max_lift_kg":  { "type": "number", "exclusiveMinimum": 0 },
+        "local_capability_notes": { "type": "string" }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "required": ["budget", "hard_constraints"],
+      "properties": {
+        "budget":           { "$ref": "#/$defs/money",
+                              "description": "Amendment 4: currency-aware budget ceiling (replaces budget_etb_max)" },
+        "hard_constraints": { "type": "array", "items": { "type": "string" },
+                              "description": "Injected by ENGINEER — non-negotiable" }
+      }
+    },
+    "confidence": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "assumptions": {
+      "type": "array",
+      "minItems": 0,
+      "items": {
+        "type": "object",
+        "required": ["statement", "sourced"],
+        "properties": {
+          "statement": { "type": "string" },
+          "sourced":   { "type": "boolean", "description": "false = flagged for operator review" },
+          "source":    { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "dimension": {
+      "type": "object",
+      "required": ["value", "unit"],
+      "properties": {
+        "value": { "type": "number" },
+        "unit":  { "type": "string", "enum": ["m", "mm", "deg", "kg", "L", "L_per_s"] }
+      },
+      "additionalProperties": false
+    },
+    "money": {
+      "type": "object",
+      "description": "Amendment 4: every money amount carries its currency and the FX date the figure was converted at",
+      "required": ["amount", "currency", "fx_date"],
+      "properties": {
+        "amount":   { "type": "number", "exclusiveMinimum": 0 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$",
+                      "description": "ISO 4217, e.g. ETB, USD, AED" },
+        "fx_date":  { "type": "string", "format": "date" }
+      }
+    },
+    "element": {
+      "type": "object",
+      "required": ["element_id", "primitive", "parameters", "material_id", "position"],
+      "additionalProperties": false,
+      "properties": {
+        "element_id":  { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "primitive":   { "type": "string",
+                         "description": "Must exist in geometry/registry.py — e.g. basin_round, tiered_cascade, nozzle_ring, lotus_array, spline_loft" },
+        "parameters":  { "type": "object",
+                         "description": "Validated against the primitive's own parameter schema in registry.py; every numeric value is a $defs/dimension" },
+        "material_id": { "type": "string" },
+        "position": {
+          "type": "object", "required": ["x_m", "y_m", "z_m"],
+          "properties": {
+            "x_m": {"type":"number"}, "y_m": {"type":"number"}, "z_m": {"type":"number"},
+            "rot_z_deg": {"type":"number"}
+          }
+        },
+        "parent_id":   { "type": "string", "description": "Stacking: this element sits on parent" },
+        "service_voids": { "type": "array", "items": { "type": "string", "enum": ["plumbing", "lighting", "access_hatch"] } }
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+# LuxuryForm Studio v1 — Phase 1
+# Single backend service (the frontend arrives in Phase 2).
+#
+# Start:   docker compose up --build -d
+# Stop:    docker compose down
+# Logs:    docker compose logs -f backend
+services:
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file: .env
+    volumes:
+      - ./data:/app/data

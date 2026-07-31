@@ -1,0 +1,36 @@
+# pricing.yaml — LuxuryForm Studio v1 (ADR-006: versioned pricing)
+#
+# OPERATOR: verify against current provider price pages before relying on cost
+# numbers; bump pricing_version on every edit.
+#
+# The prices below are the published list prices as of 2026-07 (best current
+# knowledge at build time). They MUST be verified against the providers' live
+# price pages before any cost figure is trusted. Every AI call logged in the
+# database records the pricing_version that computed its cost, so stale prices
+# can never silently rewrite history.
+pricing_version: "2026-07-v1"
+
+providers:
+  anthropic:
+    # https://www.anthropic.com/pricing — Claude Sonnet 4.5 list price
+    claude-sonnet-4-5:
+      usd_per_1m_input_tokens: 3.00
+      usd_per_1m_output_tokens: 15.00
+      effective_date: "2025-09-29"
+  openai:
+    # https://openai.com/api/pricing — GPT-4o list price
+    gpt-4o:
+      usd_per_1m_input_tokens: 2.50
+      usd_per_1m_output_tokens: 10.00
+      effective_date: "2024-08-06"
+  kimi:
+    # https://platform.moonshot.ai/docs/pricing — Kimi K2 (0905) list price
+    kimi-k2-0905-preview:
+      usd_per_1m_input_tokens: 0.60
+      usd_per_1m_output_tokens: 2.50
+      effective_date: "2025-09-05"
+    # Moonshot vision preview model (8k context) — list price, VERIFY before use
+    moonshot-v1-8k-vision-preview:
+      usd_per_1m_input_tokens: 1.70
+      usd_per_1m_output_tokens: 1.70
+      effective_date: "2025-01-01"

@@ -1,0 +1,103 @@
+"""SQLite database access for LuxuryForm Studio v1.
+
+SQLite in WAL mode (ADR-001): crash-safe, single-file, zero-administration —
+the right fit for a local-first platform operated by a non-programmer.
+
+The database path comes from the LUXURYFORM_DB environment variable
+(default ./data/luxuryform.db) and is auto-created, including parent dirs.
+"""
+
+from __future__ import annotations
+
+import os
+import sqlite3
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Iterator
+
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import Session, sessionmaker
+
+SCHEMA_SQL_PATH = Path(__file__).resolve().parent / "schema.sql"
+DEFAULT_DB_PATH = "./data/luxuryform.db"
+
+
+class Database:
+    """Owns the SQLAlchemy engine for one SQLite database file."""
+
+    def __init__(self, path: str | Path | None = None) -> None:
+        raw = str(path) if path is not None else os.environ.get(
+            "LUXURYFORM_DB", DEFAULT_DB_PATH
+        )
+        self.path = Path(raw)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.engine = create_engine(
+            f"sqlite:///{self.path}", future=True, isolation_level="AUTOCOMMIT"
+        )
+
+        @event.listens_for(self.engine, "connect")
+        def _set_pragmas(dbapi_conn: sqlite3.Connection, _record) -> None:
+            cur = dbapi_conn.cursor()
+            cur.execute("PRAGMA journal_mode=WAL")
+            cur.execute("PRAGMA foreign_keys=ON")
+            cur.close()
+
+        self._session_factory = sessionmaker(
+            bind=self.engine, class_=Session, future=True, autoflush=True,
+            expire_on_commit=False,
+        )
+
+    def init_db(self) -> None:
+        """Create every table from schema.sql (idempotent — IF NOT EXISTS)."""
+        script = SCHEMA_SQL_PATH.read_text(encoding="utf-8")
+        with self.engine.connect() as conn:
+            conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+            for statement in _split_sql_script(script):
+                conn.exec_driver_sql(statement)
+
+    @contextmanager
+    def get_session(self) -> Iterator[Session]:
+        """Transactional session scope; commits on success, rolls back on error."""
+        session = self._session_factory()
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+
+def _split_sql_script(script: str) -> list[str]:
+    """Split schema.sql into individual statements.
+
+    Inline ``--`` comments are stripped line-by-line first (the script has no
+    string literals containing ``--`` or ``;``), then the remainder is split
+    on ``;``.
+    """
+    code_lines = []
+    for line in script.splitlines():
+        code = line.split("--", 1)[0]  # drop full-line and inline comments
+        if code.strip():
+            code_lines.append(code)
+    statements = [s.strip() for s in "\n".join(code_lines).split(";")]
+    return [s for s in statements if s]
+
+
+_default_db: Database | None = None
+
+
+def get_default_db() -> Database:
+    """Process-wide Database for the API, honouring LUXURYFORM_DB."""
+    global _default_db
+    if _default_db is None:
+        _default_db = Database()
+    return _default_db
+
+
+def reset_default_db() -> None:
+    """Drop the cached default Database (used by the gate to re-point
+    LUXURYFORM_DB at its own throwaway file)."""
+    global _default_db
+    _default_db = None
