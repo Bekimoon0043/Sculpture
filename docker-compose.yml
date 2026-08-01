@@ -1,9 +1,13 @@
-# LuxuryForm Studio v1 — Phase 1
-# Single backend service (the frontend arrives in Phase 2).
+# LuxuryForm Studio v1 — Phase 2
+# Backend (FastAPI + build123d geometry) + frontend (vite dev server, three.js
+# viewport).
 #
 # Start:   docker compose up --build -d
 # Stop:    docker compose down
-# Logs:    docker compose logs -f backend
+# Logs:    docker compose logs -f backend   (or: frontend)
+#
+# Backend API:  http://localhost:8000/api/health
+# Viewport UI:  http://localhost:5173
 services:
   backend:
     build: .
@@ -12,3 +16,18 @@ services:
     env_file: .env
     volumes:
       - ./data:/app/data
+
+  frontend:
+    image: node:20-bookworm-slim
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    # First run downloads all npm packages (see docs/operator/02_phase2_viewport.md
+    # for expected duration + the retry command on slow connections).
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_TARGET=http://backend:8000
+    depends_on:
+      - backend

@@ -1,0 +1,151 @@
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+body {
+  margin: 0;
+  background: #0b0e12;
+  color: #dde3ea;
+}
+.app-grid {
+  display: grid;
+  grid-template-columns: 1fr 420px;
+  height: 100vh;
+}
+.viewport-wrap {
+  position: relative;
+  min-width: 0;
+}
+.viewport-canvas {
+  position: absolute;
+  inset: 0;
+}
+.rebuild-timer {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(10, 14, 18, 0.82);
+  border: 1px solid #2a3138;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.side {
+  overflow-y: auto;
+  border-left: 1px solid #2a3138;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.panel {
+  background: #12161c;
+  border: 1px solid #2a3138;
+  border-radius: 8px;
+  padding: 12px;
+}
+.panel h2 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+.param-row {
+  display: grid;
+  grid-template-columns: 1fr 110px auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.param-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.param-row input,
+.param-row select {
+  background: #0b0e12;
+  color: #dde3ea;
+  border: 1px solid #2a3138;
+  border-radius: 4px;
+  padding: 4px 6px;
+  width: 110px;
+}
+.param-row select {
+  width: 180px;
+}
+.param-unit {
+  color: #8b96a3;
+  white-space: nowrap;
+}
+.hint {
+  color: #8b96a3;
+  font-size: 12px;
+  margin: 4px 0;
+}
+.rebuild {
+  margin-top: 8px;
+  width: 100%;
+  padding: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  background: #b98a2f;
+  border: none;
+  border-radius: 6px;
+  color: #14100a;
+  cursor: pointer;
+}
+.rebuild:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.violations {
+  margin-top: 10px;
+  background: #2a1416;
+  border: 1px solid #7a2e33;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+}
+.violations ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+th,
+td {
+  text-align: left;
+  padding: 4px 6px;
+  border-bottom: 1px solid #1e242c;
+}
+td.num {
+  font-variant-numeric: tabular-nums;
+}
+.pass {
+  color: #4cc38a;
+  font-weight: 600;
+}
+.fail {
+  color: #f16a6a;
+  font-weight: 600;
+}
+.badge {
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+.badge.pass {
+  background: #14332a;
+}
+.badge.fail {
+  background: #3a1719;
+}
+.loading,
+.fatal {
+  padding: 40px;
+  font-size: 16px;
+}

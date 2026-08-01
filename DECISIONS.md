@@ -171,3 +171,45 @@ input); `max_completion_tokens` replaces the deprecated `max_tokens`; kimi-k3
 pricing ($3.00 cache-miss input / $15.00 output per 1M) fetched from
 `platform.kimi.ai/docs/pricing/chat-k3.md`. Every value carries its source
 URL and fetch date.
+
+---
+
+## ADR-010 — Phase 2 geometry stack: build123d kernel, native GLB, trimesh validation, STEP timestamp injection
+
+**Status: accepted (Phase 2, all API facts live-doc sourced 2026-08-01 per ADR-009).**
+
+- **Kernel: build123d 0.11.1** (OpenCASCADE). The tiered-cascade primitive is
+  built from solids of revolution (BuildSketch profile in the XZ plane →
+  `revolve(..., Axis.Z)`), fused into ONE solid, plumbing bore cut through
+  the stack. Watertight BY CONSTRUCTION (Rule 6): no mesh repair anywhere.
+- **Lip fillets are drawn INTO the dish profile** as true circular arcs
+  (`RadiusArc`), so the revolved lip is an exact toroidal surface — no
+  post-hoc 3D `fillet()` call that could fail at parameter extremes. The
+  validated ranges in `registry.py` plus hard constraints 3 and 5
+  (`lip_fillet_mm < dish_depth_mm/2`, `lip_fillet_mm < basin_wall_mm`)
+  guarantee the profile is always drawable.
+- **GLB export is build123d's NATIVE `export_gltf(binary=True)`** (live-doc
+  signature confirmed 2026-08-01). No trimesh conversion on the export path.
+  `linear_deflection` is set to 1.0 mm explicitly: the live-doc default
+  0.001 mm would tessellate a 2.6 m fountain into tens of millions of
+  triangles and blow the <1M-triangle viewport budget (PHASE2_PLAN §7). STEP
+  is the canonical artifact; the GLB is a preview/validation mesh.
+- **trimesh (5.0.0) is used for VALIDATION only** — watertight, winding,
+  volume, surface area, Euler number, bounds, degenerate faces — with a 2%
+  volume cross-check against the exact B-rep volume.
+- **STEP determinism (Amendment 1):** the STEP header normally embeds a
+  wall-clock timestamp. `export_step(..., *, timestamp=)` (live-doc confirmed
+  2026-08-01) lets us inject `datetime(2026,1,1) + timedelta(seconds=seed)`,
+  so (spec, seed) → byte-identical STEP. The gate proves this across TWO
+  separate processes with both sha256 hashes printed.
+- **Schema evolution is honest (SPEC_PHASE2 §2):** a `schema_migrations`
+  table records the version; a Phase 1 database file is RENAMED to
+  `<name>.phase1-backup.db` on startup (never deleted) and a fresh v2 schema
+  is created, because SQLite cannot alter the `designs.spec_id` foreign key
+  in place and Phase 2 builds have no council Design Spec yet.
+- **[ADD-1] `.gitattributes`** pins LF for text and marks STEP/GLB/etc.
+  binary — Windows CRLF conversion at checkout would corrupt the STEP sha256
+  determinism proof.
+- **[ADD-2] The Phase 2 gate is split:** `scripts/gate_phase2_auto.py`
+  (non-interactive, exit 0/1) + `docs/operator/gate_phase2_visual.md`
+  (operator eye-check including the [ADD-5] rebuild-time measurement).

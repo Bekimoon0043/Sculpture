@@ -9,17 +9,28 @@ The database path comes from the LUXURYFORM_DB environment variable
 
 from __future__ import annotations
 
+import logging
 import os
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
+log = logging.getLogger("luxuryform.db")
+
 SCHEMA_SQL_PATH = Path(__file__).resolve().parent / "schema.sql"
 DEFAULT_DB_PATH = "./data/luxuryform.db"
+
+#: Current schema version. v2 = Phase 2 (designs cascade columns,
+#: schema_migrations bookkeeping).
+SCHEMA_VERSION = 2
+
+#: Column whose presence proves a `designs` table is already Phase 2 shape.
+_PHASE2_DESIGNS_MARKER_COLUMN = "spec_hash"
 
 
 class Database:
@@ -48,12 +59,78 @@ class Database:
         )
 
     def init_db(self) -> None:
-        """Create every table from schema.sql (idempotent — IF NOT EXISTS)."""
+        """Migrate if needed, then create every table from schema.sql.
+
+        Migration (SPEC_PHASE2 §2): if the file already holds a Phase 1
+        `designs` table (no spec_hash column), the file is RENAMED to
+        ``<name>.phase1-backup.db`` (plus ``-2``, ``-3`` ... if a backup
+        already exists) and a fresh Phase 2 database is created. Data is
+        never silently dropped — rename, don't delete.
+        """
+        note = self._migrate_phase1_file_if_needed()
         script = SCHEMA_SQL_PATH.read_text(encoding="utf-8")
         with self.engine.connect() as conn:
             conn.exec_driver_sql("PRAGMA foreign_keys=ON")
             for statement in _split_sql_script(script):
                 conn.exec_driver_sql(statement)
+            conn.exec_driver_sql(
+                "INSERT OR IGNORE INTO schema_migrations (version, applied_at, note) "
+                "VALUES (:version, :applied_at, :note)",
+                {
+                    "version": SCHEMA_VERSION,
+                    "applied_at": datetime.now(timezone.utc).isoformat(),
+                    "note": note,
+                },
+            )
+
+    def _migrate_phase1_file_if_needed(self) -> str:
+        """Rename a Phase 1 database file out of the way; return the
+        schema_migrations note for this init."""
+        if not self.path.exists():
+            return "fresh Phase 2 schema (v2) created"
+        conn = sqlite3.connect(str(self.path))
+        try:
+            tables = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            if "designs" not in tables:
+                return "existing database without designs table; Phase 2 schema (v2) applied"
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(designs)")}
+        finally:
+            conn.close()
+        if _PHASE2_DESIGNS_MARKER_COLUMN in columns:
+            return "existing Phase 2 database; schema (v2) verified idempotently"
+
+        backup = self._next_backup_path()
+        # Close our own engine's connections before moving the file.
+        self.engine.dispose()
+        for suffix in ("", "-wal", "-shm"):
+            candidate = Path(str(self.path) + suffix)
+            if candidate.exists():
+                candidate.rename(Path(str(backup) + suffix))
+        log.warning(
+            "Phase 1 database %s renamed to %s; a fresh Phase 2 database was "
+            "created. The backup is never deleted automatically.",
+            self.path,
+            backup,
+        )
+        return (
+            f"Phase 1 database renamed to {backup.name} (never deleted); "
+            "fresh Phase 2 schema (v2) created"
+        )
+
+    def _next_backup_path(self) -> Path:
+        """First free <stem>.phase1-backup<.suffix>[, -2, -3...] path."""
+        base = self.path.with_name(f"{self.path.stem}.phase1-backup{self.path.suffix}")
+        candidate = base
+        counter = 2
+        while candidate.exists():
+            candidate = Path(f"{base}-{counter}")
+            counter += 1
+        return candidate
 
     @contextmanager
     def get_session(self) -> Iterator[Session]:

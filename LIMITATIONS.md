@@ -98,3 +98,28 @@ the assumed SDK shapes for those paths. Remaining unverified path: kimi text
 (a 400 parameter-validation response already proves the request/response
 plumbing reaches the API correctly — the failure was a fixed-temperature
 constraint, not an SDK shape mismatch).
+
+---
+
+## 8. Phase 2 scope limits (what the geometry engine does NOT do yet)
+
+- **Single primitive only.** The tiered-cascade fountain is the ONLY
+  registered primitive. No sculpture lofting, no custom profiles (Phase 4+).
+- **Mesh preview, not photoreal.** The viewport shows the tessellated GLB
+  with simple lighting. Renders (Blender/Cycles) are Phase 5.
+- **No ray-based wall-thickness check yet.** The minimum-wall guarantee comes
+  from the HARD CONSTRAINTS in `registry.py` (wall >= material minimum,
+  enforced before any build), not from a measured ray-cast thickness
+  analysis of the mesh. That check arrives with the validation-gate phase.
+- **STEP determinism is proven for the canonical STEP export only.** GLB
+  bytes, render outputs and any file with embedded metadata are NOT part of
+  the byte-identity guarantee (see §2) — only STEP + parameter set are, and
+  that is what the gate hashes.
+- **The rebuild-time number [ADD-5] is pending operator hardware.** The
+  frontend measures it live; the value in PHASE_2_REPORT.md is filled in by
+  the operator from the viewport readout, on their machine — never estimated
+  by us.
+- **GLB tessellation is 1 mm deflection.** The preview mesh deviates from the
+  exact B-rep by up to ~1 mm on curved surfaces; the volume cross-check
+  (2% tolerance, both numbers printed) quantifies the effect. Fabrication
+  always uses the STEP, never the GLB.

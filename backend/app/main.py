@@ -1,22 +1,24 @@
-"""FastAPI application entry point — LuxuryForm Studio v1, Phase 1.
+"""FastAPI application entry point — LuxuryForm Studio v1, Phase 2.
 
 Uvicorn target: ``app.main:app``. On startup the database is created/migrated
-from schema.sql (idempotent).
+from schema.sql (idempotent; a Phase 1 database file is renamed to a backup,
+never deleted — SPEC_PHASE2 §2).
 """
 
 from __future__ import annotations
 
 from fastapi import FastAPI
 
-from app.api import routes_health, routes_logs
+from app.api import routes_geometry, routes_health, routes_logs
 from app.db.database import get_default_db
 
 app = FastAPI(
     title="LuxuryForm Studio v1",
-    version="0.1.0",
+    version="0.2.0",
     description=(
         "Local-first sculpture/fountain design platform for LuxuryCon — "
-        "Phase 1: provider layer, spend caps, audit logging."
+        "Phase 2: geometry kernel, tiered-cascade primitive, mesh validation, "
+        "GLB viewport."
     ),
 )
 
@@ -28,3 +30,4 @@ def _startup() -> None:
 
 app.include_router(routes_health.router, prefix="/api")
 app.include_router(routes_logs.router, prefix="/api")
+app.include_router(routes_geometry.router, prefix="/api")

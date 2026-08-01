@@ -1,8 +1,20 @@
--- schema.sql — LuxuryForm Studio v1 (Phase 1)
+-- schema.sql — LuxuryForm Studio v1 (Phase 2 schema, version 2)
 -- SQLite, WAL mode. All timestamps are UTC ISO-8601 text.
--- The FULL table set is created now (approved plan §D3) so no table is ever
--- retrofitted; later-phase tables carry minimal-but-real columns and are
--- documented in DECISIONS.md (ADR-001).
+-- Phase 2 evolution (ADR-010): the designs table gained the cascade build
+-- columns (seed, spec_hash, build_ms, glb_path, step_path) and spec_id became
+-- nullable (a Phase 2 cascade build has no council Design Spec yet). Tracked
+-- honestly in schema_migrations; a Phase 1 database file is RENAMED to
+-- <name>.phase1-backup.db on startup, never deleted (SPEC_PHASE2 §2).
+
+-- ---------------------------------------------------------------------------
+-- Schema version bookkeeping (Phase 2)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version     INTEGER PRIMARY KEY,
+    applied_at  TEXT NOT NULL,           -- UTC ISO-8601
+    note        TEXT NOT NULL
+);
 
 -- ---------------------------------------------------------------------------
 -- Phase 1 tables (in active use now)
@@ -87,10 +99,16 @@ CREATE TABLE IF NOT EXISTS design_specs (
 CREATE TABLE IF NOT EXISTS designs (
     id              TEXT PRIMARY KEY,
     created_at      TEXT NOT NULL,
-    spec_id         TEXT NOT NULL REFERENCES design_specs(id),
-    geometry_hash   TEXT,                    -- hash of canonical STEP (Phase 2 determinism gate)
+    spec_id         TEXT REFERENCES design_specs(id),  -- NULL in Phase 2: no council spec yet
+    geometry_hash   TEXT,                    -- sha256 of canonical STEP (Phase 2 determinism gate)
     parameter_json  TEXT NOT NULL,           -- canonical parameter set
-    status          TEXT NOT NULL DEFAULT 'built'
+    status          TEXT NOT NULL DEFAULT 'built',
+    -- Phase 2 cascade build columns
+    seed            INTEGER,                 -- run seed (Amendment 1)
+    spec_hash       TEXT,                    -- sha256 of canonical {parameters, seed} JSON
+    build_ms        REAL,                    -- measured server-side build time
+    glb_path        TEXT,                    -- exported preview/validation mesh
+    step_path       TEXT                     -- canonical STEP artifact
 );
 
 CREATE TABLE IF NOT EXISTS validation_reports (
