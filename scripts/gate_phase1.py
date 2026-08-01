@@ -5,6 +5,14 @@ Runs on the host (``python scripts/gate_phase1.py`` from the repo root, venv
 active) or inside Docker (``docker compose exec backend python
 scripts/gate_phase1.py``). Pure stdlib + project imports.
 
+Designed for a non-interactive agent — no prompts, no required stdin, all
+output to stdout, clear exit codes. The operator's machine agent runs:
+
+  1. git pull
+  2. docker compose up --build -d
+  3. docker compose exec backend python scripts/gate_phase1.py
+  4. Reports the FULL verbatim output. Never summarises a gate result.
+
 Prints a numbered transcript and exits 0 ONLY on full PASS:
   1. CONFIG & DB      — settings, provider key status, pricing version, budget
                         caps, fresh throwaway gate DB initialised.
@@ -314,7 +322,7 @@ def main() -> int:
     _section(5, "DETERMINISM STATEMENT (Amendment 1)")
     from app.core.seeds import DETERMINISM_STATEMENT
 
-    print(f"\"{DETERMINISM_STATEMENT}\"")
+    print(f'"{DETERMINISM_STATEMENT}"')
     print()
     print(
         "This gate does NOT and will never test brief-level reproducibility; "
