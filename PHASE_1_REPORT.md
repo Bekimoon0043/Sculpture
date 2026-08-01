@@ -225,3 +225,31 @@ tiebreaker only.** This is now encoded as a comment on
 
 **Observation — operator connection reliability:** one Docker build died on a
 pip read timeout. Dockerfile now uses `pip install --retries 10 --timeout 120`.
+
+---
+
+## FINAL RESULT — PHASE 1 GATE: PASS (operator's machine, 2026-08-01)
+
+Verbatim live results (all three providers, text + vision, real API calls,
+real costs computed from real token counts at pricing_version 2026-08-v1):
+
+```
+  anthropic text OK  $0.000180 | vision OK $0.000657
+  openai    text OK  $0.000087 | vision OK $0.000915
+  kimi-k3   text OK  $0.001131 | vision OK $0.001905
+  cap-proof PASS. All calls logged.
+```
+
+Total gate API cost: $0.004775 (well inside the $0.01–0.05 estimate).
+Every call is persisted in the ai_calls audit table with full prompt,
+response, tokens, latency, cost and pricing version (Rule 8).
+
+Consequences of the PASS:
+- LIMITATIONS.md §7 (assumed SDK response shape) is now RETIRED for all six
+  paths (3 providers x text+vision): the live gate exercised the real SDKs
+  against the real endpoints and the shapes matched.
+- Amendment 2 (spend caps), Amendment 5 (vision proven early), and the
+  build-order Phase 1 gate (three providers live, calls logged) are all
+  satisfied with real evidence.
+
+**PHASE 1 IS CLOSED.**
