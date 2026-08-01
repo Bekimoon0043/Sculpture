@@ -63,16 +63,23 @@ class KimiProvider(AIProvider):
         }
 
     def _raw_complete(
-        self, prompt: str, model: str, max_tokens: int, temperature: float
+        self, prompt: str, model: str, max_tokens: int, temperature: float | None
     ) -> RawResult:
-        resp = self._client.chat.completions.create(
+        kwargs: dict = dict(
             model=model,
             # Live docs (chat.md, fetched 2026-08-01): max_tokens is
             # deprecated on this API — max_completion_tokens is the parameter.
             max_completion_tokens=max_tokens,
-            temperature=temperature,
             messages=[{"role": "user", "content": prompt}],
         )
+        # Live K3 docs (kimi-k3-quickstart.md, fetched 2026-08-01):
+        # "temperature=1.0, top_p=0.95, n=1, presence_penalty=0, and
+        # frequency_penalty=0 are fixed; omit them from requests."
+        # council.yaml therefore sets kimi temperature: null — the parameter
+        # is only sent if the operator explicitly configures one.
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        resp = self._client.chat.completions.create(**kwargs)
         return RawResult(
             text=resp.choices[0].message.content or "",
             tokens_in=resp.usage.prompt_tokens,

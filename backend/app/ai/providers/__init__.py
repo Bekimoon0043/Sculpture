@@ -38,6 +38,7 @@ def build_providers(
             settings.anthropic_api_key,
             text_model=models["anthropic"].text,
             vision_model=models["anthropic"].vision_or_text(),
+            default_temperature=models["anthropic"].temperature,
             db=db,
             pricing=config.pricing,
             budget=budget,
@@ -46,6 +47,7 @@ def build_providers(
             settings.openai_api_key,
             text_model=models["openai"].text,
             vision_model=models["openai"].vision_or_text(),
+            default_temperature=models["openai"].temperature,
             db=db,
             pricing=config.pricing,
             budget=budget,
@@ -56,6 +58,9 @@ def build_providers(
             # kimi-k3 has native image input, so vision falls back to text.
             text_model=models["kimi"].text,
             vision_model=models["kimi"].vision_or_text(),
+            # kimi-k3 fixes temperature=1.0 (live docs 2026-08-01): null here
+            # means the parameter is OMITTED from every request.
+            default_temperature=models["kimi"].temperature,
             # env MOONSHOT_BASE_URL > council.yaml endpoints.kimi > provider default
             base_url=settings.moonshot_base_url or endpoints.get("kimi"),
             db=db,

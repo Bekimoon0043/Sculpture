@@ -65,10 +65,14 @@ class AIProvider(ABC):
         db: "Database",
         pricing: "PricingConfig",
         budget: "BudgetEnforcer | None" = None,
+        default_temperature: float | None = 0.0,
     ) -> None:
         self.api_key = api_key
         self.text_model = text_model
         self.vision_model = vision_model
+        # None = omit temperature from requests (fixed-temperature reasoning
+        # models, e.g. kimi-k3 — see council.yaml model_defaults).
+        self.default_temperature = default_temperature
         self._db = db
         self._pricing = pricing
         self._budget = budget
@@ -82,7 +86,7 @@ class AIProvider(ABC):
         purpose: str,
         model: str | None = None,
         max_tokens: int = 256,
-        temperature: float = 0.0,
+        temperature: float | None = None,
         session_id: str,
     ) -> ProviderResponse:
         from app.ai import call_log
@@ -95,7 +99,11 @@ class AIProvider(ABC):
             purpose=purpose,
             model=model or self.text_model,
             max_tokens=max_tokens,
-            temperature=temperature,
+            # Explicit argument wins; else the per-model config default
+            # (None = omit the parameter entirely — fixed-temperature models).
+            temperature=(
+                temperature if temperature is not None else self.default_temperature
+            ),
             session_id=session_id,
         )
 
@@ -131,9 +139,13 @@ class AIProvider(ABC):
 
     @abstractmethod
     def _raw_complete(
-        self, prompt: str, model: str, max_tokens: int, temperature: float
+        self, prompt: str, model: str, max_tokens: int, temperature: float | None
     ) -> RawResult:
-        """One real text API call via the official SDK."""
+        """One real text API call via the official SDK.
+
+        ``temperature=None`` means OMIT the parameter from the request —
+        never substitute a number for a model that fixes its temperature.
+        """
 
     @abstractmethod
     def _raw_vision(

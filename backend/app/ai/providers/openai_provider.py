@@ -39,14 +39,16 @@ class OpenAIProvider(AIProvider):
         }
 
     def _raw_complete(
-        self, prompt: str, model: str, max_tokens: int, temperature: float
+        self, prompt: str, model: str, max_tokens: int, temperature: float | None
     ) -> RawResult:
-        resp = self._client.chat.completions.create(
+        kwargs: dict = dict(
             model=model,
             max_tokens=max_tokens,
-            temperature=temperature,
             messages=[{"role": "user", "content": prompt}],
         )
+        if temperature is not None:  # None = omit the parameter entirely
+            kwargs["temperature"] = temperature
+        resp = self._client.chat.completions.create(**kwargs)
         return RawResult(
             text=resp.choices[0].message.content or "",
             tokens_in=resp.usage.prompt_tokens,

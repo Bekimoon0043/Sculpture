@@ -199,3 +199,29 @@ Note: provider FAILs above name the exact env var to set in .env. With all three
    `2026-08-v1`. New rule (ADR-009): no endpoint, model string, SDK shape,
    parameter, or price is written from training-data recall — live docs only,
    fetch date recorded.
+3. **Live gate progress (operator's machine, 2026-08-01):** all three
+   providers passed VISION — Amendment 5 fully satisfied; LIMITATIONS.md §6
+   retired. anthropic and openai also passed text. kimi text failed with
+   `400 — "invalid temperature: only 1 is allowed for this model"`: kimi-k3
+   always reasons and fixes its sampling parameters. Fixed per live K3 docs
+   (fetched 2026-08-01): `temperature` is now per-model in
+   `config/council.yaml` (`null` = omit the parameter); kimi sends no
+   temperature, top_p, n, or penalty parameters (all fixed per docs:
+   "temperature=1.0, top_p=0.95, n=1, presence_penalty=0, frequency_penalty=0
+   are fixed; omit them from requests"). Also confirmed from the same docs:
+   `max_completion_tokens` defaults to 131072 (max 1048576) — our gate's 256
+   is fine; vision requires base64 or `ms://<file-id>` (we use base64), no
+   public URLs.
+
+**Observation — vision call cost (live gate, 2026-08-01):** the identical
+256x256 test image cost **kimi-k3 $0.002010** vs **anthropic $0.000837** and
+**openai $0.000865** — K3 is ~2.4x the price per vision call (it always
+reasons, inflating output tokens). Consequence for Phase 5, which runs a
+vision-critique loop of up to 6 iterations with two-provider consensus:
+**anthropic + openai are the vision consensus pair; kimi-k3 is the
+tiebreaker only.** This is now encoded as a comment on
+`vision_critique` in `config/council.yaml` (the pair itself was already
+`[anthropic, openai]`).
+
+**Observation — operator connection reliability:** one Docker build died on a
+pip read timeout. Dockerfile now uses `pip install --retries 10 --timeout 120`.

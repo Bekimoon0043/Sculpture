@@ -49,6 +49,9 @@ def _build(name, db, config, client):
     kwargs = dict(
         text_model=models.text,
         vision_model=models.vision_or_text(),
+        # Mirrors the factory: per-model temperature from council.yaml
+        # (None for kimi-k3 = omit the parameter from requests).
+        default_temperature=models.temperature,
         db=db,
         pricing=config.pricing,
         budget=budget,
@@ -88,11 +91,17 @@ def test_complete_offline_correct_response_and_cost(
     assert resp.pricing_version == "2026-08-v1"
     assert resp.latency_ms >= 0
     assert len(client.calls) == 1
-    # Kimi live docs (chat.md, fetched 2026-08-01): max_tokens is DEPRECATED
-    # on the Kimi API; the provider must send max_completion_tokens instead.
+    # Kimi live docs (chat.md + kimi-k3-quickstart.md, fetched 2026-08-01):
+    # max_tokens is DEPRECATED (use max_completion_tokens), and K3 fixes
+    # temperature=1.0 — "omit them from requests". council.yaml sets kimi
+    # temperature: null, so the parameter must be ABSENT from the dispatch.
     if name == "kimi":
         assert "max_completion_tokens" in client.calls[0]
         assert "max_tokens" not in client.calls[0]
+        assert "temperature" not in client.calls[0]
+    else:
+        # anthropic/openai are configured with temperature: 0.0 and must send it.
+        assert client.calls[0].get("temperature") == 0.0
 
 
 @pytest.mark.parametrize("name,tin,tout,expected_cost", VISION_CASES)

@@ -83,7 +83,7 @@ def execute(
     purpose: str,
     model: str,
     max_tokens: int,
-    temperature: float,
+    temperature: float | None,
     session_id: str,
 ) -> "ProviderResponse":
     from app.ai.provider import ProviderError, ProviderResponse  # avoid cycle

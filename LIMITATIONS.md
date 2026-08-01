@@ -70,16 +70,12 @@ early):
 - **Phase 6** — DesignDNA memory store and retrieval; full export suite.
 - **Phase 7** — resumable job runner with kill-and-resume checkpoints.
 
-## 6. Provider vision failures found by the gate
+## 6. ~~Provider vision failures found by the gate~~ — RETIRED 2026-08-01
 
-The Phase 1 gate sends a real test image to each provider's vision endpoint.
-If a provider's vision call fails, the gate prints the raw error and an
-ACTION line telling you to record it here.
-
-**Operator: if the gate reports a vision failure, replace the line below with
-what the gate printed (provider, model, and the exact error), and date it.**
-
-- _(no vision failures found yet — fill in from gate output if one appears)_
+All three providers (anthropic, openai, kimi) PASSED the live vision section
+of the Phase 1 gate on the operator's machine. Amendment 5 is fully
+satisfied; this entry is retired. (Section numbers are preserved so existing
+references to §7 stay valid.)
 
 ## 7. Offline test transports mirror an ASSUMED SDK response shape
 
@@ -91,7 +87,14 @@ verified against a real API response**.
 
 Consequence: if a real SDK response shape differs from the assumption, the
 offline suite **passes while production fails**. This limitation is retired
-only by the live Phase 1 gate run with real API keys — the gate exercises the
-real SDKs against the real endpoints. Until that run passes, treat the
+only by a fully green live Phase 1 gate — the gate exercises the real SDKs
+against the real endpoints. Until that run passes, treat the
 offline suite as proof of the dispatch path *around* the SDK call, never as
 proof of the SDK call itself.
+
+**Progress 2026-08-01 (operator's live gate):** anthropic and openai passed
+BOTH text and vision live; kimi passed vision live. These live calls validate
+the assumed SDK shapes for those paths. Remaining unverified path: kimi text
+(a 400 parameter-validation response already proves the request/response
+plumbing reaches the API correctly — the failure was a fixed-temperature
+constraint, not an SDK shape mismatch).

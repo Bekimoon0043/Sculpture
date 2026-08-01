@@ -120,6 +120,11 @@ class RoleAssignment(BaseModel):
 class ProviderModels(BaseModel):
     text: str
     vision: str | None = None  # None = no separate vision model; use `text`
+    # Sampling temperature for text calls. None = OMIT the parameter from the
+    # request entirely (required for fixed-temperature reasoning models such
+    # as kimi-k3 — live docs: "temperature=1.0 ... fixed; omit them from
+    # requests", fetched 2026-08-01). Never send temperature=0 to such a model.
+    temperature: float | None = 0.0
 
     def vision_or_text(self) -> str:
         return self.vision or self.text

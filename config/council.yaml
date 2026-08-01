@@ -29,6 +29,10 @@ roles:
     primary: openai
     parallel: anthropic
   vision_critique:
+    # Consensus pair = anthropic + openai; kimi is the TIEBREAKER ONLY.
+    # Reason (live gate, 2026-08-01): kimi-k3 vision cost $0.002010 vs
+    # anthropic $0.000837 / openai $0.000865 — ~2.4x. Phase 5 runs up to 6
+    # vision iterations, so K3 must not be a default vision provider.
     providers: [anthropic, openai]
     fallback: kimi
 
@@ -46,15 +50,25 @@ endpoints:
 
 # Default models per provider. OPERATOR: set to a model your account can access.
 # `vision` is OPTIONAL: when omitted, the text model is used for vision calls.
+# `temperature` is OPTIONAL: when null, the parameter is OMITTED from requests
+# (required for fixed-temperature reasoning models).
 model_defaults:
   anthropic:
     text: claude-sonnet-4-5
     vision: claude-sonnet-4-5
+    temperature: 0.0
   openai:
     text: gpt-4o
     vision: gpt-4o
+    temperature: 0.0
   kimi:
     text: kimi-k3
+    temperature: null
+    # temperature MUST stay null for kimi-k3: the live K3 quickstart (fetched
+    # 2026-08-01) states "temperature=1.0, top_p=0.95, n=1, presence_penalty=0,
+    # and frequency_penalty=0 are fixed; omit them from requests." K3 always
+    # reasons and rejects any other temperature with a 400 (observed live in
+    # the gate, 2026-08-01: "invalid temperature: only 1 is allowed").
     # NO separate vision model: the operator's live models.list() (2026-07-31)
     # returns exactly kimi-k3, kimi-k2.6, kimi-k2.7-code, kimi-k2.7-code-highspeed
     # — no vision-specific model exists on this account. kimi-k3 has NATIVE
