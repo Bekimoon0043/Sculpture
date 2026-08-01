@@ -32,11 +32,12 @@ def build_providers(
     which is what the gate reports on.
     """
     models = config.council.model_defaults
+    endpoints = config.council.endpoints
     return {
         "anthropic": AnthropicProvider(
             settings.anthropic_api_key,
             text_model=models["anthropic"].text,
-            vision_model=models["anthropic"].vision,
+            vision_model=models["anthropic"].vision_or_text(),
             db=db,
             pricing=config.pricing,
             budget=budget,
@@ -44,15 +45,19 @@ def build_providers(
         "openai": OpenAIProvider(
             settings.openai_api_key,
             text_model=models["openai"].text,
-            vision_model=models["openai"].vision,
+            vision_model=models["openai"].vision_or_text(),
             db=db,
             pricing=config.pricing,
             budget=budget,
         ),
         "kimi": KimiProvider(
             settings.moonshot_api_key,
+            # No separate vision model for kimi (ADR-009 note in council.yaml):
+            # kimi-k3 has native image input, so vision falls back to text.
             text_model=models["kimi"].text,
-            vision_model=models["kimi"].vision,
+            vision_model=models["kimi"].vision_or_text(),
+            # env MOONSHOT_BASE_URL > council.yaml endpoints.kimi > provider default
+            base_url=settings.moonshot_base_url or endpoints.get("kimi"),
             db=db,
             pricing=config.pricing,
             budget=budget,

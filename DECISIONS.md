@@ -143,3 +143,31 @@ Loop rounds are hard-capped by `max_vision_iterations` (ADR-003).
 
 Everything else on the export list (STEP, STL, OBJ, GLB, FBX, USD/USDZ, DAE,
 Alembic) is genuinely achievable and arrives with the export phase.
+
+## ADR-009 — No platform fact from training-data recall; live docs only, fetch date recorded
+
+**Status: accepted (Phase 1 correction, operator directive).**
+
+No third-party endpoint, model string, SDK shape, parameter name, or price is
+ever written into this codebase from the model's training-data recall. Each is
+fetched from the live provider documentation (or verified against the live
+API) at the time it is written, and the fetch date and source URL are recorded
+next to the value (config comments, docstrings, pricing.yaml sources).
+
+**Why:** this has now caused two real defects in Phase 1 alone:
+
+1. The offline test transports mirrored an *assumed* SDK response shape
+   (LIMITATIONS.md §7) — retired only by the live gate run.
+2. `kimi_provider.py` hardcoded `https://api.moonshot.cn/v1` from recall; the
+   operator's account lives on the global endpoint and the gate returned a
+   live 401. The operator verified against the live API:
+   `https://api.moonshot.ai/v1` authenticates, and `models.list()` returns
+   exactly `kimi-k3, kimi-k2.6, kimi-k2.7-code, kimi-k2.7-code-highspeed` —
+   no vision-specific model.
+
+**Applied immediately (2026-08-01):** endpoints moved to
+`config/council.yaml`; kimi text+vision model = `kimi-k3` (native image
+input); `max_completion_tokens` replaces the deprecated `max_tokens`; kimi-k3
+pricing ($3.00 cache-miss input / $15.00 output per 1M) fetched from
+`platform.kimi.ai/docs/pricing/chat-k3.md`. Every value carries its source
+URL and fetch date.

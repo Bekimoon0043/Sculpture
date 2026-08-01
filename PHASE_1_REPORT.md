@@ -176,3 +176,26 @@ PHASE 1 GATE: FAIL — anthropic text: not configured (set ANTHROPIC_API_KEY in 
 
 Note: provider FAILs above name the exact env var to set in .env. With all three keys set, re-run this script (expected API cost $0.01–0.05 per run).
 ```
+
+---
+
+## Corrections after initial build (operator live-gate feedback, 2026-07-31/08-01)
+
+1. **Test transports renamed and reframed** (commit "Phase 1 correction…"):
+   `InjectedAnthropicTransport` / `InjectedOpenAITransport` — stated plainly as
+   hand-constructed mocks that pretend to be a provider's SDK client;
+   LIMITATIONS.md §7 records the assumed-SDK-shape risk.
+2. **Kimi endpoint/model/parameter fix** (ADR-009): the hardcoded
+   `https://api.moonshot.cn/v1` caused a live 401 on the operator's account.
+   Verified live by the operator: global endpoint
+   `https://api.moonshot.ai/v1` authenticates; account models are exactly
+   `kimi-k3, kimi-k2.6, kimi-k2.7-code, kimi-k2.7-code-highspeed` (no
+   vision-specific model). Fixed: endpoints and ALL model names moved to
+   `config/council.yaml` (env override `MOONSHOT_BASE_URL`); kimi text+vision
+   = `kimi-k3` (native image input, verified in live docs fetched 2026-08-01);
+   deprecated `max_tokens` replaced with `max_completion_tokens`; kimi-k3
+   pricing ($3.00/$15.00 per 1M, cache-miss input) fetched live from
+   `platform.kimi.ai/docs/pricing/chat-k3.md`; pricing_version bumped to
+   `2026-08-v1`. New rule (ADR-009): no endpoint, model string, SDK shape,
+   parameter, or price is written from training-data recall — live docs only,
+   fetch date recorded.

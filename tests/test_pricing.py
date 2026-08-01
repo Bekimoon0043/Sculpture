@@ -8,7 +8,7 @@ from app.core.config import PricingLookupError
 
 
 def test_pricing_yaml_loads_with_version(config):
-    assert config.pricing.pricing_version == "2026-07-v1"
+    assert config.pricing.pricing_version == "2026-08-v1"
 
 
 def test_every_council_default_model_has_a_price(config):
@@ -16,7 +16,9 @@ def test_every_council_default_model_has_a_price(config):
     provider layer refuses to guess, so a missing entry would halt calls."""
     for provider, models in config.council.model_defaults.items():
         for kind in ("text", "vision"):
-            model = getattr(models, kind)
+            # vision may be None (e.g. kimi: no separate vision model — the
+            # text model has native image input); falls back to text.
+            model = getattr(models, kind) or models.text
             entry = config.pricing.price_for(provider, model)  # raises if absent
             assert entry.usd_per_1m_input_tokens > 0
             assert entry.usd_per_1m_output_tokens > 0

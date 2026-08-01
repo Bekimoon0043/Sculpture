@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
     moonshot_api_key: str | None = None
+    moonshot_base_url: str | None = None  # env override for council.yaml endpoint
     luxuryform_db: str = "./data/luxuryform.db"
 
     def key_for(self, provider: str) -> str | None:
@@ -118,12 +119,18 @@ class RoleAssignment(BaseModel):
 
 class ProviderModels(BaseModel):
     text: str
-    vision: str
+    vision: str | None = None  # None = no separate vision model; use `text`
+
+    def vision_or_text(self) -> str:
+        return self.vision or self.text
 
 
 class CouncilConfig(BaseModel):
     roles: dict[str, RoleAssignment]
     model_defaults: dict[str, ProviderModels]
+    # Per-provider API base URLs (ADR-009: live-doc sourced). None/missing =
+    # SDK default. kimi carries the verified global endpoint.
+    endpoints: dict[str, str | None] = {}
 
     @field_validator("model_defaults")
     @classmethod

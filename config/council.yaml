@@ -32,7 +32,20 @@ roles:
     providers: [anthropic, openai]
     fallback: kimi
 
+# API endpoints per provider (ADR-009: taken from LIVE provider docs, never
+# from training-data recall — fetch date recorded). null = SDK default.
+# Env overrides: MOONSHOT_BASE_URL for kimi. The previous hardcoded
+# https://api.moonshot.cn/v1 caused a live 401 (operator's account is on the
+# global endpoint) — endpoints live in config now, not in code.
+endpoints:
+  anthropic: null   # anthropic SDK default
+  openai: null      # openai SDK default
+  kimi: https://api.moonshot.ai/v1   # verified live: operator's key
+         # authenticates here (2026-07-31); confirmed against
+         # platform.kimi.ai/docs/api/overview fetched 2026-08-01
+
 # Default models per provider. OPERATOR: set to a model your account can access.
+# `vision` is OPTIONAL: when omitted, the text model is used for vision calls.
 model_defaults:
   anthropic:
     text: claude-sonnet-4-5
@@ -41,5 +54,9 @@ model_defaults:
     text: gpt-4o
     vision: gpt-4o
   kimi:
-    text: kimi-k2-0905-preview
-    vision: moonshot-v1-8k-vision-preview
+    text: kimi-k3
+    # NO separate vision model: the operator's live models.list() (2026-07-31)
+    # returns exactly kimi-k3, kimi-k2.6, kimi-k2.7-code, kimi-k2.7-code-highspeed
+    # — no vision-specific model exists on this account. kimi-k3 has NATIVE
+    # image input (platform.kimi.ai/docs/guide/use-kimi-vision-model.md,
+    # fetched 2026-08-01), so vision calls use the same kimi-k3 model.
