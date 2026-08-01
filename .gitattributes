@@ -1,0 +1,22 @@
+# .gitattributes — LuxuryForm Studio (Phase 2, [ADD-1])
+#
+# Rationale: the Phase 2 determinism guarantee is proven by sha256 hashes of
+# canonical STEP files. Git's Windows CRLF text conversion would rewrite line
+# endings at checkout time and silently corrupt that hash proof on the
+# operator's Windows machine. Therefore: all text is normalized to LF, and
+# every binary artifact format is explicitly marked binary so it is NEVER
+# CRLF-converted.
+* text=auto eol=lf
+*.step binary
+*.stp binary
+*.glb binary
+*.gltf binary
+*.stl binary
+*.brep binary
+*.3mf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.db binary
+*.pdf binary
+package-lock.json text eol=lf
