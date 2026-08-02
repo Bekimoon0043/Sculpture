@@ -136,12 +136,29 @@ def test_system_gl_libraries_minimal_set_and_positioned():
     assert "sha256sum -c sums.txt" in gl_line
     hashes = re.findall(r"\b[0-9a-f]{64}\b", gl_line)
     assert len(hashes) == 8, f"expected 8 sha256 deb pins, found {len(hashes)}"
-    # install + dpkg guard: any "depends on" complaint outside the one
-    # deliberate, justified skip (libglx0 -> libglx-mesa0) fails the build
+    # install verification = STATE, not prose (ADR-016 v2, operator
+    # correction 2026-08-03): parsing "depends on" complaint text false-
+    # positived on a configuration-ORDER artifact (dpkg configures ./*.deb
+    # alphabetically — libgl1 before libglx0 — so a bare "depends on" with
+    # no "however: Package X is not installed" is an ordering note). The
+    # layer must assert dpkg-query Status for all 8 packages; the only
+    # retained prose rule targets "is not installed" (genuinely missing),
+    # allowlisting the one deliberate skip (libglx-mesa0).
     assert "dpkg --force-depends" in gl_line
-    assert "grep 'depends on'" in gl_line and "grep -v 'libglx-mesa0'" in gl_line, (
-        "dpkg 'dependency problems' must be a FAILURE signal (ADR-016) — "
-        "guard with a libglx-mesa0-only allowlist"
+    assert "grep 'depends on'" not in gl_line, (
+        "the v1 prose guard false-positived on ordering artifacts — "
+        "replaced by state checks (ADR-016 v2)"
+    )
+    assert "dpkg-query -W -f='${Status}' $p" in gl_line
+    assert '"install ok installed"' in gl_line
+    loop_seg = "libgl1" + gl_line.split("for p in libgl1", 1)[1].split("; do", 1)[0]
+    assert loop_seg.split() == [
+        "libgl1", "libglvnd0", "libglx0", "libx11-6", "libx11-data",
+        "libxcb1", "libxau6", "libxdmcp6",
+    ], "state loop must assert all 8 GL packages"
+    assert "grep 'is not installed' dpkg.log" in gl_line
+    assert "grep -v 'libglx-mesa0'" in gl_line, (
+        "only libglx-mesa0 may be allowlisted (deliberate, justified skip)"
     )
     # ldd re-proof: zero unresolved sonames across system libs + OCP TK libs
     assert "ldd" in gl_line and "'not found'" in gl_line

@@ -86,10 +86,19 @@ RUN pip install --no-cache-dir --retries 10 --timeout 120 \
 # multi-minute full-index fetch the operator measured (9.6 MB at 16 kB/s =
 # 10m26s, before 1.5 MB of packages) and is STRONGER integrity than apt:
 # a single flipped byte anywhere fails the layer loudly.
-# dpkg GUARD: any "depends on" complaint other than the one deliberate,
-# justified skip (libglx0 -> libglx-mesa0, see above) now FAILS THE BUILD —
-# dpkg's "dependency problems, but configuring anyway" is treated as a
-# failure signal, not noise (ADR-016).
+# INSTALL VERIFICATION — STATE, NOT PROSE (ADR-016 v2, operator correction
+# 2026-08-03): the first guard parsed dpkg's complaint TEXT and false-
+# positived on a configuration-ORDER artifact: dpkg configures ./*.deb
+# alphabetically, so libgl1 is configured before libglx0, and dpkg prints
+# "libgl1 depends on libglx0" with NO "however: Package ... is not
+# installed" clause — an ordering note, not a missing package (operator's
+# verbatim log: all 8 packages configured fine). Prose parsing has now
+# misled twice in opposite directions — ignoring it shipped a missing
+# libGLX.so.0; over-reading it blocked a working set. So the layer asserts
+# STATE: dpkg-query Status == "install ok installed" for all 8 packages.
+# The only retained log rule targets the one phrase that means genuinely-
+# missing — "is not installed" — allowlisting libglx-mesa0 (the deliberate,
+# justified skip above).
 # ldd GUARD: after install, ldd over the system libs AND the OCP wheel's
 # TK libraries must show zero "not found" — a dynamic re-proof of the
 # static audit, at build time.
@@ -108,7 +117,8 @@ RUN python -c "import urllib.request, pathlib; base='http://deb.debian.org/debia
     && echo "0740dc760916b2008b45417a42a8fd7dd5de370fb57d31373f15034cda8acf0b  libxdmcp6_1.1.5-1_amd64.deb" >> sums.txt \
     && sha256sum -c sums.txt \
     && (dpkg --force-depends -i ./*.deb > dpkg.log 2>&1; rc=$?; cat dpkg.log; test $rc -eq 0) \
-    && ! grep 'depends on' dpkg.log | grep -v 'libglx-mesa0' \
+    && ! grep 'is not installed' dpkg.log | grep -v 'libglx-mesa0' \
+    && for p in libgl1 libglvnd0 libglx0 libx11-6 libx11-data libxcb1 libxau6 libxdmcp6; do test "$(dpkg-query -W -f='${Status}' $p)" = "install ok installed" || { echo "GL-LAYER STATE FAIL: $p is not installed-ok"; exit 1; }; done \
     && ls /usr/local/lib/python3.11/site-packages/cadquery_ocp_novtk.libs/libTK*.so* > /dev/null \
     && ! ldd /usr/lib/x86_64-linux-gnu/libGL.so.1 /usr/lib/x86_64-linux-gnu/libGLX.so.0 /usr/lib/x86_64-linux-gnu/libX11.so.6 /usr/local/lib/python3.11/site-packages/cadquery_ocp_novtk.libs/libTK*.so* | grep 'not found' \
     && cd / && rm -rf /tmp/gl

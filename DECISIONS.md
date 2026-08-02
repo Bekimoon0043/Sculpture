@@ -539,3 +539,25 @@ remains as the final end-to-end proof.
 **Regression-proofed:** tests lock the 8-package set, no-apt-get rule,
 8 sha256 pins, sha256sum/dpkg/ldd guards and allowlist, banned-package
 absence from the download list, layer position, and smoke-test ordering.
+
+**Guard v2 — check STATE, not complaint text (operator correction,
+2026-08-03).** The v1 guard failed the layer on the operator's rebuild
+even though all 8 debs installed and configured correctly. Verbatim cause:
+dpkg configures `./*.deb` alphabetically, so `libgl1` is configured BEFORE
+`libglx0`, and dpkg prints "libgl1:amd64 depends on libglx0 (=
+1.7.0-1+b2)." with NO "however: Package ... is not installed" clause — a
+configuration-ORDER artifact, not a missing package. The genuinely-missing
+case looks different: "libglx0:amd64 depends on libglx-mesa0; however:
+Package libglx-mesa0 is not installed." This is the second time dpkg prose
+parsing misled in opposite directions: treating it as noise shipped a
+missing libGLX.so.0 (this ADR's incident); treating all of it as failure
+blocked a working set. The guard is replaced with STATE assertions —
+`dpkg-query -W -f='${Status}'` must equal "install ok installed" for all 8
+packages (loop prints `GL-LAYER STATE FAIL: <pkg>` and exits 1 otherwise)
+— plus the only prose rule that means genuinely-missing: "is not
+installed", allowlisting libglx-mesa0 only. The ldd "not found" check
+(the real proof) and the Layer 6 smoke test (the end-to-end proof) are
+unchanged. Verified against the operator's verbatim build log: the new
+rule PASSES it; a mutated log adding "Package libfoo0 is not installed."
+FAILS loudly; the state loop passes an all-ii stub and fails loudly naming
+the package on a config-files stub.
