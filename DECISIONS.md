@@ -259,3 +259,47 @@ URL and fetch date.
   Recommendation delivered to the operator 2026-08-02; implementation
   deferred until they rule on it. Phase 5 adds Blender, making local builds
   still heavier.
+
+## ADR-012 — System GL/X11 libraries for OCCT, apt layer position, build-time kernel smoke test
+
+**Status: accepted (2026-08-02, in response to the operator's backend crash: `ImportError: libGL.so.1` in a restart loop — the pinned image had a real gap the build sandbox masked).**
+
+- **Root cause.** `python:3.11-slim` (Debian bookworm) ships no OpenGL/X11
+  stack, but the cadquery-ocp-novtk wheel's OCCT toolkit libraries link
+  `libGL.so.1` and `libX11.so.6` even fully headless. The build sandbox had
+  these preinstalled, so every sandbox verification passed while the
+  operator's clean image crashed at `import OCP`.
+- **The audit (ADR-009-compliant, not recall).** Every `.so` in the
+  cadquery-ocp-novtk 7.9.3.1.1 wheel was inspected with `readelf -d`:
+  69 files, 11 external sonames. Only TWO are absent from the slim image:
+  `libGL.so.1` (proven by the operator's crash) and `libX11.so.6`
+  (needed by `libTKOpenGl` and `libTKService`; no X11 exists in slim).
+  The wheel bundles its own gomp/fontconfig/freetype/freeimage/uuid.
+  Everything else (`libc`, `libm`, `libdl`, `libpthread`, `libgcc_s`,
+  `libstdc++`, `libz`, `libexpat`) is present — loader-order evidence:
+  `OCP.OCP.so` directly NEEDs `libstdc++.so.6`/`libgcc_s.so.1`, and the
+  loader reached `libGL.so.1`, which sits deeper in the dependency order.
+- **Packages (live bookworm main index, fetched 2026-08-02).** Install
+  `libgl1 libglx-mesa0 libx11-6` with `--no-install-recommends` and
+  `rm -rf /var/lib/apt/lists/*` in the same RUN. Operator correction
+  recorded: `libgl1-mesa-glx` in bookworm is a *transitional dummy
+  package* (33 KB, Depends: libgl1, libglx-mesa0) — not literally removed
+  from the index, but equally not the real library. The operator's
+  directive to use `libgl1` + `libglx-mesa0` was correct and stands.
+- **Layer position is a hard constraint (operator, 2026-08-02).** The apt
+  RUN sits AFTER the four pip layers and BEFORE `COPY pyproject.toml`:
+  editing system packages must never invalidate the ~400 MB of cached pip
+  downloads on the operator's 320 kB/s line. libGL is needed at import
+  time, not install time, so the late position is technically sound.
+- **Build-time smoke test.** A `RUN python -c "import build123d; ...Box..."`
+  layer imports the kernel and builds a trivial solid (volume asserted)
+  during the image build. A backend that cannot import its own kernel now
+  fails the BUILD, not at runtime in a restart loop.
+- **Regression-proofed.** `tests/test_docker_pins.py` now also asserts:
+  the three package names in the apt line, `libgl1-mesa-glx` absent,
+  `--no-install-recommends`, lists cleanup, apt-layer position between the
+  last pip layer and the first COPY, and smoke-test existence/position.
+  74/74 tests pass (2026-08-02).
+- **Determinism note.** The canonical STEP sha256 (`e1a59fa6…`) is
+  unaffected: no Python dependency changed. The cross-environment hash
+  comparison is still pending the operator's successful rebuild.

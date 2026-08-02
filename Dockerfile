@@ -44,7 +44,29 @@ RUN pip install --no-cache-dir --retries 10 --timeout 120 \
     anthropic==0.42.0 openai==1.59.3 pillow==11.0.0 jsonschema==4.23.0 \
     pytest==8.3.4
 
-# Layer 5: the app itself (deps already installed above)
+# Layer 5: system libraries the OCCT kernel needs AT IMPORT TIME.
+# Audit of every .so in the cadquery-ocp-novtk 7.9.3.1.1 wheel (readelf
+# NEEDED, 2026-08-02, ADR-009): python:3.11-slim lacks libGL.so.1 (operator's
+# backend crash, restart loop) and libX11.so.6 (nothing X11 in slim). Package
+# names verified against the live bookworm main index (2026-08-02):
+# libgl1 + libglx-mesa0 (NOT libgl1-mesa-glx, which in bookworm is only a
+# transitional dummy package) + libx11-6. Everything else the wheel needs
+# (libc, libm, libdl, libpthread, libgcc_s, libstdc++, libz, libexpat) is
+# already in the image — loader evidence: the crash named libGL.so.1, i.e.
+# the loader got PAST libstdc++/libgcc_s, which OCP.OCP.so needs directly.
+# POSITION IS DELIBERATE: after the pip layers, so editing system packages
+# never invalidates the ~400 MB of cached downloads (libGL is needed at
+# import time, not install time).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgl1 libglx-mesa0 libx11-6 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Layer 6: build-time smoke test — import the kernel and build a trivial
+# solid HERE. A backend that cannot import its own kernel fails the BUILD
+# now, not at runtime in a restart loop (operator incident, 2026-08-02).
+RUN python -c "import build123d; from build123d import Box; s = Box(10, 10, 10); assert abs(s.volume - 1000.0) < 1e-6; print('SMOKE OK: build123d', build123d.__version__, 'Box volume', s.volume)"
+
+# Layer 7: the app itself (deps already installed above)
 COPY pyproject.toml ./
 COPY backend ./backend
 RUN pip install --no-cache-dir --no-deps -e .
