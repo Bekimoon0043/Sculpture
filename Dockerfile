@@ -1,4 +1,9 @@
-FROM python:3.11-slim
+# ADR-014: the Debian suite is PINNED. The floating `python:3.11-slim` tag
+# silently moved bookworm -> trixie, which invalidated bookworm-verified
+# package facts (operator correction, 2026-08-02). Backend distro: TRIXIE.
+# (Frontend image: node:20-bookworm-slim — BOOKWORM. Different distros;
+# package facts are verified per-distro, never assumed shared.)
+FROM python:3.11-slim-trixie
 
 WORKDIR /app
 
@@ -44,27 +49,44 @@ RUN pip install --no-cache-dir --retries 10 --timeout 120 \
     anthropic==0.42.0 openai==1.59.3 pillow==11.0.0 jsonschema==4.23.0 \
     pytest==8.3.4
 
-# Layer 5: system libraries the OCCT kernel needs AT IMPORT TIME.
-# Audit of every .so in the cadquery-ocp-novtk 7.9.3.1.1 wheel (readelf
-# NEEDED, 2026-08-02, ADR-009): python:3.11-slim lacks libGL.so.1 (operator's
-# backend crash, restart loop) and libX11.so.6 (nothing X11 in slim). Package
-# names verified against the live bookworm main index (2026-08-02):
-# libgl1 + libglx-mesa0 (NOT libgl1-mesa-glx, which in bookworm is only a
-# transitional dummy package) + libx11-6. Everything else the wheel needs
-# (libc, libm, libdl, libpthread, libgcc_s, libstdc++, libz, libexpat) is
-# already in the image — loader evidence: the crash named libGL.so.1, i.e.
-# the loader got PAST libstdc++/libgcc_s, which OCP.OCP.so needs directly.
-# POSITION IS DELIBERATE: after the pip layers, so editing system packages
-# never invalidates the ~400 MB of cached downloads (libGL is needed at
-# import time, not install time).
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgl1 libglx-mesa0 libx11-6 \
-    && rm -rf /var/lib/apt/lists/*
+# Layer 5: the TWO system libraries the OCCT kernel needs at import time —
+# nothing more (ADR-014, backend distro TRIXIE).
+# Audit of all 69 .so files in the cadquery-ocp-novtk 7.9.3.1.1 wheel
+# (readelf NEEDED, 2026-08-02): exactly two sonames are absent from the
+# slim image — libGL.so.1 and libX11.so.6. The wheel bundles its own
+# gomp/fontconfig/freetype; libc/libm/libdl/libpthread/libgcc_s/libstdc++/
+# libz/libexpat are already present (loader-order evidence from the
+# operator's libGL crash).
+# THE PACKAGE SET IS THE MEMORY FIX: `apt-get install libgl1` on trixie
+# hard-pulls libglx0 -> libglx-mesa0 -> mesa-libgallium + libgl1-mesa-dri
+# -> libllvm19: 49 packages, 53.5 MB download, ~222 MB installed — dpkg
+# unpacking libllvm19 (123.7 MB installed) is what the OOM killer hit
+# (operator build log, 2026-08-02). None of it is needed: the kernel never
+# creates a GL context (headless STEP/GLB export only); the loader only
+# needs the two sonames resolvable. So we install ONLY the packages whose
+# FILES provide them (verified against the live trixie main index and by
+# listing the debs' contents, 2026-08-02): libGL.so.1 <- libgl1, its link
+# dep libGLdispatch.so.0 <- libglvnd0, libX11.so.6 <- libx11-6 (+ its file
+# deps libxcb1/libxau6/libxdmcp6 + libx11-data). 7 packages, 1.5 MB total.
+# dpkg --force-depends: libgl1's package-level hard dep on libglx0 is a
+# GLX-functionality dependency, not a link dependency — libGL.so.1 NEEDs
+# only libGLdispatch/libdl/libc. The smoke layer below proves the full
+# import + BREP + STEP + GLB path works without the mesa backend.
+# POSITION IS DELIBERATE: after the pip layers, so system-package edits
+# never invalidate the ~400 MB of cached downloads (needed at import time,
+# not install time).
+RUN mkdir /tmp/glx && cd /tmp/glx \
+    && apt-get update \
+    && apt-get download libgl1 libglvnd0 libx11-6 libx11-data libxcb1 libxau6 libxdmcp6 \
+    && dpkg --force-depends -i ./*.deb \
+    && cd / && rm -rf /tmp/glx /var/lib/apt/lists/*
 
-# Layer 6: build-time smoke test — import the kernel and build a trivial
-# solid HERE. A backend that cannot import its own kernel fails the BUILD
-# now, not at runtime in a restart loop (operator incident, 2026-08-02).
-RUN python -c "import build123d; from build123d import Box; s = Box(10, 10, 10); assert abs(s.volume - 1000.0) < 1e-6; print('SMOKE OK: build123d', build123d.__version__, 'Box volume', s.volume)"
+# Layer 6: build-time smoke test — import the kernel, build a trivial
+# solid, and exercise BOTH export paths (STEP and GLB) HERE. A backend that
+# cannot import its own kernel fails the BUILD now, not at runtime in a
+# restart loop (operator incident, 2026-08-02). This also proves the
+# minimal GL package set above is sufficient for every path the app uses.
+RUN python -c "import build123d; from build123d import Box, export_step, export_gltf; s = Box(10, 10, 10); assert abs(s.volume - 1000.0) < 1e-6; export_step(s, '/tmp/smoke.step'); export_gltf(s, '/tmp/smoke.glb', binary=True); import os; assert os.path.getsize('/tmp/smoke.step') > 1000 and open('/tmp/smoke.glb','rb').read(4) == b'glTF'; print('SMOKE OK: build123d', build123d.__version__, 'import + BREP + STEP + GLB')"
 
 # Layer 7: the app itself (deps already installed above)
 COPY pyproject.toml ./

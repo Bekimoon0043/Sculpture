@@ -264,6 +264,8 @@ URL and fetch date.
 
 **Status: accepted (2026-08-02, in response to the operator's backend crash: `ImportError: libGL.so.1` in a restart loop — the pinned image had a real gap the build sandbox masked).**
 
+**Distro scope (added 2026-08-02, see ADR-014):** this entry's package facts were verified against **bookworm**; the backend image turned out to resolve to **trixie**, so its apt package set is SUPERSEDED by ADR-014 (minimal mesa-free set). The .so audit method, the layer-position constraint, and the build-time smoke-test contract stand.
+
 - **Root cause.** `python:3.11-slim` (Debian bookworm) ships no OpenGL/X11
   stack, but the cadquery-ocp-novtk wheel's OCCT toolkit libraries link
   `libGL.so.1` and `libX11.so.6` even fully headless. The build sandbox had
@@ -321,8 +323,9 @@ URL and fetch date.
   Docker cap. No cap increase needed. The kill was network, not OOM.
 - **frontend/Dockerfile (new).** `node:20-bookworm-slim`; npm resilience
   config via env (`NPM_CONFIG_FETCH_RETRIES=5`, retry min/max timeouts
-  15 s/120 s, fetch timeout 600 s — keys verified against `npm config ls
-  -l`, stable since npm 8, accepted by the npm 10.x in the image); layers:
+  15 s/120 s, fetch timeout 600 s — keys verified DIRECTLY on npm 10.8.2,
+  the image's npm version, via `npm config ls -l` + env round-trip test;
+  see ADR-014); layers:
   (1) package.json + package-lock.json, (2) `npm ci --no-audit --no-fund`
   behind a BuildKit cache mount (`--mount=type=cache,target=/root/.npm`)
   so tarballs survive FAILED builds and retries resume instead of
@@ -340,3 +343,58 @@ URL and fetch date.
 - **Regression-proofed.** `tests/test_frontend_image.py` (5 tests) locks:
   layer order, flags, retry config, vite check position, .dockerignore,
   and the compose service shape. 79/79 tests pass (2026-08-02).
+
+## ADR-014 — Distro pinning and per-distro facts; minimal mesa-free GL set; npm 10.8.2 verification
+
+**Status: accepted (2026-08-02, in response to three operator corrections: apt-layer OOM at libllvm19; the two images run DIFFERENT Debian releases; npm config evidence must cover 10.8.2 specifically).**
+
+- **Distro facts are per-image from now on.** Backend:
+  `python:3.11-slim-trixie` — **trixie** (Debian 13). Frontend:
+  `node:20-bookworm-slim` — **bookworm** (Debian 12). The floating
+  `python:3.11-slim` tag silently moved bookworm → trixie, which made the
+  bookworm-scoped verification in ADR-012 inapplicable to the backend
+  (operator's apt output proved trixie: `libllvm19` exists only in the
+  trixie main index — bookworm has libllvm15; verified 2026-08-02). The
+  backend base tag is now suite-pinned, removing the drift class. Every
+  ADR fact that is distro-specific names its distro.
+- **The apt-layer OOM — the package set WAS the fix (operator right).**
+  On trixie, `apt-get install libgl1` hard-pulls libglx0 → libglx-mesa0 →
+  mesa-libgallium + libgl1-mesa-dri → **libllvm19**: 49 packages, 53.5 MB
+  download, ~222 MB installed (libllvm19 alone 123.7 MB installed).
+  Computed from the live trixie main index, 2026-08-02. None of it is
+  needed: the kernel never creates a GL context (headless STEP/GLB
+  export); the loader only needs `libGL.so.1` + `libX11.so.6` resolvable.
+- **Minimal set (7 packages, 1.5 MB download):** `libgl1 libglvnd0
+  libx11-6 libx11-data libxcb1 libxau6 libxdmcp6`, installed via
+  `apt-get download` + `dpkg --force-depends -i` in a scratch dir. File
+  contents verified by listing the trixie debs themselves: libgl1 ships
+  `/usr/lib/x86_64-linux-gnu/libGL.so.1`, libglvnd0 ships
+  `libGLdispatch.so.0` (2026-08-02). `--force-depends` skips libgl1's
+  package-level hard dep on libglx0 — a GLX-functionality dependency, not
+  a link dependency (libGL.so.1 NEEDs only libGLdispatch/libdl/libc).
+  Recorded tradeoff: dpkg's database shows an unmet dependency afterwards;
+  irrelevant in a purpose-built image and a small price for −220 MB.
+- **Smoke test extended to the export paths.** The build-time smoke layer
+  now also runs `export_step` and `export_gltf(binary=True)` and checks
+  the outputs (size + glTF magic) — direct proof, at every build, that the
+  minimal GL set suffices for every code path the app uses.
+- **npm config keys verified on 10.8.2 specifically (frontend image's
+  npm).** npm 10.8.2 was installed in the sandbox and interrogated:
+  `npm config ls -l` lists `fetch-retries` (default 2),
+  `fetch-retry-mintimeout` (10000), `fetch-retry-maxtimeout` (60000),
+  `fetch-timeout` (300000); an env round-trip
+  (`NPM_CONFIG_FETCH_RETRIES=5 NPM_CONFIG_FETCH_TIMEOUT=600000 ...` →
+  `npm config get`) returned the set values verbatim. The frontend
+  Dockerfile comment now cites 10.8.2, not "stable since npm 8".
+- **Corrections to earlier ADR entries:** ADR-012's package facts were
+  verified against **bookworm** — they apply to the *frontend* image's
+  distro, and are superseded for the backend by this ADR (notably: on
+  **trixie**, `libgl1-mesa-glx` is genuinely ABSENT from the index, as the
+  operator originally said; on **bookworm** it exists as a transitional
+  dummy). ADR-013's npm claims are now backed by direct 10.8.2
+  verification; its npm-ci memory measurement (427 MB) was taken under
+  npm 11.18.0 and remains valid for the 4 GB question by a ~9x margin.
+- **Regression-proofed:** tests assert the suite-pinned FROM line, the
+  exact minimal package set, the banned mesa/llvm packages, the
+  force-depends install, layer position, and the extended smoke test.
+  80/80 tests pass (2026-08-02).

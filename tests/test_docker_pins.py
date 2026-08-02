@@ -78,40 +78,67 @@ def test_heavy_transitives_pinned_first_layers():
     )
 
 
-def test_system_gl_libraries_present_and_positioned( ):
-    """ADR-012: python:3.11-slim lacks libGL.so.1 and libX11.so.6, which the
-    OCCT kernel needs at import time (operator backend crash, 2026-08-02).
-    The apt layer MUST sit after the pip layers and before the first COPY,
-    so system-package edits never invalidate the heavy cached downloads."""
-    text = (ROOT / "Dockerfile").read_text(encoding="utf-8")
-    apt_pos = text.index("apt-get install")
-    apt_line_region = text[apt_pos:apt_pos + 300]
-    for pkg in ("libgl1", "libglx-mesa0", "libx11-6"):
-        assert pkg in apt_line_region, f"{pkg} missing from apt-get install"
-    assert "libgl1-mesa-glx" not in apt_line_region, (
-        "libgl1-mesa-glx is a transitional dummy in bookworm — use libgl1 "
-        "and libglx-mesa0 directly (ADR-012)"
+def _no_comments(text: str) -> str:
+    return "\n".join(
+        l for l in text.splitlines() if not l.strip().startswith("#")
     )
-    assert "--no-install-recommends" in apt_line_region
-    assert "rm -rf /var/lib/apt/lists/*" in text[apt_pos:apt_pos + 500]
-    pip_last = text.index("pytest==")           # last pip layer (Phase 1 deps)
-    copy_pos = text.index("COPY pyproject.toml")
-    assert pip_last < apt_pos < copy_pos, (
+
+
+def test_base_image_suite_pinned():
+    """ADR-014: the floating `python:3.11-slim` tag silently moved bookworm
+    -> trixie and invalidated bookworm-verified package facts. The suite
+    must be explicit so distro-specific verification always applies."""
+    text = _no_comments((ROOT / "Dockerfile").read_text(encoding="utf-8"))
+    from_line = next(l for l in text.splitlines() if l.startswith("FROM "))
+    assert from_line.strip() == "FROM python:3.11-slim-trixie", (
+        f"base image must pin the Debian suite, got: {from_line.strip()}"
+    )
+
+
+def test_system_gl_libraries_minimal_set_and_positioned():
+    """ADR-014 (backend distro TRIXIE): the kernel needs only libGL.so.1 and
+    libX11.so.6 resolvable — it never creates a GL context. The full mesa
+    chain (libglx-mesa0 -> mesa-libgallium -> libgl1-mesa-dri -> libllvm19,
+    ~222 MB installed) OOM-killed the operator's build. The layer must
+    install ONLY the 7 minimal packages via download + dpkg --force-depends,
+    after the pip layers and before the first COPY."""
+    text = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    code = _no_comments(text)
+    dl_pos = code.index("apt-get download")
+    dl_region = code[dl_pos:dl_pos + 300]
+    for pkg in ("libgl1", "libglvnd0", "libx11-6", "libx11-data",
+                "libxcb1", "libxau6", "libxdmcp6"):
+        assert pkg in dl_region, f"{pkg} missing from minimal GL package set"
+    for banned in ("libglx-mesa0", "mesa-libgallium", "libgl1-mesa-dri",
+                   "libllvm19", "libgl1-mesa-glx"):
+        assert banned not in dl_region, (
+            f"{banned} must not be installed — mesa/llvm chain OOM-killed "
+            "the operator's build (ADR-014)"
+        )
+    assert "dpkg --force-depends" in code[dl_pos:dl_pos + 500]
+    assert "rm -rf /tmp/glx /var/lib/apt/lists/*" in code
+    pip_last = code.index("pytest==")           # last pip layer (Phase 1 deps)
+    copy_pos = code.index("COPY pyproject.toml")
+    assert pip_last < dl_pos < copy_pos, (
         "apt layer must be AFTER the pip layers and BEFORE 'COPY "
         "pyproject.toml' (layer-cache protection, operator constraint)"
     )
 
 
 def test_build_time_kernel_smoke_test():
-    """ADR-012: the image must fail at BUILD time if the geometry kernel
-    cannot import and build a trivial solid — not in a runtime restart
-    loop. The smoke RUN must sit after both the pip layers and the apt
-    layer it depends on."""
+    """ADR-012/ADR-014: the image must fail at BUILD time if the kernel
+    cannot import, build a trivial solid, AND exercise both export paths
+    (STEP + GLB) — the GLB export is what makes the minimal mesa-free GL
+    package set provably sufficient. Smoke must sit after pip and apt."""
     text = (ROOT / "Dockerfile").read_text(encoding="utf-8")
-    smoke_pos = text.find('RUN python -c "import build123d')
+    code = _no_comments(text)
+    smoke_pos = code.find('RUN python -c "import build123d')
     assert smoke_pos != -1, "no build-time kernel smoke test in Dockerfile"
-    assert "Box" in text[smoke_pos:smoke_pos + 400], (
-        "smoke test must build a trivial solid, not just import"
+    region = code[smoke_pos:smoke_pos + 600]
+    assert "Box" in region, "smoke test must build a trivial solid"
+    assert "export_step" in region and "export_gltf" in region, (
+        "smoke test must exercise BOTH export paths (STEP + GLB) to prove "
+        "the minimal GL set suffices (ADR-014)"
     )
-    assert text.index("build123d==") < smoke_pos, "smoke test before pip layer"
-    assert text.index("apt-get install") < smoke_pos, "smoke test before apt layer"
+    assert code.index("build123d==") < smoke_pos, "smoke test before pip layer"
+    assert code.index("apt-get download") < smoke_pos, "smoke test before apt layer"

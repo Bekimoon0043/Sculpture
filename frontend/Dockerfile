@@ -8,11 +8,12 @@ FROM node:20-bookworm-slim
 
 WORKDIR /app
 
-# npm resilience on unreliable connections. Config keys verified against
-# `npm config ls -l` (npm 11.18.0, 2026-08-02, ADR-009); the names are
-# stable since npm 8, so the npm 10.x bundled in node:20-bookworm-slim
-# accepts them. --no-audit/--no-fund skip extra registry round-trips that
-# only add failure surface.
+# npm resilience on unreliable connections. Config keys verified DIRECTLY
+# on npm 10.8.2 — the exact version in this image (operator's build log,
+# 2026-08-02) — via `npm config ls -l` and an env-var round-trip test
+# (ADR-009, ADR-014): NPM_CONFIG_FETCH_* env vars set -> `npm config get`
+# returned the set values. --no-audit/--no-fund skip extra registry
+# round-trips that only add failure surface.
 ENV NPM_CONFIG_FETCH_RETRIES=5 \
     NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=15000 \
     NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000 \
