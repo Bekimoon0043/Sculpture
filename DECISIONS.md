@@ -561,3 +561,45 @@ unchanged. Verified against the operator's verbatim build log: the new
 rule PASSES it; a mutated log adding "Package libfoo0 is not installed."
 FAILS loudly; the state loop passes an all-ii stub and fails loudly naming
 the package on a config-files stub.
+
+**Audit v3 — base-image contents VERIFIED, not assumed (operator's ldd
+guard, 2026-08-03).** The ldd guard caught a real miss the prose-era
+audit had marked "present" by reasoning from python stdlib requirements:
+`libexpat.so.1 => not found` (x14) against the OCP libTK*.so libraries.
+Root cause of the wrong claim: the original crash's loader-order evidence
+only proved the sonames of the libs loaded on THAT import path; the
+libexpat consumer was not among them. The consumer is the wheel's BUNDLED
+libfontconfig (the only one of the 69 wheel .so files that NEEDs
+libexpat.so.1); 14 TK libs chain to it via TKService — hence x14.
+libexpat1 was never in the base image: the operator's earlier apt log
+listed it among the mesa chain's NEW packages, so it would have arrived
+as a side effect of the 49-package chain — trimming to 8 exposed the gap.
+**Method upgrade:** every soname the audit marks "present" is now verified
+against the ACTUAL base-image contents — the debuerreotype
+`rootfs.manifest` for debian:trixie-slim (epoch 1783900800, Debian 13.6,
+78 packages, fetched via GitHub API 2026-08-03) plus the
+docker-library/python `3.11/slim-trixie/Dockerfile` (runtime adds only
+ca-certificates/netbase/tzdata; all build deps purged — consistent with
+libexpat1's absence). Manifest-verified providers: libc6 2.41
+(libc/libm/libdl/libpthread/librt/ld-linux), libgcc-s1 (libgcc_s.so.1),
+libstdc++6 (libstdc++.so.6), zlib1g (libz.so.1) — each additionally
+mapped through the live trixie Contents-amd64 index. Full wheel re-audit
+(cp311 manylinux_2_31 wheel, all 69 .so): 79 NEEDED sonames, 11 external —
+libGL.so.1/libX11.so.6 (pinned debs), libexpat.so.1 (pinned deb, NEW),
+the eight glibc-family + libgcc_s/libstdc++/libz sonames (manifest-
+verified base). Strings-scan leftovers dispositioned: unmangled copies of
+bundled names (auditwheel patched NEEDED — zero dlopen symbols in
+fontconfig, benign), libgomp's libnuma/libmemkind (one dlopen symbol —
+optional NUMA support, degrades gracefully when absent), glvnd's
+libGLX_mesa.so.0 (only dlopened at GL-context creation — never happens
+headless). No further hidden sonames. **The corrected set: 9 packages —
+libgl1, libglvnd0, libglx0, libx11-6, libx11-data, libxcb1, libxau6,
+libxdmcp6, libexpat1 2.7.1-2 (0.10 MB deb / 0.39 MB installed, sha256
+f875f566…3344, Pre-Depends libc6 only, verified against the live trixie
+index and the actual deb bytes) — 1,635,412 bytes (1.64 MB) download,
+5,565 KiB (5.43 MB) installed, reported to the operator BEFORE rebuild.**
+The ldd guard stays permanently (operator instruction) and now covers ALL
+wheel libs (`cadquery_ocp_novtk.libs/*.so*`, not just libTK*) — direct
+coverage of the bundled fontconfig class of consumer. 9-deb closure
+proven: every NEEDED of every .so shipped by the set resolves within the
+set + manifest-verified libc6.

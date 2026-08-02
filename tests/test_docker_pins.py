@@ -115,10 +115,16 @@ def test_system_gl_libraries_minimal_set_and_positioned():
         None,
     )
     assert gl_line, "GL layer must download debs directly (no apt-get update)"
-    # the 8-package minimal set (ADR-016: libglx0 added — the readelf-only
-    # audit missed libGLX.so.0; dpkg had named it and was ignored)
+    # the 9-package minimal set (ADR-016: libglx0 added — the readelf-only
+    # audit missed libGLX.so.0; dpkg had named it and was ignored.
+    # libexpat1 added — base-image contents were assumed, not verified;
+    # the wheel's bundled fontconfig NEEDs libexpat.so.1 and it is NOT in
+    # python:3.11-slim-trixie. It would have arrived as a mesa-chain side
+    # effect, which is why trimming exposed it — operator ldd guard,
+    # 2026-08-03)
     for pkg in ("libgl1_", "libglvnd0_", "libglx0_", "libx11-6_",
-                "libx11-data_", "libxcb1_", "libxau6_", "libxdmcp6_"):
+                "libx11-data_", "libxcb1_", "libxau6_", "libxdmcp6_",
+                "libexpat1_"):
         assert pkg in gl_line, f"{pkg} missing from minimal GL package set"
     # banned packages must not be DOWNLOADED (trailing _ matches the .deb
     # filename form, so the grep-allowlist mention of libglx-mesa0 below
@@ -132,10 +138,10 @@ def test_system_gl_libraries_minimal_set_and_positioned():
     # no apt index fetch anywhere in the image build (ADR-016: the 10m26s
     # full-index fetch the operator measured is eliminated)
     assert "apt-get" not in code, "apt-get must not appear — debs come from the pool with sha256 pins"
-    # integrity: every deb pinned by sha256 (8 hashes), verified before install
+    # integrity: every deb pinned by sha256 (9 hashes), verified before install
     assert "sha256sum -c sums.txt" in gl_line
     hashes = re.findall(r"\b[0-9a-f]{64}\b", gl_line)
-    assert len(hashes) == 8, f"expected 8 sha256 deb pins, found {len(hashes)}"
+    assert len(hashes) == 9, f"expected 9 sha256 deb pins, found {len(hashes)}"
     # install verification = STATE, not prose (ADR-016 v2, operator
     # correction 2026-08-03): parsing "depends on" complaint text false-
     # positived on a configuration-ORDER artifact (dpkg configures ./*.deb
@@ -154,8 +160,8 @@ def test_system_gl_libraries_minimal_set_and_positioned():
     loop_seg = "libgl1" + gl_line.split("for p in libgl1", 1)[1].split("; do", 1)[0]
     assert loop_seg.split() == [
         "libgl1", "libglvnd0", "libglx0", "libx11-6", "libx11-data",
-        "libxcb1", "libxau6", "libxdmcp6",
-    ], "state loop must assert all 8 GL packages"
+        "libxcb1", "libxau6", "libxdmcp6", "libexpat1",
+    ], "state loop must assert all 9 GL/expat packages"
     assert "grep 'is not installed' dpkg.log" in gl_line
     assert "grep -v 'libglx-mesa0'" in gl_line, (
         "only libglx-mesa0 may be allowlisted (deliberate, justified skip)"

@@ -74,11 +74,35 @@ RUN pip install --no-cache-dir --retries 10 --timeout 120 \
 # deb, 2026-08-02) — a GLX vendor (libglx-mesa0) is only dlopened when an
 # application creates a GL context, which never happens here.
 #
-# THE SET — 8 packages, 1.53 MB download, 5.04 MB installed (verified
-# against the live trixie main index AND against the actual deb bytes,
-# 2026-08-02): libgl1, libglvnd0, libglx0, libx11-6, libx11-data, libxcb1,
-# libxau6, libxdmcp6. Every NEEDED of every .so in the set resolves within
-# the set + glibc — statically proven.
+# AUDIT v3 (2026-08-03) — BASE CONTENTS VERIFIED, NOT ASSUMED: the earlier
+# "present in base" claims reasoned from what python stdlib requires. That
+# was wrong for libexpat.so.1: it is NOT in python:3.11-slim-trixie
+# (operator's ldd guard caught "libexpat.so.1 => not found" x14; their
+# earlier apt log had listed libexpat1 as NEW — it would have arrived as a
+# side effect of the 49-package mesa chain, which is why trimming to 8
+# exposed it). The consumer: the wheel's BUNDLED libfontconfig NEEDs
+# libexpat.so.1 (the only wheel lib that does); 14 TK libs chain to it.
+# Every "present" soname is now verified against the ACTUAL image contents:
+# the debuerreotype rootfs.manifest for debian:trixie-slim (epoch
+# 1783900800, Debian 13.6, fetched via GitHub API 2026-08-03) plus the
+# docker-library/python 3.11/slim-trixie Dockerfile (runtime adds only
+# ca-certificates/netbase/tzdata; build deps purged). Manifest-verified
+# providers: libc6 2.41 (libc/libm/libdl/libpthread/librt/ld-linux),
+# libgcc-s1 (libgcc_s.so.1), libstdc++6 (libstdc++.so.6), zlib1g
+# (libz.so.1) — each also mapped via the trixie Contents-amd64 index.
+# Full wheel re-audit (all 69 .so, cp311 wheel): 79 NEEDED sonames, 11
+# external — every one now has a named manifest-verified or pinned-deb
+# provider. Strings-scan leftovers: unmangled copies of bundled names
+# (auditwheel patched NEEDED, zero dlopen syms in fontconfig — benign);
+# libgomp's libnuma/libmemkind (ONE dlopen sym — optional NUMA, degrades
+# gracefully absent); glvnd's libGLX_mesa.so.0 (only at GL-context
+# creation — never happens headless). No other hidden sonames.
+#
+# THE SET — 9 packages, 1.64 MB download, 5.43 MB installed (live trixie
+# main index + actual deb bytes, 2026-08-02/03): libgl1, libglvnd0,
+# libglx0, libx11-6, libx11-data, libxcb1, libxau6, libxdmcp6, libexpat1.
+# Every NEEDED of every .so in the set resolves within the set + the
+# manifest-verified base — statically proven.
 #
 # NO apt-get update: the debs are pulled straight from the trixie pool by
 # python (slim has no curl/wget), each pinned by sha256 recorded from the
@@ -105,7 +129,7 @@ RUN pip install --no-cache-dir --retries 10 --timeout 120 \
 # POSITION IS DELIBERATE: after the pip layers, so system-package edits
 # never invalidate the ~400 MB of cached downloads (needed at import time,
 # not install time).
-RUN python -c "import urllib.request, pathlib; base='http://deb.debian.org/debian/pool/main/'; pkgs=['libg/libglvnd/libgl1_1.7.0-1+b2_amd64.deb','libg/libglvnd/libglvnd0_1.7.0-1+b2_amd64.deb','libg/libglvnd/libglx0_1.7.0-1+b2_amd64.deb','libx/libx11/libx11-6_1.8.12-1_amd64.deb','libx/libx11/libx11-data_1.8.12-1_all.deb','libx/libxcb/libxcb1_1.17.0-2+b1_amd64.deb','libx/libxau/libxau6_1.0.11-1_amd64.deb','libx/libxdmcp/libxdmcp6_1.1.5-1_amd64.deb']; d=pathlib.Path('/tmp/gl'); d.mkdir(); [urllib.request.urlretrieve(base+p, d/p.split('/')[-1]) for p in pkgs]; print('GL-LAYER: downloaded', len(pkgs), 'debs,', sum(f.stat().st_size for f in d.glob('*.deb')), 'bytes')" \
+RUN python -c "import urllib.request, pathlib; base='http://deb.debian.org/debian/pool/main/'; pkgs=['libg/libglvnd/libgl1_1.7.0-1+b2_amd64.deb','libg/libglvnd/libglvnd0_1.7.0-1+b2_amd64.deb','libg/libglvnd/libglx0_1.7.0-1+b2_amd64.deb','libx/libx11/libx11-6_1.8.12-1_amd64.deb','libx/libx11/libx11-data_1.8.12-1_all.deb','libx/libxcb/libxcb1_1.17.0-2+b1_amd64.deb','libx/libxau/libxau6_1.0.11-1_amd64.deb','libx/libxdmcp/libxdmcp6_1.1.5-1_amd64.deb','libe/libexpat/libexpat1_2.7.1-2_amd64.deb']; d=pathlib.Path('/tmp/gl'); d.mkdir(); [urllib.request.urlretrieve(base+p, d/p.split('/')[-1]) for p in pkgs]; print('GL-LAYER: downloaded', len(pkgs), 'debs,', sum(f.stat().st_size for f in d.glob('*.deb')), 'bytes')" \
     && cd /tmp/gl \
     && echo "87fa2f6e5abaed4ed385fac879c8dd735af719ee2300222d901793c66e041678  libgl1_1.7.0-1+b2_amd64.deb" > sums.txt \
     && echo "887f74008166549ce9e100c906aa937e95d6e5ce1c8d86efe8c95fd953359b9c  libglvnd0_1.7.0-1+b2_amd64.deb" >> sums.txt \
@@ -115,12 +139,13 @@ RUN python -c "import urllib.request, pathlib; base='http://deb.debian.org/debia
     && echo "5c222a72d11b866447da31693254f738430726e3e065a384e82687b2fd2f978b  libxcb1_1.17.0-2+b1_amd64.deb" >> sums.txt \
     && echo "689a9f0e0ba3e2c65431f864871e303ee904de69dd28abfc462663fae030227f  libxau6_1.0.11-1_amd64.deb" >> sums.txt \
     && echo "0740dc760916b2008b45417a42a8fd7dd5de370fb57d31373f15034cda8acf0b  libxdmcp6_1.1.5-1_amd64.deb" >> sums.txt \
+    && echo "f875f56675be5b074da877f9a93b09d47dc2eb4e679951d36e2943b8d4843344  libexpat1_2.7.1-2_amd64.deb" >> sums.txt \
     && sha256sum -c sums.txt \
     && (dpkg --force-depends -i ./*.deb > dpkg.log 2>&1; rc=$?; cat dpkg.log; test $rc -eq 0) \
     && ! grep 'is not installed' dpkg.log | grep -v 'libglx-mesa0' \
-    && for p in libgl1 libglvnd0 libglx0 libx11-6 libx11-data libxcb1 libxau6 libxdmcp6; do test "$(dpkg-query -W -f='${Status}' $p)" = "install ok installed" || { echo "GL-LAYER STATE FAIL: $p is not installed-ok"; exit 1; }; done \
-    && ls /usr/local/lib/python3.11/site-packages/cadquery_ocp_novtk.libs/libTK*.so* > /dev/null \
-    && ! ldd /usr/lib/x86_64-linux-gnu/libGL.so.1 /usr/lib/x86_64-linux-gnu/libGLX.so.0 /usr/lib/x86_64-linux-gnu/libX11.so.6 /usr/local/lib/python3.11/site-packages/cadquery_ocp_novtk.libs/libTK*.so* | grep 'not found' \
+    && for p in libgl1 libglvnd0 libglx0 libx11-6 libx11-data libxcb1 libxau6 libxdmcp6 libexpat1; do test "$(dpkg-query -W -f='${Status}' $p)" = "install ok installed" || { echo "GL-LAYER STATE FAIL: $p is not installed-ok"; exit 1; }; done \
+    && ls /usr/local/lib/python3.11/site-packages/cadquery_ocp_novtk.libs/*.so* > /dev/null \
+    && ! ldd /usr/lib/x86_64-linux-gnu/libGL.so.1 /usr/lib/x86_64-linux-gnu/libGLX.so.0 /usr/lib/x86_64-linux-gnu/libX11.so.6 /usr/local/lib/python3.11/site-packages/cadquery_ocp_novtk.libs/*.so* | grep 'not found' \
     && cd / && rm -rf /tmp/gl
 
 # Layer 6: build-time smoke test — import the kernel, build a trivial
