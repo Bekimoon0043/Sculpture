@@ -96,31 +96,66 @@ def test_base_image_suite_pinned():
 
 
 def test_system_gl_libraries_minimal_set_and_positioned():
-    """ADR-014 (backend distro TRIXIE): the kernel needs only libGL.so.1 and
-    libX11.so.6 resolvable — it never creates a GL context. The full mesa
-    chain (libglx-mesa0 -> mesa-libgallium -> libgl1-mesa-dri -> libllvm19,
-    ~222 MB installed) OOM-killed the operator's build. The layer must
-    install ONLY the 7 minimal packages via download + dpkg --force-depends,
-    after the pip layers and before the first COPY."""
+    """ADR-014/ADR-016 (backend distro TRIXIE): the kernel needs only the
+    GL/X11 sonames resolvable — it never creates a GL context. The full
+    mesa chain (libglx-mesa0 -> mesa-libgallium -> libgl1-mesa-dri ->
+    libllvm19, ~222 MB installed) OOM-killed the operator's build.
+    ADR-016: the readelf-only audit missed libGLX.so.0 (runtime-resolved
+    through glvnd, invisible to readelf -d), so libglx0 is in the set;
+    debs are pulled straight from the trixie pool (NO apt-get update —
+    the operator measured a 10m26s full-index fetch), pinned by sha256,
+    installed via dpkg --force-depends with a guard that fails the build
+    on any unexpected "depends on" complaint, and re-proven by ldd."""
     text = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     code = _no_comments(text)
-    dl_pos = code.index("apt-get download")
-    dl_region = code[dl_pos:dl_pos + 300]
-    for pkg in ("libgl1", "libglvnd0", "libx11-6", "libx11-data",
-                "libxcb1", "libxau6", "libxdmcp6"):
-        assert pkg in dl_region, f"{pkg} missing from minimal GL package set"
-    for banned in ("libglx-mesa0", "mesa-libgallium", "libgl1-mesa-dri",
+    joined = re.sub(r"\\\n", " ", code)  # logical lines
+    gl_line = next(
+        (l for l in joined.splitlines()
+         if l.startswith('RUN python -c "import urllib.request')),
+        None,
+    )
+    assert gl_line, "GL layer must download debs directly (no apt-get update)"
+    # the 8-package minimal set (ADR-016: libglx0 added — the readelf-only
+    # audit missed libGLX.so.0; dpkg had named it and was ignored)
+    for pkg in ("libgl1_", "libglvnd0_", "libglx0_", "libx11-6_",
+                "libx11-data_", "libxcb1_", "libxau6_", "libxdmcp6_"):
+        assert pkg in gl_line, f"{pkg} missing from minimal GL package set"
+    # banned packages must not be DOWNLOADED (trailing _ matches the .deb
+    # filename form, so the grep-allowlist mention of libglx-mesa0 below
+    # does not false-positive here)
+    for banned in ("libglx-mesa0_", "mesa-libgallium", "libgl1-mesa-dri",
                    "libllvm19", "libgl1-mesa-glx"):
-        assert banned not in dl_region, (
+        assert banned not in gl_line, (
             f"{banned} must not be installed — mesa/llvm chain OOM-killed "
             "the operator's build (ADR-014)"
         )
-    assert "dpkg --force-depends" in code[dl_pos:dl_pos + 500]
-    assert "rm -rf /tmp/glx /var/lib/apt/lists/*" in code
+    # no apt index fetch anywhere in the image build (ADR-016: the 10m26s
+    # full-index fetch the operator measured is eliminated)
+    assert "apt-get" not in code, "apt-get must not appear — debs come from the pool with sha256 pins"
+    # integrity: every deb pinned by sha256 (8 hashes), verified before install
+    assert "sha256sum -c sums.txt" in gl_line
+    hashes = re.findall(r"\b[0-9a-f]{64}\b", gl_line)
+    assert len(hashes) == 8, f"expected 8 sha256 deb pins, found {len(hashes)}"
+    # install + dpkg guard: any "depends on" complaint outside the one
+    # deliberate, justified skip (libglx0 -> libglx-mesa0) fails the build
+    assert "dpkg --force-depends" in gl_line
+    assert "grep 'depends on'" in gl_line and "grep -v 'libglx-mesa0'" in gl_line, (
+        "dpkg 'dependency problems' must be a FAILURE signal (ADR-016) — "
+        "guard with a libglx-mesa0-only allowlist"
+    )
+    # ldd re-proof: zero unresolved sonames across system libs + OCP TK libs
+    assert "ldd" in gl_line and "'not found'" in gl_line
+    assert "cadquery_ocp_novtk.libs" in gl_line, (
+        "ldd must also cover the OCP wheel's TK libraries (the libs that "
+        "actually failed to load, ADR-016)"
+    )
+    assert "rm -rf /tmp/gl" in gl_line
+    # position: after the pip layers, before the first COPY
+    gl_pos = code.index('RUN python -c "import urllib.request')
     pip_last = code.index("pytest==")           # last pip layer (Phase 1 deps)
     copy_pos = code.index("COPY pyproject.toml")
-    assert pip_last < dl_pos < copy_pos, (
-        "apt layer must be AFTER the pip layers and BEFORE 'COPY "
+    assert pip_last < gl_pos < copy_pos, (
+        "GL layer must be AFTER the pip layers and BEFORE 'COPY "
         "pyproject.toml' (layer-cache protection, operator constraint)"
     )
 
@@ -141,4 +176,6 @@ def test_build_time_kernel_smoke_test():
         "the minimal GL set suffices (ADR-014)"
     )
     assert code.index("build123d==") < smoke_pos, "smoke test before pip layer"
-    assert code.index("apt-get download") < smoke_pos, "smoke test before apt layer"
+    assert code.index('RUN python -c "import urllib.request') < smoke_pos, (
+        "smoke test before GL layer"
+    )

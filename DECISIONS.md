@@ -448,3 +448,94 @@ URL and fetch date.
 - **Regression-proofed:** tests lock the pinned npm upgrade + self-verify,
   same-RUN retry + `npm ls` + vite checks, flags, layer order. 11/11
   image-structure tests pass (2026-08-02); no runtime code changed.
+
+
+## ADR-016 — libGLX miss: audit-method correction, 8-package set, pool downloads with sha256 pins, dpkg guard
+
+**Status:** accepted (2026-08-02). **Scope:** backend image, distro TRIXIE.
+Supersedes the ADR-014 7-package set and the apt-get download mechanism.
+
+**Incident (operator build log, 2026-08-02):** the build-time smoke test
+(ADR-012) caught `ImportError: libGLX.so.0: cannot open shared object file`
+— at build, not in a restart loop; the design did its job. But it disproved
+the ADR-014 audit, which had shipped a 7-package set without `libglx0` on
+the reasoning that "`libgl1`'s dep on `libglx0` is GLX functionality, not a
+link dependency — libGL.so.1 NEEDs only libGLdispatch/libdl/libc."
+
+**Root cause of the audit miss — two method failures, both corrected:**
+
+1. **readelf -d alone is insufficient for dlopen/dispatch-resolved
+   libraries.** libGL.so.1 resolves libGLX.so.0 through the glvnd dispatch
+   layer at RUNTIME, so libGLX.so.0 appears in libGL.so.1's string table,
+   not as a DT_NEEDED entry — readelf -d structurally cannot see it
+   (operator's diagnosis, confirmed by strings scan of the real trixie
+   libGL.so.1.7.0, 2026-08-02). Corrected audit method: readelf -d +
+   strings scan of every relevant library for `lib*.so` candidates +
+   dpkg-deb content listing + readelf of the EXTRACTED real libraries.
+   Applied to the full chain (glvnd libs + the OCP wheel's libTKOpenGl and
+   libTKService): no further hidden sonames found — no libEGL, no mesa
+   sonames in any strings table.
+2. **dpkg's "dependency problems, but configuring anyway" is a FAILURE
+   signal, not noise.** The ADR-014 layer's own dpkg output had named the
+   exact missing package ("libgl1 depends on libglx0") and it was treated
+   as benign. The GL layer now greps its dpkg log and FAILS THE BUILD on
+   any "depends on" complaint outside a one-entry allowlist.
+
+**The vendor question (operator's instruction), answered with evidence:**
+does `libglx0` require a GLX vendor (`libglx-mesa0`) for the soname to
+resolve? NO. readelf of the real trixie `libGLX.so.0.0.0` (extracted from
+`libglx0_1.7.0-1+b2_amd64.deb`): NEEDED = libGLdispatch.so.0, libX11.so.6,
+libc.so.6 — nothing else. glvnd only dlopens a vendor library when an
+application actually creates a GL context; the kernel is headless
+(STEP/GLB export) and never creates one. `libglx-mesa0` stays out, and it
+is the ONLY dpkg complaint the guard allowlists — with this justification
+recorded, not silence.
+
+**The corrected set — reported to the operator BEFORE rebuild:**
+8 packages — libgl1 1.7.0-1+b2 (0.09 MB deb / 0.64 MB installed),
+libglvnd0 1.7.0-1+b2 (0.05 / 0.72), libglx0 1.7.0-1+b2 (0.03 / 0.16),
+libx11-6 2:1.8.12-1 (0.82 / 1.60), libx11-data 2:1.8.12-1 (0.34 / 1.54),
+libxcb1 1.17.0-2+b1 (0.14 / 0.29), libxau6 1:1.0.11-1 (0.02 / 0.04),
+libxdmcp6 1:1.1.5-1 (0.03 / 0.06). **Total: 8 packages, 1.53 MB download,
+5.04 MB installed** (live trixie main index, 2026-08-02). Versus the mesa
+chain apt would have pulled: 49 packages / 53.5 MB / ~222 MB installed.
+Static self-containment proof: every NEEDED of every .so shipped by the 8
+packages resolves within the set + glibc — verified by extracting all 8
+debs and resolving the full NEEDED closure (2026-08-02).
+
+**Index-fetch elimination (operator's second instruction):** `apt-get
+update` had fetched the full 9.6 MB trixie index at 16 kB/s — 10m26s —
+before downloading 1.5 MB of packages, on every cache miss of the layer.
+The layer now pulls the 8 debs STRAIGHT from the trixie pool
+(`http://deb.debian.org/debian/pool/main/...`, exact pool paths from the
+live index) using python (slim ships no curl/wget). No index is fetched at
+all. Each deb is pinned by sha256 recorded from the live index AND
+re-verified against the actual downloaded bytes (all 8 match, 2026-08-02);
+`sha256sum -c` runs before dpkg, so a single flipped byte fails the layer
+loudly — strictly stronger integrity than apt's download path. (Note for
+the record: a first attempt to transcribe the 8 hashes into this file from
+summary notes corrupted the tails — caught instantly by `sha256sum -c`
+against the real debs, then regenerated from computed file bytes
+cross-checked against the index. The check works; never transcribe hashes
+by hand.)
+
+**Build-time guards, in order, all in the same RUN:** (1) sha256sum -c —
+integrity; (2) dpkg hard-failure propagation (exit code captured, log
+printed, nonzero fails); (3) dpkg-complaint guard — any "depends on" line
+not naming libglx-mesa0 fails the build; (4) `ls` glob check that the OCP
+wheel's TK libs exist (a silent no-match glob must not skip the next
+check); (5) ldd over libGL.so.1, libGLX.so.0, libX11.so.6 AND
+`cadquery_ocp_novtk.libs/libTK*.so*` — zero "not found" tolerated, a
+dynamic re-proof of the static audit against the very libraries that
+failed. Guard logic was exercised in the sandbox on fabricated logs:
+allowlisted-only complaint passes, unexpected complaint fails, clean ldd
+passes, "not found" fails. Layer 6 (import + BREP + STEP + GLB smoke)
+remains as the final end-to-end proof.
+
+**Position unchanged:** after the four pip layers, before the first COPY
+(operator constraint, ADR-012) — system-package edits never invalidate the
+~400 MB of cached pip downloads.
+
+**Regression-proofed:** tests lock the 8-package set, no-apt-get rule,
+8 sha256 pins, sha256sum/dpkg/ldd guards and allowlist, banned-package
+absence from the download list, layer position, and smoke-test ordering.

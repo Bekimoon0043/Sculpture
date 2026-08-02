@@ -49,37 +49,69 @@ RUN pip install --no-cache-dir --retries 10 --timeout 120 \
     anthropic==0.42.0 openai==1.59.3 pillow==11.0.0 jsonschema==4.23.0 \
     pytest==8.3.4
 
-# Layer 5: the TWO system libraries the OCCT kernel needs at import time —
-# nothing more (ADR-014, backend distro TRIXIE).
-# Audit of all 69 .so files in the cadquery-ocp-novtk 7.9.3.1.1 wheel
-# (readelf NEEDED, 2026-08-02): exactly two sonames are absent from the
-# slim image — libGL.so.1 and libX11.so.6. The wheel bundles its own
-# gomp/fontconfig/freetype; libc/libm/libdl/libpthread/libgcc_s/libstdc++/
-# libz/libexpat are already present (loader-order evidence from the
-# operator's libGL crash).
+# Layer 5: the system libraries the OCCT kernel needs at import time —
+# nothing more (ADR-014/ADR-016, backend distro TRIXIE).
+#
+# METHOD CORRECTION (ADR-016): readelf -d alone is INSUFFICIENT for this
+# audit. The 7-package set it produced missed libGLX.so.0: libGL.so.1
+# resolves it through the glvnd dispatch layer at RUNTIME, so it appears in
+# libGL.so.1's string table, not as a DT_NEEDED entry (operator build log,
+# 2026-08-02: ImportError: libGLX.so.0 — caught by the smoke test below, at
+# build, not in a restart loop). dpkg had also named the exact miss —
+# "dependency problems, but configuring anyway: libgl1 depends on libglx0"
+# — and it was wrongly treated as benign. Corrected audit method:
+# readelf -d + strings scan for lib*.so candidates + dpkg-deb content
+# listing + readelf of the EXTRACTED real libraries.
+#
 # THE PACKAGE SET IS THE MEMORY FIX: `apt-get install libgl1` on trixie
 # hard-pulls libglx0 -> libglx-mesa0 -> mesa-libgallium + libgl1-mesa-dri
 # -> libllvm19: 49 packages, 53.5 MB download, ~222 MB installed — dpkg
 # unpacking libllvm19 (123.7 MB installed) is what the OOM killer hit
 # (operator build log, 2026-08-02). None of it is needed: the kernel never
 # creates a GL context (headless STEP/GLB export only); the loader only
-# needs the two sonames resolvable. So we install ONLY the packages whose
-# FILES provide them (verified against the live trixie main index and by
-# listing the debs' contents, 2026-08-02): libGL.so.1 <- libgl1, its link
-# dep libGLdispatch.so.0 <- libglvnd0, libX11.so.6 <- libx11-6 (+ its file
-# deps libxcb1/libxau6/libxdmcp6 + libx11-data). 7 packages, 1.5 MB total.
-# dpkg --force-depends: libgl1's package-level hard dep on libglx0 is a
-# GLX-functionality dependency, not a link dependency — libGL.so.1 NEEDs
-# only libGLdispatch/libdl/libc. The smoke layer below proves the full
-# import + BREP + STEP + GLB path works without the mesa backend.
+# needs the sonames resolvable. libGLX.so.0.0.0 itself NEEDs ONLY
+# libGLdispatch.so.0, libX11.so.6, libc.so.6 (readelf of the real trixie
+# deb, 2026-08-02) — a GLX vendor (libglx-mesa0) is only dlopened when an
+# application creates a GL context, which never happens here.
+#
+# THE SET — 8 packages, 1.53 MB download, 5.04 MB installed (verified
+# against the live trixie main index AND against the actual deb bytes,
+# 2026-08-02): libgl1, libglvnd0, libglx0, libx11-6, libx11-data, libxcb1,
+# libxau6, libxdmcp6. Every NEEDED of every .so in the set resolves within
+# the set + glibc — statically proven.
+#
+# NO apt-get update: the debs are pulled straight from the trixie pool by
+# python (slim has no curl/wget), each pinned by sha256 recorded from the
+# live index and re-verified against file bytes. This eliminates the
+# multi-minute full-index fetch the operator measured (9.6 MB at 16 kB/s =
+# 10m26s, before 1.5 MB of packages) and is STRONGER integrity than apt:
+# a single flipped byte anywhere fails the layer loudly.
+# dpkg GUARD: any "depends on" complaint other than the one deliberate,
+# justified skip (libglx0 -> libglx-mesa0, see above) now FAILS THE BUILD —
+# dpkg's "dependency problems, but configuring anyway" is treated as a
+# failure signal, not noise (ADR-016).
+# ldd GUARD: after install, ldd over the system libs AND the OCP wheel's
+# TK libraries must show zero "not found" — a dynamic re-proof of the
+# static audit, at build time.
 # POSITION IS DELIBERATE: after the pip layers, so system-package edits
 # never invalidate the ~400 MB of cached downloads (needed at import time,
 # not install time).
-RUN mkdir /tmp/glx && cd /tmp/glx \
-    && apt-get update \
-    && apt-get download libgl1 libglvnd0 libx11-6 libx11-data libxcb1 libxau6 libxdmcp6 \
-    && dpkg --force-depends -i ./*.deb \
-    && cd / && rm -rf /tmp/glx /var/lib/apt/lists/*
+RUN python -c "import urllib.request, pathlib; base='http://deb.debian.org/debian/pool/main/'; pkgs=['libg/libglvnd/libgl1_1.7.0-1+b2_amd64.deb','libg/libglvnd/libglvnd0_1.7.0-1+b2_amd64.deb','libg/libglvnd/libglx0_1.7.0-1+b2_amd64.deb','libx/libx11/libx11-6_1.8.12-1_amd64.deb','libx/libx11/libx11-data_1.8.12-1_all.deb','libx/libxcb/libxcb1_1.17.0-2+b1_amd64.deb','libx/libxau/libxau6_1.0.11-1_amd64.deb','libx/libxdmcp/libxdmcp6_1.1.5-1_amd64.deb']; d=pathlib.Path('/tmp/gl'); d.mkdir(); [urllib.request.urlretrieve(base+p, d/p.split('/')[-1]) for p in pkgs]; print('GL-LAYER: downloaded', len(pkgs), 'debs,', sum(f.stat().st_size for f in d.glob('*.deb')), 'bytes')" \
+    && cd /tmp/gl \
+    && echo "87fa2f6e5abaed4ed385fac879c8dd735af719ee2300222d901793c66e041678  libgl1_1.7.0-1+b2_amd64.deb" > sums.txt \
+    && echo "887f74008166549ce9e100c906aa937e95d6e5ce1c8d86efe8c95fd953359b9c  libglvnd0_1.7.0-1+b2_amd64.deb" >> sums.txt \
+    && echo "2721fdca0fe3bd963cb39482eabc253af52b88f4a7f6dbb69e475549daf5af3b  libglx0_1.7.0-1+b2_amd64.deb" >> sums.txt \
+    && echo "b5a3fd3bf8c8fd0364bfb9bea00dcba7fc301229bd02dded084632d31f5b0fb3  libx11-6_1.8.12-1_amd64.deb" >> sums.txt \
+    && echo "c54f87069888f80ba4da586da6147d74c7598ccdd8b90906dbc4271fa414c738  libx11-data_1.8.12-1_all.deb" >> sums.txt \
+    && echo "5c222a72d11b866447da31693254f738430726e3e065a384e82687b2fd2f978b  libxcb1_1.17.0-2+b1_amd64.deb" >> sums.txt \
+    && echo "689a9f0e0ba3e2c65431f864871e303ee904de69dd28abfc462663fae030227f  libxau6_1.0.11-1_amd64.deb" >> sums.txt \
+    && echo "0740dc760916b2008b45417a42a8fd7dd5de370fb57d31373f15034cda8acf0b  libxdmcp6_1.1.5-1_amd64.deb" >> sums.txt \
+    && sha256sum -c sums.txt \
+    && (dpkg --force-depends -i ./*.deb > dpkg.log 2>&1; rc=$?; cat dpkg.log; test $rc -eq 0) \
+    && ! grep 'depends on' dpkg.log | grep -v 'libglx-mesa0' \
+    && ls /usr/local/lib/python3.11/site-packages/cadquery_ocp_novtk.libs/libTK*.so* > /dev/null \
+    && ! ldd /usr/lib/x86_64-linux-gnu/libGL.so.1 /usr/lib/x86_64-linux-gnu/libGLX.so.0 /usr/lib/x86_64-linux-gnu/libX11.so.6 /usr/local/lib/python3.11/site-packages/cadquery_ocp_novtk.libs/libTK*.so* | grep 'not found' \
+    && cd / && rm -rf /tmp/gl
 
 # Layer 6: build-time smoke test — import the kernel, build a trivial
 # solid, and exercise BOTH export paths (STEP and GLB) HERE. A backend that
