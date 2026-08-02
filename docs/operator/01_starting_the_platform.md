@@ -91,6 +91,36 @@ same build command. No mirror is recommended by default — coverage varies
 by location, and a mirror that works elsewhere may not have our exact
 package versions here.
 
+**Optional — different Debian server (Plan A):** the build also downloads 9
+small system-library files (about 1.6 MB total) from deb.debian.org. If
+that server is unreachable from your network, point the build at any Debian
+mirror that has the exact pinned versions — Command Prompt:
+
+```bat
+set DEB_POOL_URL=https://your.mirror/debian/pool/main/
+docker compose build backend
+```
+
+The files are checksum-pinned, so a mirror only carries bytes: if anything
+is wrong, the build stops and names the file. Nothing bad can slip through.
+If a mirror is missing a file, the build fails fast (about 10 seconds into
+that stage) and prints its name — try a different mirror.
+
+**Optional — no Debian server at all (Plan B):** if no Debian mirror works
+but Docker Hub does, use the donor variant, which takes the same 9
+libraries from another Docker image instead. First pick a donor image with
+the one-line check printed at the top of `Dockerfile.donor`, then:
+
+```bat
+set BACKEND_DOCKERFILE=Dockerfile.donor
+set GL_DONOR_IMAGE=eclipse-temurin:21-jdk-noble
+docker compose build backend
+docker compose up -d backend
+```
+
+(Use the image name that passed the check. `set BACKEND_DOCKERFILE=` —
+empty — returns to the normal build.)
+
 ## Step 5 — Run the Phase 1 acceptance gate
 
 ```bat

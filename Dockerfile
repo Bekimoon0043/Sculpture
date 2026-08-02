@@ -15,6 +15,16 @@ WORKDIR /app
 # 2026-08-02 — a mirror that works in one place failed there).
 ARG PIP_INDEX_URL=https://pypi.org/simple
 
+# Debian pool base URL for the 9 pinned system-library debs (default:
+# deb.debian.org — connection-RESET on the operator's route, 2026-08-03,
+# ADR-017). Override at build time without editing this file:
+#   docker compose build --build-arg DEB_POOL_URL=https://your.mirror/debian/pool/main/
+# The sha256 pins in Layer 5 make the mirror PURE TRANSPORT: any mirror may
+# serve the bytes, but one wrong byte — stale version, corruption,
+# tampering — fails the build loudly at sha256sum -c. The only requirement
+# on a mirror is that it carries these exact versions.
+ARG DEB_POOL_URL=http://deb.debian.org/debian/pool/main/
+
 # Layered installs, heaviest and most stable first, so Docker's layer cache
 # protects completed downloads: a dropped connection now costs ONE layer,
 # not the whole build (the operator's single-transaction build failed twice
@@ -129,7 +139,7 @@ RUN pip install --no-cache-dir --retries 10 --timeout 120 \
 # POSITION IS DELIBERATE: after the pip layers, so system-package edits
 # never invalidate the ~400 MB of cached downloads (needed at import time,
 # not install time).
-RUN python -c "import urllib.request, pathlib; base='http://deb.debian.org/debian/pool/main/'; pkgs=['libg/libglvnd/libgl1_1.7.0-1+b2_amd64.deb','libg/libglvnd/libglvnd0_1.7.0-1+b2_amd64.deb','libg/libglvnd/libglx0_1.7.0-1+b2_amd64.deb','libx/libx11/libx11-6_1.8.12-1_amd64.deb','libx/libx11/libx11-data_1.8.12-1_all.deb','libx/libxcb/libxcb1_1.17.0-2+b1_amd64.deb','libx/libxau/libxau6_1.0.11-1_amd64.deb','libx/libxdmcp/libxdmcp6_1.1.5-1_amd64.deb','libe/libexpat/libexpat1_2.7.1-2_amd64.deb']; d=pathlib.Path('/tmp/gl'); d.mkdir(); [urllib.request.urlretrieve(base+p, d/p.split('/')[-1]) for p in pkgs]; print('GL-LAYER: downloaded', len(pkgs), 'debs,', sum(f.stat().st_size for f in d.glob('*.deb')), 'bytes')" \
+RUN python -c "import urllib.request, pathlib, os; base=os.environ['DEB_POOL_URL'].rstrip('/')+'/'; pkgs=['libg/libglvnd/libgl1_1.7.0-1+b2_amd64.deb','libg/libglvnd/libglvnd0_1.7.0-1+b2_amd64.deb','libg/libglvnd/libglx0_1.7.0-1+b2_amd64.deb','libx/libx11/libx11-6_1.8.12-1_amd64.deb','libx/libx11/libx11-data_1.8.12-1_all.deb','libx/libxcb/libxcb1_1.17.0-2+b1_amd64.deb','libx/libxau/libxau6_1.0.11-1_amd64.deb','libx/libxdmcp/libxdmcp6_1.1.5-1_amd64.deb','libe/libexpat/libexpat1_2.7.1-2_amd64.deb']; d=pathlib.Path('/tmp/gl'); d.mkdir(); [urllib.request.urlretrieve(base+p, d/p.split('/')[-1]) for p in pkgs]; print('GL-LAYER: downloaded', len(pkgs), 'debs,', sum(f.stat().st_size for f in d.glob('*.deb')), 'bytes')" \
     && cd /tmp/gl \
     && echo "87fa2f6e5abaed4ed385fac879c8dd735af719ee2300222d901793c66e041678  libgl1_1.7.0-1+b2_amd64.deb" > sums.txt \
     && echo "887f74008166549ce9e100c906aa937e95d6e5ce1c8d86efe8c95fd953359b9c  libglvnd0_1.7.0-1+b2_amd64.deb" >> sums.txt \

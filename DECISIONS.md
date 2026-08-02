@@ -603,3 +603,60 @@ wheel libs (`cadquery_ocp_novtk.libs/*.so*`, not just libTK*) — direct
 coverage of the bundled fontconfig class of consumer. 9-deb closure
 proven: every NEEDED of every .so shipped by the set resolves within the
 set + manifest-verified libc6.
+
+## ADR-017 — deb.debian.org unreachable on operator route: mirror-ARG (Plan A) and Docker Hub donor multi-stage (Plan B)
+
+**Status:** accepted (2026-08-03). **Scope:** backend image build.
+
+**Incident:** deb.debian.org is connection-RESET on the operator's route —
+not slow, actively reset (4 in-container attempts + host curl with 20
+retries). Meanwhile PyPI works at 1.5 MB/s and Docker Hub pulls fine.
+
+**Plan A — `DEB_POOL_URL` build ARG (default deb.debian.org).** The pool
+base URL in Layer 5 is now operator-overridable without editing the
+Dockerfile (`docker compose build --build-arg DEB_POOL_URL=...`, or the
+compose env passthrough). The 9 sha256 pins make the mirror PURE
+TRANSPORT: any mirror may serve the bytes; one wrong byte fails the build
+loudly at `sha256sum -c`. The only requirement on a mirror is that it
+carries the exact pinned versions. Verified end-to-end in the sandbox:
+the one-liner reads the env var, downloads from an alternate base, and
+sha256-verifies; a wrong-bytes base fails loudly. Live caveat finding
+(2026-08-03): TUNA's pool carried 8/9 pinned versions — the libexpat1
+path 404'd on some CDN nodes while TUNA's own dists index still listed
+2.7.1-2 (pool/index skew on mirror edges; the file had downloaded fine
+from the same URL hours earlier). Mirrors can rotate pool versions out
+from under exact pins; the failure is always LOUD (404 or sha256
+mismatch names the file), never silent. Fallback candidate for
+exact-version archival: snapshot.debian.org date-scoped pool URLs
+(reachability on the operator's route untested).
+
+**Plan B — `Dockerfile.donor` multi-stage (Docker Hub as transport).** If
+no Debian mirror works: `FROM ${GL_DONOR_IMAGE} AS gldonor`, then one
+BuildKit-mount RUN copies the 9 soname families (with symlinks, `cp -a`,
+plus X11 locale data if present) into the final python:3.11-slim-trixie
+stage. deb.debian.org is never contacted. Guards identical in kind and
+position to the main Dockerfile: loud `DONOR MISSING: <pattern>` failure
+on an incomplete donor (logic exercised against fake donor trees —
+complete passes with symlinks preserved, incomplete fails naming the
+pattern), post-copy `test -e` state check per soname, ldconfig, the same
+ldd "not found" guard over system libs + all wheel libs (including
+libexpat.so.1 directly), and the byte-identical Layer 6 smoke test. Copy
+logic is parameter-equivalent to the tested script. glibc compatibility
+for Ubuntu-based donors (jammy 2.35 / noble 2.39 → trixie 2.41) is
+backward-safe and re-proven by the ldd guard + smoke inside the final
+image.
+**Donor contents are UNVERIFIED from the build sandbox** (Docker Hub
+auth/registry unreachable there — ADR-009 forbids asserting them from
+recall). The Dockerfile header carries the one-line donor-selection
+command (verified: prints MISSING per absent soname, or
+CHECK-DONE-ALL-PRESENT) and a prioritized candidate list marked as
+reasoning: eclipse-temurin:21-jdk-noble, eclipse-temurin:17-jdk-jammy,
+python:3.11-trixie, nvidia/opengl:1.2-glvnd-runtime-ubuntu22.04 (partial:
+GL only). **Integrity in this path anchors on the donor image, not deb
+sha256** — after first successful pull the operator pins
+GL_DONOR_IMAGE by digest (`docker images --digests`) and records it here.
+Compose gains `dockerfile: ${BACKEND_DOCKERFILE:-Dockerfile}` and a
+GL_DONOR_IMAGE passthrough; the main Dockerfile is unchanged in behavior
+when the ARGs are unset. Pip-layer pin consistency tests now cover both
+Dockerfiles; structure tests lock the donor stage, copy set, loud
+failure, guards, and layer order. 13/13 image-structure tests pass.

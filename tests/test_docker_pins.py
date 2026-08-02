@@ -30,8 +30,8 @@ def pyproject_pins() -> dict[str, str]:
     return pins
 
 
-def dockerfile_pins() -> dict[str, str]:
-    text = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+def dockerfile_pins(name: str = "Dockerfile") -> dict[str, str]:
+    text = (ROOT / name).read_text(encoding="utf-8")
     text = re.sub(r"\\\n", " ", text)  # join backslash continuation lines
     pins = {}
     for line in text.splitlines():
@@ -39,43 +39,45 @@ def dockerfile_pins() -> dict[str, str]:
         if not line.startswith("RUN pip install"):
             continue
         for m in PIN_RE.finditer(line):
-            name = m.group(1).lower().replace("_", "-")
-            pins[name] = m.group(2)
+            name2 = m.group(1).lower().replace("_", "-")
+            pins[name2] = m.group(2)
     return pins
 
 
 def test_dockerfile_pins_match_pyproject():
     pp = pyproject_pins()
-    df = dockerfile_pins()
-    missing_in_docker = {k: v for k, v in pp.items() if k not in df}
-    missing_in_pyproject = {k: v for k, v in df.items() if k not in pp}
-    version_mismatch = {
-        k: (pp[k], df[k]) for k in pp if k in df and pp[k] != df[k]
-    }
-    assert not missing_in_docker, (
-        f"pinned in pyproject.toml but not installed by any Dockerfile layer: "
-        f"{missing_in_docker}"
-    )
-    assert not missing_in_pyproject, (
-        f"installed by Dockerfile but not pinned in pyproject.toml: "
-        f"{missing_in_pyproject}"
-    )
-    assert not version_mismatch, (
-        f"version mismatch pyproject vs Dockerfile (pyproject, Dockerfile): "
-        f"{version_mismatch}"
-    )
+    for dockerfile in ("Dockerfile", "Dockerfile.donor"):
+        df = dockerfile_pins(dockerfile)
+        missing_in_docker = {k: v for k, v in pp.items() if k not in df}
+        missing_in_pyproject = {k: v for k, v in df.items() if k not in pp}
+        version_mismatch = {
+            k: (pp[k], df[k]) for k in pp if k in df and pp[k] != df[k]
+        }
+        assert not missing_in_docker, (
+            f"[{dockerfile}] pinned in pyproject.toml but not installed: "
+            f"{missing_in_docker}"
+        )
+        assert not missing_in_pyproject, (
+            f"[{dockerfile}] installed but not pinned in pyproject.toml: "
+            f"{missing_in_pyproject}"
+        )
+        assert not version_mismatch, (
+            f"[{dockerfile}] version mismatch (pyproject, {dockerfile}): "
+            f"{version_mismatch}"
+        )
 
 
 def test_heavy_transitives_pinned_first_layers():
     """cadquery-ocp-novtk must be installed in an earlier RUN layer than
     build123d, or the layer-cache protection is pointless (ADR-011)."""
-    text = (ROOT / "Dockerfile").read_text(encoding="utf-8")
-    ocp_pos = text.index("cadquery-ocp-novtk==")
-    b123d_pos = text.index("build123d==")
-    assert ocp_pos < b123d_pos, (
-        "cadquery-ocp-novtk must be installed BEFORE build123d in the "
-        "Dockerfile (heaviest, most stable layer first)"
-    )
+    for dockerfile in ("Dockerfile", "Dockerfile.donor"):
+        text = (ROOT / dockerfile).read_text(encoding="utf-8")
+        ocp_pos = text.index("cadquery-ocp-novtk==")
+        b123d_pos = text.index("build123d==")
+        assert ocp_pos < b123d_pos, (
+            f"[{dockerfile}] cadquery-ocp-novtk must be installed BEFORE "
+            "build123d (heaviest, most stable layer first)"
+        )
 
 
 def _no_comments(text: str) -> str:
@@ -138,6 +140,13 @@ def test_system_gl_libraries_minimal_set_and_positioned():
     # no apt index fetch anywhere in the image build (ADR-016: the 10m26s
     # full-index fetch the operator measured is eliminated)
     assert "apt-get" not in code, "apt-get must not appear — debs come from the pool with sha256 pins"
+    # Plan A (ADR-017): pool base URL is a build ARG with the deb.debian.org
+    # default; the download one-liner must read it from the environment —
+    # sha256 pins make any mirror pure transport
+    assert "ARG DEB_POOL_URL=http://deb.debian.org/debian/pool/main/" in code
+    assert "os.environ['DEB_POOL_URL']" in gl_line, (
+        "pool URL must come from the DEB_POOL_URL build ARG (ADR-017)"
+    )
     # integrity: every deb pinned by sha256 (9 hashes), verified before install
     assert "sha256sum -c sums.txt" in gl_line
     hashes = re.findall(r"\b[0-9a-f]{64}\b", gl_line)
@@ -202,3 +211,67 @@ def test_build_time_kernel_smoke_test():
     assert code.index('RUN python -c "import urllib.request') < smoke_pos, (
         "smoke test before GL layer"
     )
+
+
+def test_donor_dockerfile_structure():
+    """Plan B (ADR-017): Dockerfile.donor transports the 9 system libraries
+    from a Docker Hub donor image (no deb.debian.org contact). It must be a
+    multi-stage build with a selectable donor, copy all 9 soname families
+    with symlinks, fail loudly on an incomplete donor, and keep the same
+    guarantees (state check, ldd guard over system + wheel libs, identical
+    smoke test, suite-pinned final base, same layer order)."""
+    text = (ROOT / "Dockerfile.donor").read_text(encoding="utf-8")
+    code = _no_comments(text)
+    joined = re.sub(r"\\\n", " ", code)
+    assert "ARG GL_DONOR_IMAGE=" in code, "donor image must be a build ARG"
+    assert "FROM ${GL_DONOR_IMAGE} AS gldonor" in code
+    assert "FROM python:3.11-slim-trixie" in code, (
+        "final stage base must stay suite-pinned (ADR-014)"
+    )
+    copy_line = next(
+        (l for l in joined.splitlines() if l.startswith("RUN --mount=from=gldonor")),
+        None,
+    )
+    assert copy_line, "donor copy layer must mount the donor stage"
+    for pat in ("libGL.so.1*", "libGLX.so.0*", "libGLdispatch.so.0*",
+                "libX11.so.6*", "libxcb.so.1*", "libXau.so.6*",
+                "libXdmcp.so.6*", "libexpat.so.1*"):
+        assert pat in copy_line, f"donor copy must include {pat}"
+    assert "cp -a" in copy_line, "symlinks must be preserved (cp -a)"
+    assert "DONOR MISSING" in copy_line and "exit 1" in copy_line, (
+        "an incomplete donor must fail the build loudly, naming the pattern"
+    )
+    assert "ldconfig" in copy_line
+    # state check: every soname resolvable after copy (test -e follows links)
+    for s in ("libGL.so.1", "libGLX.so.0", "libGLdispatch.so.0", "libX11.so.6",
+              "libxcb.so.1", "libXau.so.6", "libXdmcp.so.6", "libexpat.so.1"):
+        assert f"/usr/lib/x86_64-linux-gnu/{s}" in copy_line, (
+            f"post-copy state check must cover {s}"
+        )
+    # same ldd guarantee as the main Dockerfile, incl. wheel libs + expat
+    assert "ldd" in copy_line and "'not found'" in copy_line
+    assert "cadquery_ocp_novtk.libs/*.so*" in copy_line
+    assert "libexpat.so.1" in copy_line.split("ldd", 1)[1], (
+        "ldd must directly cover libexpat.so.1 (the ADR-016 v3 miss)"
+    )
+    # identical smoke test to the main Dockerfile
+    smoke = 'RUN python -c "import build123d; from build123d import Box, export_step, export_gltf'
+    assert smoke in code, "donor variant must keep the build-time smoke test"
+    # layer order: pip layers -> donor copy -> smoke -> first COPY
+    assert code.index("build123d==") < code.index("RUN --mount=from=gldonor")
+    assert code.index("RUN --mount=from=gldonor") < code.index(smoke)
+    assert code.index(smoke) < code.index("COPY pyproject.toml")
+
+
+def test_compose_backend_dockerfile_switch_and_args():
+    """ADR-017: compose must allow switching the backend Dockerfile
+    (Plan B) and pass through DEB_POOL_URL (Plan A) and GL_DONOR_IMAGE
+    (Plan B) without editing any file."""
+    text = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    code = _no_comments(text)
+    assert "dockerfile: ${BACKEND_DOCKERFILE:-Dockerfile}" in code, (
+        "backend build must default to Dockerfile and allow the donor "
+        "variant via BACKEND_DOCKERFILE"
+    )
+    assert "DEB_POOL_URL: ${DEB_POOL_URL:-http://deb.debian.org/debian/pool/main/}" in code
+    assert "GL_DONOR_IMAGE: ${GL_DONOR_IMAGE:-" in code

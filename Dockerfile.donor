@@ -1,0 +1,114 @@
+# PLAN B backend image (ADR-017) — for when deb.debian.org AND every Debian
+# mirror are unreachable, but Docker Hub pulls work (the operator's route,
+# 2026-08-03: deb.debian.org connection-RESET; PyPI and Docker Hub fine).
+#
+# The 9 system libraries come from a DONOR image that already contains
+# them, transported by the Docker Hub pull. deb.debian.org is never
+# contacted. Everything else is identical to the main Dockerfile.
+#
+# SELECT THE DONOR on the operator machine — one command per candidate,
+# first one that prints CHECK-DONE-ALL-PRESENT wins:
+#
+#   docker run --rm <image> sh -c "ok=1; for s in libGL.so.1 libGLX.so.0 libGLdispatch.so.0 libX11.so.6 libxcb.so.1 libXau.so.6 libXdmcp.so.6 libexpat.so.1; do find /usr/lib /lib -name \"$s\" 2>/dev/null | grep -q . || { echo MISSING $s; ok=; }; done; [ -n \"$ok\" ] && echo CHECK-DONE-ALL-PRESENT"
+#
+# Candidates, in priority order (contents NOT verified from the build
+# sandbox — Docker Hub is unreachable there, so this list is REASONING,
+# the command above is PROOF; sizes are approximate, check after pull):
+#   1. eclipse-temurin:21-jdk-noble  — JDK images ship the X11 family and
+#      fontconfig (which pulls libexpat1) for AWT; GL stack likely present.
+#      ~470 MB.
+#   2. eclipse-temurin:17-jdk-jammy  — same family, older Ubuntu base.
+#      ~450 MB.
+#   3. python:3.11-trixie            — full non-slim variant of the same
+#      image line; contents unknown. ~1 GB.
+#   4. nvidia/opengl:1.2-glvnd-runtime-ubuntu22.04 — guaranteed
+#      libGL.so.1/libGLX.so.0/libGLdispatch.so.0 by design, but NOT
+#      libX11/libexpat — partial donor only; combine with another image's
+#      files if nothing else passes (report back before doing this).
+#
+# glibc compatibility: donor libs built on Ubuntu jammy/noble (glibc
+# 2.35/2.39) run on trixie's NEWER glibc 2.41 (backward compatible). The
+# ldd guard and smoke test below re-prove this inside the final image.
+#
+# INTEGRITY: this path has no sha256 deb pins — the integrity anchor is
+# the donor image itself. After your first successful pull, pin it BY
+# DIGEST (Amendment 1 determinism):
+#   docker images --digests
+# then set GL_DONOR_IMAGE=eclipse-temurin:21-jdk-noble@sha256:<digest>
+# and record the digest in DECISIONS.md.
+#
+# Usage:
+#   set BACKEND_DOCKERFILE=Dockerfile.donor
+#   set GL_DONOR_IMAGE=eclipse-temurin:21-jdk-noble
+#   docker compose build backend && docker compose up -d backend
+# (A harmless "unused build arg" warning appears when GL_DONOR_IMAGE is
+# set while building with the default Dockerfile.)
+
+ARG GL_DONOR_IMAGE=eclipse-temurin:21-jdk-noble
+FROM ${GL_DONOR_IMAGE} AS gldonor
+
+FROM python:3.11-slim-trixie
+
+WORKDIR /app
+
+ARG PIP_INDEX_URL=https://pypi.org/simple
+
+# Layers 1-4: identical to the main Dockerfile (pin consistency enforced
+# by tests/test_docker_pins.py against pyproject.toml).
+
+# Layer 1: OCCT kernel (~300 MB installed — the long pole)
+RUN pip install --no-cache-dir --retries 10 --timeout 120 \
+    --index-url ${PIP_INDEX_URL} \
+    cadquery-ocp-novtk==7.9.3.1.1
+
+# Layer 2: scientific stack (hard requirements of build123d 0.11.1)
+RUN pip install --no-cache-dir --retries 10 --timeout 120 \
+    --index-url ${PIP_INDEX_URL} \
+    numpy==2.4.6 scipy==1.17.1 scikit-learn==1.9.0
+
+# Layer 3: geometry kernel + mesh validation
+RUN pip install --no-cache-dir --retries 10 --timeout 120 \
+    --index-url ${PIP_INDEX_URL} \
+    build123d==0.11.1 trimesh==5.0.0
+
+# Layer 4: Phase 1 backend deps
+RUN pip install --no-cache-dir --retries 10 --timeout 120 \
+    --index-url ${PIP_INDEX_URL} \
+    fastapi==0.115.6 "uvicorn[standard]==0.32.1" sqlalchemy==2.0.36 \
+    pydantic==2.10.4 pydantic-settings==2.7.0 pyyaml==6.0.2 httpx==0.28.1 \
+    anthropic==0.42.0 openai==1.59.3 pillow==11.0.0 jsonschema==4.23.0 \
+    pytest==8.3.4
+
+# Layer 5 (Plan B): copy the 9 soname families from the donor — the same
+# file set the 9-deb layer installs, with symlinks preserved (cp -a), plus
+# X11 locale data if the donor has it. Fails LOUDLY, naming the missing
+# pattern, if the donor is incomplete (the selection command above should
+# have caught that already). The state check + ldd guard + smoke test are
+# the same guarantees as the main Dockerfile, in the same positions.
+RUN --mount=from=gldonor,source=/,target=/donor \
+    set -e; cd /donor/usr/lib/x86_64-linux-gnu \
+    && for pat in 'libGL.so.1*' 'libGLX.so.0*' 'libGLdispatch.so.0*' 'libX11.so.6*' 'libxcb.so.1*' 'libXau.so.6*' 'libXdmcp.so.6*' 'libexpat.so.1*'; do \
+        cp -a $pat /usr/lib/x86_64-linux-gnu/ 2>/dev/null || { echo "DONOR MISSING: $pat — run the donor-selection command in this file's header and pick a different GL_DONOR_IMAGE"; exit 1; }; \
+    done \
+    && { [ ! -d /donor/usr/share/X11 ] || cp -a /donor/usr/share/X11 /usr/share/X11; } \
+    && ldconfig \
+    && for s in libGL.so.1 libGLX.so.0 libGLdispatch.so.0 libX11.so.6 libxcb.so.1 libXau.so.6 libXdmcp.so.6 libexpat.so.1; do \
+        test -e /usr/lib/x86_64-linux-gnu/$s || { echo "DONOR-COPY STATE FAIL: $s not resolvable after copy"; exit 1; }; \
+    done \
+    && ls /usr/local/lib/python3.11/site-packages/cadquery_ocp_novtk.libs/*.so* > /dev/null \
+    && ! ldd /usr/lib/x86_64-linux-gnu/libGL.so.1 /usr/lib/x86_64-linux-gnu/libGLX.so.0 /usr/lib/x86_64-linux-gnu/libGLdispatch.so.0 /usr/lib/x86_64-linux-gnu/libX11.so.6 /usr/lib/x86_64-linux-gnu/libxcb.so.1 /usr/lib/x86_64-linux-gnu/libXau.so.6 /usr/lib/x86_64-linux-gnu/libXdmcp.so.6 /usr/lib/x86_64-linux-gnu/libexpat.so.1 /usr/local/lib/python3.11/site-packages/cadquery_ocp_novtk.libs/*.so* | grep 'not found'
+
+# Layer 6: build-time smoke test — identical to the main Dockerfile.
+RUN python -c "import build123d; from build123d import Box, export_step, export_gltf; s = Box(10, 10, 10); assert abs(s.volume - 1000.0) < 1e-6; export_step(s, '/tmp/smoke.step'); export_gltf(s, '/tmp/smoke.glb', binary=True); import os; assert os.path.getsize('/tmp/smoke.step') > 1000 and open('/tmp/smoke.glb','rb').read(4) == b'glTF'; print('SMOKE OK: build123d', build123d.__version__, 'import + BREP + STEP + GLB')"
+
+# Layer 7: the app itself (deps already installed above)
+COPY pyproject.toml ./
+COPY backend ./backend
+RUN pip install --no-cache-dir --no-deps -e .
+COPY . .
+
+ENV LUXURYFORM_DB=/app/data/luxuryform.db
+VOLUME /app/data
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
