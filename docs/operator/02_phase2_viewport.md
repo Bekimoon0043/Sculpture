@@ -51,6 +51,23 @@ that used to run at container start), delete it — it is no longer used:
 rmdir /s /q frontend\node_modules
 ```
 
+## Backend only — when the frontend build is broken
+
+The Phase 2 auto gate (`scripts/gate_phase2_auto.py`) needs ONLY the
+backend. If the frontend image fails to build, do not let it block the
+gate — build and run the backend alone:
+
+```bat
+docker compose build backend
+docker compose up -d backend
+docker compose exec backend python scripts/gate_phase2_auto.py
+```
+
+(One-shot equivalent: `docker compose up --build -d backend`.) The
+backend has no dependency on the frontend — compose builds and starts it
+alone. Bring the viewport up later with `docker compose up -d frontend`
+once its build is fixed.
+
 `npm ci` resumes from the partial download cache; repeat the restart until it
 finishes. If it fails five times in a row, copy the exact red error line and
 send it to the technical lead — do not edit package.json yourself.

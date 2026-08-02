@@ -398,3 +398,53 @@ URL and fetch date.
   exact minimal package set, the banned mesa/llvm packages, the
   force-depends install, layer position, and the extended smoke test.
   80/80 tests pass (2026-08-02).
+
+## ADR-015 — npm 10.8.2 zero-exit crash: honest-exit upgrade, same-RUN verification, bounded retry
+
+**Status: accepted (2026-08-02, in response to the operator's frontend build: `npm error Exit handler never called!` at 534.8s followed by `#12 DONE 534.9s` — npm crashed AND exited 0, so the layer lied about success; only the vite check caught it).**
+
+- **Tracker evidence (live npm/cli via GitHub API, 2026-08-02 — not
+  recall).** "Exit handler never called" is a catch-all crash class with
+  202 tracker hits, reproduced on node 20/22/23/24/25, alpine AND slim
+  images, npm ci AND npm install, package-independent, and still OPEN on
+  npm 11.6.2 (#8766) and 11.8.0 (#9728). Maintainers close duplicates
+  pointing at the "can arise for a number of reasons" wiki — there is no
+  fixed-in version for the crash itself. driehle's repro on `node:20-slim`
+  (#8931) matches the operator's symptom exactly, including the layer
+  marking DONE after the error.
+- **The exit-code lie IS fixed — after 10.8.2.** npm/cli#7674 ("fix:
+  always set exit code if exiting uncleanly") merged 2024-07-29; npm
+  10.8.2 released 2024-07-10. The image's bundled npm predates the fix.
+  Signal handling improved further in npm/cli#8429 (merged 2025-07-15).
+- **Decision: upgrade npm inside the image to npm@11.19.0** — the newest
+  release whose engines accept node 20 (`^20.17.0 || >=22.9.0`; npm 12.0.2
+  requires `^22.22.2 || ^24.15.0 || >=26.0.0` — incompatible with
+  node:20-bookworm-slim; live npm registry, 2026-08-02). This buys an
+  HONEST exit code, not a cure. The upgrade layer self-verifies
+  (`npm --version | grep -q '^11.19.0$'`) because it runs on the buggy
+  10.8.2 and could itself zero-exit crash.
+- **Rejected alternatives, with evidence.** Moving to node:22 — the crash
+  is reported on 22/23/24/25 images; churn without benefit. `npm install`
+  instead of `npm ci` — both crash (#8974, #8766); ci keeps lockfile
+  fidelity. The BuildKit cache mount — NOT implicated: driehle's
+  exact-symptom repro uses no mount and the bug class predates BuildKit
+  mounts by years; kept because it makes retries cheap. Isolation toggle
+  for the operator: delete the `--mount=type=cache,target=/root/.npm \`
+  line once and rebuild — documented in the Dockerfile comment.
+- **The actual guarantee is verification in the SAME RUN** (operator
+  constraint: "a layer that lies about success is worse than one that
+  fails"). The npm ci layer now: retries up to 3 times on nonzero exit
+  (each retry reuses the cached tarballs), then `test -n "$ok"` (three
+  strikes), `npm ls --depth=0` (catches a PARTIAL tree from a zero-exit
+  crash mid-reify — vite can exist while siblings are missing), and
+  `test -x node_modules/.bin/vite && vite --version` (catches the lie).
+  Both failure modes were exercised against a fake crashing npm in the
+  sandbox: retry-then-succeed passes; zero-exit lie fails the layer.
+- **Backend independence.** The frontend build failing in parallel had
+  CANCELED the backend's GL layer before it could be tested. The auto gate
+  needs only the backend; operator doc now carries the backend-only
+  commands (`docker compose build backend` / `up -d backend`), so the
+  determinism proof is never again blocked by a frontend defect.
+- **Regression-proofed:** tests lock the pinned npm upgrade + self-verify,
+  same-RUN retry + `npm ls` + vite checks, flags, layer order. 11/11
+  image-structure tests pass (2026-08-02); no runtime code changed.
