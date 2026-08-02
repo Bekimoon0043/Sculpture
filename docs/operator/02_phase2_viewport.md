@@ -21,11 +21,11 @@ Two services start:
 | backend  | the API + geometry engine          | http://localhost:8000      |
 | frontend | the 3D viewport (web page)         | http://localhost:5173      |
 
-**First start is slow.** The frontend container runs `npm ci`, which
-downloads every JavaScript package the viewport needs (about 150–250 MB).
-On a slow connection expect **5–30 minutes** the first time; after that the
-packages are cached inside the named volume of the project and it starts in
-seconds. Watch progress with:
+**The first BUILD is slow, not the start.** The viewport's JavaScript
+packages (about 31 MB of downloads, 120 MB installed) are installed while
+the image builds, not when the container starts. On a slow connection the
+first build takes several minutes for this stage; after that it is cached
+and rebuilds skip it entirely. Watch progress with:
 
 ```bat
 docker compose logs -f frontend
@@ -33,10 +33,22 @@ docker compose logs -f frontend
 
 You are done when you see `VITE ... ready` and `Local: http://localhost:5173/`.
 
-**If `npm ci` fails or stalls** (connection dropped, registry timeout):
+**If the build stops with a network error** (connection dropped, registry
+timeout): just run the same command again —
 
 ```bat
-docker compose restart frontend
+docker compose up --build -d
+```
+
+Finished stages are kept, and partially downloaded packages are kept too,
+so each retry resumes close to where it stopped.
+
+**One-time cleanup:** if an earlier version of this project left a
+`node_modules` folder inside `frontend\` on your machine (from installs
+that used to run at container start), delete it — it is no longer used:
+
+```bat
+rmdir /s /q frontend\node_modules
 ```
 
 `npm ci` resumes from the partial download cache; repeat the restart until it

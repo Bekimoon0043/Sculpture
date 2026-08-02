@@ -1,0 +1,4 @@
+# Never let host-side artifacts shadow the image's own node_modules
+# (a killed start-time npm ci once left a corrupt copy here — ADR-013).
+node_modules/
+dist/

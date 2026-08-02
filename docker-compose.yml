@@ -25,13 +25,11 @@ services:
       - ./data:/app/data
 
   frontend:
-    image: node:20-bookworm-slim
-    working_dir: /app
-    volumes:
-      - ./frontend:/app
-    # First run downloads all npm packages (see docs/operator/02_phase2_viewport.md
-    # for expected duration + the retry command on slow connections).
-    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    # node_modules is baked into the image at BUILD time (frontend/Dockerfile,
+    # ADR-013) in cache-protected layers — no npm ci at container start.
+    # No bind mount: a host-side node_modules (possibly corrupt from a killed
+    # start-time install) must never shadow the image's own.
+    build: ./frontend
     ports:
       - "5173:5173"
     environment:

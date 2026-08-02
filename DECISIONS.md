@@ -303,3 +303,40 @@ URL and fetch date.
 - **Determinism note.** The canonical STEP sha256 (`e1a59fa6…`) is
   unaffected: no Python dependency changed. The cross-environment hash
   comparison is still pending the operator's successful rebuild.
+
+## ADR-013 — Frontend node_modules at image build time, layered, with build-time vite check
+
+**Status: accepted (2026-08-02, in response to the operator's frontend failure: `npm error Exit handler never called` → `vite: not found` at container start, repeated across attempts; both containers down).**
+
+- **Root cause.** The frontend service ran `npm ci` at CONTAINER START via
+  `sh -c "npm ci && npm run dev"` with the source bind-mounted — no layer
+  caching, no protection. A killed npm (the operator's connection drops;
+  "Exit handler never called" is npm's own failure mode when its process
+  dies mid-install) left a partial node_modules with no vite binary, and
+  the container restart-looped. The same class of mistake ADR-011 fixed on
+  the Python side, still present on the JavaScript side.
+- **Memory is NOT the constraint (measured, not assumed).** A cold-cache
+  `npm ci` of the 64-package lockfile peaked at **427 MB RSS total**
+  (node 20.20.2 / npm 11.18.0, 2026-08-02) — ~10% of the operator's 4 GB
+  Docker cap. No cap increase needed. The kill was network, not OOM.
+- **frontend/Dockerfile (new).** `node:20-bookworm-slim`; npm resilience
+  config via env (`NPM_CONFIG_FETCH_RETRIES=5`, retry min/max timeouts
+  15 s/120 s, fetch timeout 600 s — keys verified against `npm config ls
+  -l`, stable since npm 8, accepted by the npm 10.x in the image); layers:
+  (1) package.json + package-lock.json, (2) `npm ci --no-audit --no-fund`
+  behind a BuildKit cache mount (`--mount=type=cache,target=/root/.npm`)
+  so tarballs survive FAILED builds and retries resume instead of
+  restarting, (3) build-time check `test -x node_modules/.bin/vite &&
+  vite --version` — an image that cannot start its dev server fails the
+  BUILD, (4) source last. CMD passes `--host 0.0.0.0` (the operator's
+  earlier host-binding concern was retracted; binding is now explicit in
+  the image).
+- **frontend/.dockerignore (new).** `node_modules/` and `dist/` — a
+  corrupt host-side node_modules (left by the old start-time installs)
+  must never be COPYed over the image's good one. Operator doc instructs
+  one-time deletion of `frontend\node_modules`.
+- **docker-compose.yml.** The frontend service now `build: ./frontend`;
+  the bind mount and the start-time `npm ci` command are gone.
+- **Regression-proofed.** `tests/test_frontend_image.py` (5 tests) locks:
+  layer order, flags, retry config, vite check position, .dockerignore,
+  and the compose service shape. 79/79 tests pass (2026-08-02).
