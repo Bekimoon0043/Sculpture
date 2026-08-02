@@ -213,3 +213,49 @@ URL and fetch date.
 - **[ADD-2] The Phase 2 gate is split:** `scripts/gate_phase2_auto.py`
   (non-interactive, exit 0/1) + `docs/operator/gate_phase2_visual.md`
   (operator eye-check including the [ADD-5] rebuild-time measurement).
+
+## ADR-011 — Layered Docker installs, explicit heavy-transitive pins, operator-selectable package index
+
+**Status: accepted (2026-08-02, in response to the operator's mirror test and two failed builds from Addis Ababa).**
+
+- **Context.** The operator's line sustains ~320 kB/s from PyPI. The Phase 2
+  dependency set (~450 MB, dominated by the ~300 MB cadquery-ocp-novtk
+  wheel) ran as ONE pip transaction; a single drop lost everything. The
+  build failed twice at ~21 minutes.
+- **Layered installs.** The Dockerfile installs dependencies in separate
+  RUN layers, heaviest and most stable first: (1) cadquery-ocp-novtk,
+  (2) numpy/scipy/scikit-learn, (3) build123d/trimesh, (4) Phase 1 deps,
+  (5) the app itself with `--no-deps`. Docker's layer cache protects
+  completed layers, so a dropped connection costs one layer, not the build.
+- **Explicit heavy-transitive pins.** cadquery-ocp-novtk, numpy, scipy and
+  scikit-learn are hard requirements of build123d 0.11.1 (live PyPI
+  metadata, 2026-08-02), previously resolved unpinned at build time. They
+  are now pinned in pyproject.toml (7.9.3.1.1 / 2.4.6 / 1.17.1 / 1.9.0),
+  so builds are reproducible across dates. `tests/test_docker_pins.py`
+  enforces that Dockerfile layer pins and pyproject pins stay identical.
+- **scipy / scikit-learn cannot be dropped.** They are upstream HARD
+  requirements, not extras and not ours (we import neither). Source-verified
+  in the build123d 0.11.1 wheel (2026-08-02): scipy is used in core
+  topology (`scipy.optimize.minimize/minimize_scalar`,
+  `scipy.spatial.ConvexHull/Voronoi` in `topology/one_d.py`,
+  `objects_curve.py`, `objects_part.py`, `operations_sketch.py`);
+  scikit-learn only in `brep_from_stl.py` (`DBSCAN`, STL→B-rep
+  reconstruction — a path we never call). Dropping them means dropping
+  build123d, which ADR-010 settled.
+- **PIP_INDEX_URL build arg** (default `https://pypi.org/simple`), exposed
+  through docker-compose.yml, lets the operator point elsewhere without
+  editing the Dockerfile.
+- **No mirror is recommended in operator docs.** The operator's live test
+  (Addis Ababa, 2026-08-02): the Tsinghua TUNA mirror returned "from
+  versions: none" for numpy==2.4.6 after 124 s, while pypi.org succeeded at
+  ~320 kB/s. A sandbox-side observation (TUNA fast from the build sandbox)
+  did NOT transfer to the operator's location — mirror reachability and
+  coverage are location- and version-specific. (Note: TUNA's own simple
+  index listed numpy 2.4.6 when re-checked from the sandbox the same day —
+  likely sync lag or a stale edge. Either way, the operator's result
+  stands: default index is pypi.org.)
+- **Open question for Phase 5: prebuilt image via registry** (pull instead
+  of build — pulls resume at layer granularity; pip transactions do not).
+  Recommendation delivered to the operator 2026-08-02; implementation
+  deferred until they rule on it. Phase 5 adds Blender, making local builds
+  still heavier.

@@ -23,6 +23,18 @@ dependencies = [
     # Phase 2 geometry kernel (ADR-010; live-doc verified 2026-08-01)
     "build123d==0.11.1",
     "trimesh==5.0.0",
+    # Heavy transitive deps of build123d 0.11.1, pinned explicitly so Docker
+    # builds are reproducible and layer-cacheable (ADR-011; live-verified
+    # 2026-08-02 against PyPI/simple indexes):
+    #   cadquery-ocp-novtk 7.9.3.1.1  (upstream range >=7.9,<8.0; ~300 MB wheel)
+    #   numpy 2.4.6                   (upstream range >=2,<3; also resolved live
+    #                                  by the operator's pip, Addis Ababa 2026-08-02)
+    #   scipy 1.17.1                  (upstream: unpinned hard requirement)
+    #   scikit-learn 1.9.0            (upstream range >=1.5,<2)
+    "cadquery-ocp-novtk==7.9.3.1.1",
+    "numpy==2.4.6",
+    "scipy==1.17.1",
+    "scikit-learn==1.9.0",
 ]
 
 [project.optional-dependencies]

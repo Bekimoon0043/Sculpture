@@ -3,7 +3,8 @@
 Plain-language guide. You do not need to know programming. Follow the steps
 in order; copy the commands exactly as written.
 
-**Time:** about 30 minutes the first time (mostly Docker downloading).
+**Time:** 30–90 minutes the first time, depending on connection speed
+(mostly Docker downloading; on a ~320 kB/s line expect the longer end).
 **Cost:** each gate run costs about **$0.01–0.05** in AI API calls.
 
 ---
@@ -65,10 +66,30 @@ In the same Command Prompt:
 docker compose up --build -d
 ```
 
-The first run downloads and builds for several minutes. When it returns to
-the prompt, check it is alive: open a browser and go to
+The first run downloads and builds for a while — on a slow connection this
+can be an hour or more (mostly one large ~300 MB download). When it returns
+to the prompt, check it is alive: open a browser and go to
 **http://localhost:8000/api/health** — you should see a page of status text
 starting with `"status": "ok"`.
+
+**If the build stops with a network error (connection dropped, timeout):**
+just run the exact same command again:
+
+```bat
+docker compose up --build -d
+```
+
+The build downloads in separate stages, largest first. Every stage that
+finished is kept — the retry only repeats the one stage that was
+interrupted, never the whole build. Repeat until it completes.
+
+**Optional — different package server:** the build downloads Python packages
+from PyPI by default. If you are told to use a specific mirror, set it once
+before building (Git Bash: `export PIP_INDEX_URL=https://address/simple`;
+Command Prompt: `set PIP_INDEX_URL=https://address/simple`), then run the
+same build command. No mirror is recommended by default — coverage varies
+by location, and a mirror that works elsewhere may not have our exact
+package versions here.
 
 ## Step 5 — Run the Phase 1 acceptance gate
 
