@@ -15,16 +15,12 @@ WORKDIR /app
 # 2026-08-02 — a mirror that works in one place failed there).
 ARG PIP_INDEX_URL=https://pypi.org/simple
 
-# Debian pool base URL for the 9 pinned system-library debs (default:
-# deb.debian.org — connection-RESET on the operator's route, 2026-08-03,
-# ADR-017). Override at build time without editing this file:
-#   docker compose build --build-arg DEB_POOL_URL=https://your.mirror/debian/pool/main/
-# The sha256 pins in Layer 5 make the mirror PURE TRANSPORT: any mirror may
-# serve the bytes, but one wrong byte — stale version, corruption,
-# tampering — fails the build loudly at sha256sum -c. The only requirement
-# on a mirror is that it carries these exact versions.
-ARG DEB_POOL_URL=http://deb.debian.org/debian/pool/main/
-
+# CACHE SAFETY (operator correction, 2026-08-03): an ARG declared ABOVE the
+# pip layers implicitly enters the cache key of every RUN below it — when
+# DEB_POOL_URL was declared here, its introduction invalidated all four pip
+# layers (~13 min re-download on the operator's line). ARGs are therefore
+# declared immediately above the layer that uses them. PIP_INDEX_URL stays:
+# the pip layers themselves use it, and its value has not changed.
 # Layered installs, heaviest and most stable first, so Docker's layer cache
 # protects completed downloads: a dropped connection now costs ONE layer,
 # not the whole build (the operator's single-transaction build failed twice
@@ -129,7 +125,7 @@ RUN pip install --no-cache-dir --retries 10 --timeout 120 \
 # verbatim log: all 8 packages configured fine). Prose parsing has now
 # misled twice in opposite directions — ignoring it shipped a missing
 # libGLX.so.0; over-reading it blocked a working set. So the layer asserts
-# STATE: dpkg-query Status == "install ok installed" for all 8 packages.
+# STATE: dpkg-query Status == "install ok installed" for all 9 packages.
 # The only retained log rule targets the one phrase that means genuinely-
 # missing — "is not installed" — allowlisting libglx-mesa0 (the deliberate,
 # justified skip above).
@@ -139,7 +135,22 @@ RUN pip install --no-cache-dir --retries 10 --timeout 120 \
 # POSITION IS DELIBERATE: after the pip layers, so system-package edits
 # never invalidate the ~400 MB of cached downloads (needed at import time,
 # not install time).
-RUN python -c "import urllib.request, pathlib, os; base=os.environ['DEB_POOL_URL'].rstrip('/')+'/'; pkgs=['libg/libglvnd/libgl1_1.7.0-1+b2_amd64.deb','libg/libglvnd/libglvnd0_1.7.0-1+b2_amd64.deb','libg/libglvnd/libglx0_1.7.0-1+b2_amd64.deb','libx/libx11/libx11-6_1.8.12-1_amd64.deb','libx/libx11/libx11-data_1.8.12-1_all.deb','libx/libxcb/libxcb1_1.17.0-2+b1_amd64.deb','libx/libxau/libxau6_1.0.11-1_amd64.deb','libx/libxdmcp/libxdmcp6_1.1.5-1_amd64.deb','libe/libexpat/libexpat1_2.7.1-2_amd64.deb']; d=pathlib.Path('/tmp/gl'); d.mkdir(); [urllib.request.urlretrieve(base+p, d/p.split('/')[-1]) for p in pkgs]; print('GL-LAYER: downloaded', len(pkgs), 'debs,', sum(f.stat().st_size for f in d.glob('*.deb')), 'bytes')" \
+#
+# Debian pool base URL for the 9 pinned debs — declared HERE, directly above
+# the only layer that uses it (cache safety note above Layer 1).
+# DEFAULT IS NOW snapshot.debian.org (ADR-017 v2, 2026-08-03): live pools
+# ROTATE — a pinned version can vanish from a mirror overnight — and one of
+# the nine pool paths below was mis-pathed (libe/libexpat/ corrected to
+# e/expat/; the expat SOURCE package is 'expat'), which is what 404'd the
+# operator's Plan A build. A dated snapshot serves these exact files
+# PERMANENTLY: all 9 verified byte-exact against the sha256 pins below at
+# archive timestamp 20260803T082142Z (full GETs, 2026-08-03). Override with
+# any mirror without editing this file:
+#   docker compose build --build-arg DEB_POOL_URL=https://your.mirror/debian/pool/main/
+# The sha256 pins make the mirror PURE TRANSPORT: one wrong byte — stale
+# version, corruption, tampering — fails the build loudly at sha256sum -c.
+ARG DEB_POOL_URL=https://snapshot.debian.org/archive/debian/20260803T082142Z/pool/main/
+RUN python -c "import urllib.request, pathlib, os; base=os.environ['DEB_POOL_URL'].rstrip('/')+'/'; pkgs=['libg/libglvnd/libgl1_1.7.0-1+b2_amd64.deb','libg/libglvnd/libglvnd0_1.7.0-1+b2_amd64.deb','libg/libglvnd/libglx0_1.7.0-1+b2_amd64.deb','libx/libx11/libx11-6_1.8.12-1_amd64.deb','libx/libx11/libx11-data_1.8.12-1_all.deb','libx/libxcb/libxcb1_1.17.0-2+b1_amd64.deb','libx/libxau/libxau6_1.0.11-1_amd64.deb','libx/libxdmcp/libxdmcp6_1.1.5-1_amd64.deb','e/expat/libexpat1_2.7.1-2_amd64.deb']; d=pathlib.Path('/tmp/gl'); d.mkdir(); [(print('GL-LAYER download:', base+p, flush=True), urllib.request.urlretrieve(base+p, d/p.split('/')[-1])) for p in pkgs]; print('GL-LAYER: downloaded', len(pkgs), 'debs,', sum(f.stat().st_size for f in d.glob('*.deb')), 'bytes')" || { echo "GL-LAYER DOWNLOAD FAILED — the failing URL is the last 'GL-LAYER download:' line above"; exit 1; } \
     && cd /tmp/gl \
     && echo "87fa2f6e5abaed4ed385fac879c8dd735af719ee2300222d901793c66e041678  libgl1_1.7.0-1+b2_amd64.deb" > sums.txt \
     && echo "887f74008166549ce9e100c906aa937e95d6e5ce1c8d86efe8c95fd953359b9c  libglvnd0_1.7.0-1+b2_amd64.deb" >> sums.txt \

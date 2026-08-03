@@ -91,10 +91,17 @@ same build command. No mirror is recommended by default — coverage varies
 by location, and a mirror that works elsewhere may not have our exact
 package versions here.
 
-**Optional — different Debian server (Plan A):** the build also downloads 9
-small system-library files (about 1.6 MB total) from deb.debian.org. If
-that server is unreachable from your network, point the build at any Debian
-mirror that has the exact pinned versions — Command Prompt:
+**The Debian files come from a permanent archive by default:** the build
+also downloads 9 small system-library files (about 1.6 MB total). By
+default they now come from a dated snapshot of the Debian archive, which
+keeps these exact versions permanently — the regular servers rotate old
+versions away, which broke this stage before. Each download prints its own
+address as it goes, so if one fails, the last printed line names the exact
+file.
+
+**Optional — different Debian server (Plan A):** if the snapshot server is
+unreachable from your network, point the build at any Debian mirror that
+has the exact pinned versions — Command Prompt:
 
 ```bat
 set DEB_POOL_URL=https://your.mirror/debian/pool/main/
@@ -104,7 +111,8 @@ docker compose build backend
 The files are checksum-pinned, so a mirror only carries bytes: if anything
 is wrong, the build stops and names the file. Nothing bad can slip through.
 If a mirror is missing a file, the build fails fast (about 10 seconds into
-that stage) and prints its name — try a different mirror.
+that stage) and the last `GL-LAYER download:` line names it — try a
+different mirror.
 
 **Optional — no Debian server at all (Plan B):** if no Debian mirror works
 but Docker Hub does, use the donor variant, which takes the same 9

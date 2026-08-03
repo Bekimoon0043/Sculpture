@@ -660,3 +660,57 @@ GL_DONOR_IMAGE passthrough; the main Dockerfile is unchanged in behavior
 when the ARGs are unset. Pip-layer pin consistency tests now cover both
 Dockerfiles; structure tests lock the donor stage, copy set, loud
 failure, guards, and layer order. 13/13 image-structure tests pass.
+
+---
+
+## ADR-017 v2 — cache regression fix + Plan A 404 root cause + permanent snapshot default (2026-08-03)
+
+**Operator report:** Plan A build failed with HTTP 404 on the DEFAULT pool
+URL, and the four pip layers re-downloaded (~13 min of a 738 s build)
+despite being cached before commit bb0ee53. Two defects, both mine.
+
+**Defect 1 — cache invalidation (operator's diagnosis, correct).** Docker's
+cache key for every RUN implicitly includes all ARG variables in scope
+(RUNs see them as environment). Declaring `ARG DEB_POOL_URL` above the pip
+layers put a new in-scope variable over all four, invalidating ~400 MB of
+cached downloads. Fix: DEB_POOL_URL is now declared immediately above Layer
+5 (the only layer that uses it), below the pip layers. PIP_INDEX_URL stays
+above the pip layers — the pip layers themselves use it and its value is
+unchanged, so it enters their cache key identically to the cached build.
+Structure test now asserts: DEB_POOL_URL index > last pip layer index, <
+GL layer index; PIP_INDEX_URL index < first pip layer index.
+
+**Defect 2 — the 404 was NOT version rotation. It was a wrong pool path,
+mine.** Live probe (2026-08-03): 8/9 files exist on deb.debian.org right
+now; the 404 was `libe/libexpat/libexpat1_2.7.1-2_amd64.deb`. The expat
+SOURCE package is `expat`, so the pool directory is `e/expat/`, not
+`libe/libexpat/`. Corrected path serves 200 on deb.debian.org, on the
+snapshot, and on TUNA (0.3 s probe) — the earlier "TUNA pool skew" finding
+is retracted: it was the same mis-path. **Method correction recorded:
+pool paths are derived from the source package name and verified by live
+probe, never assumed from the binary package name.** The 8 glvnd/X11 paths
+probe 200 as written.
+
+**Rotation hardening — default is now a dated snapshot.** Live pools rotate
+superseded versions; this stage has now been bitten twice in two days (once
+by path, once by genuine rotation risk on mirrors). snapshot.debian.org
+keeps every historical version permanently. New default
+`DEB_POOL_URL=https://snapshot.debian.org/archive/debian/20260803T082142Z/pool/main/`
+— **all 9 files at that timestamp verified byte-exact (full GETs) against
+the existing sha256 pins; pins unchanged.** Compose default updated to
+match. Any mirror remains usable via the ARG (pure transport under the
+pins).
+
+**Failing-URL print (operator requirement).** The download one-liner now
+prints `GL-LAYER download: <full URL>` (flushed) immediately before each
+fetch; on failure the shell appends `GL-LAYER DOWNLOAD FAILED — the failing
+URL is the last 'GL-LAYER download:' line above` and exits 1. Verified both
+directions against a local file:// pool tree: success path downloads 9
+debs / 1,635,412 bytes with every URL printed and `sha256sum -c` 9/9 OK;
+missing-file path exits 1 with the failing URL as the last download line.
+Bonus on the operator's line: per-file progress instead of a silent stage.
+
+Plan B (Dockerfile.donor) is untouched by v2 — the operator is building it
+in parallel; its ARG GL_DONOR_IMAGE sits before the first FROM where it is
+not in scope for final-stage RUNs, so it has no cache effect on the pip
+layers.

@@ -140,13 +140,41 @@ def test_system_gl_libraries_minimal_set_and_positioned():
     # no apt index fetch anywhere in the image build (ADR-016: the 10m26s
     # full-index fetch the operator measured is eliminated)
     assert "apt-get" not in code, "apt-get must not appear — debs come from the pool with sha256 pins"
-    # Plan A (ADR-017): pool base URL is a build ARG with the deb.debian.org
-    # default; the download one-liner must read it from the environment —
-    # sha256 pins make any mirror pure transport
-    assert "ARG DEB_POOL_URL=http://deb.debian.org/debian/pool/main/" in code
+    # Plan A (ADR-017 v2): pool base URL is a build ARG. DEFAULT is a DATED
+    # snapshot.debian.org archive (live pools rotate; the snapshot serves
+    # these exact versions permanently — all 9 verified byte-exact against
+    # the pins below at 20260803T082142Z). The download one-liner must read
+    # it from the environment — sha256 pins make any mirror pure transport.
+    snap_arg = ("ARG DEB_POOL_URL=https://snapshot.debian.org/archive/debian/"
+                "20260803T082142Z/pool/main/")
+    assert snap_arg in code
     assert "os.environ['DEB_POOL_URL']" in gl_line, (
         "pool URL must come from the DEB_POOL_URL build ARG (ADR-017)"
     )
+    # CACHE SAFETY (operator correction 2026-08-03): an ARG in scope enters
+    # the cache key of every RUN below it — DEB_POOL_URL above the pip
+    # layers invalidated all four (~13 min re-download). It must be declared
+    # AFTER the last pip layer and BEFORE the GL layer; PIP_INDEX_URL (used
+    # BY the pip layers, value unchanged) stays above them.
+    assert code.index("ARG DEB_POOL_URL") > code.index("fastapi==0.115.6"), (
+        "DEB_POOL_URL must be declared below the pip layers (cache safety)"
+    )
+    assert code.index("ARG DEB_POOL_URL") < code.index(
+        'RUN python -c "import urllib.request'
+    ), "DEB_POOL_URL must be declared before the layer that uses it"
+    assert code.index("ARG PIP_INDEX_URL") < code.index("cadquery-ocp-novtk=="), (
+        "PIP_INDEX_URL is used by the pip layers — it must stay above them"
+    )
+    # expat pool path: source package is 'expat' -> e/expat/, NOT
+    # libe/libexpat/ (the mis-path is what 404'd the operator's Plan A build)
+    assert "e/expat/libexpat1_2.7.1-2_amd64.deb" in gl_line
+    assert "libe/libexpat" not in code, (
+        "wrong pool directory — source package is 'expat' (e/expat/)"
+    )
+    # the layer must PRINT every URL before downloading it, so a failure
+    # names the failing URL before the build dies
+    assert "GL-LAYER download:" in gl_line and "flush=True" in gl_line
+    assert "GL-LAYER DOWNLOAD FAILED" in gl_line
     # integrity: every deb pinned by sha256 (9 hashes), verified before install
     assert "sha256sum -c sums.txt" in gl_line
     hashes = re.findall(r"\b[0-9a-f]{64}\b", gl_line)
@@ -156,7 +184,7 @@ def test_system_gl_libraries_minimal_set_and_positioned():
     # positived on a configuration-ORDER artifact (dpkg configures ./*.deb
     # alphabetically — libgl1 before libglx0 — so a bare "depends on" with
     # no "however: Package X is not installed" is an ordering note). The
-    # layer must assert dpkg-query Status for all 8 packages; the only
+    # layer must assert dpkg-query Status for all 9 packages; the only
     # retained prose rule targets "is not installed" (genuinely missing),
     # allowlisting the one deliberate skip (libglx-mesa0).
     assert "dpkg --force-depends" in gl_line
@@ -273,5 +301,8 @@ def test_compose_backend_dockerfile_switch_and_args():
         "backend build must default to Dockerfile and allow the donor "
         "variant via BACKEND_DOCKERFILE"
     )
-    assert "DEB_POOL_URL: ${DEB_POOL_URL:-http://deb.debian.org/debian/pool/main/}" in code
+    assert ("DEB_POOL_URL: ${DEB_POOL_URL:-https://snapshot.debian.org/"
+            "archive/debian/20260803T082142Z/pool/main/}") in code, (
+        "compose default must match the Dockerfile's dated-snapshot default"
+    )
     assert "GL_DONOR_IMAGE: ${GL_DONOR_IMAGE:-" in code

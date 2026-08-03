@@ -25,9 +25,11 @@ services:
         #   docker compose up --build -d
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
         # Debian pool base URL for the 9 pinned system-library debs
-        # (ADR-017; sha256-pinned, so the mirror is pure transport):
+        # (ADR-017; sha256-pinned, so the mirror is pure transport).
+        # Default: a DATED snapshot.debian.org archive — live pools rotate,
+        # the snapshot serves these exact versions permanently:
         #   set DEB_POOL_URL=https://your.mirror/debian/pool/main/
-        DEB_POOL_URL: ${DEB_POOL_URL:-http://deb.debian.org/debian/pool/main/}
+        DEB_POOL_URL: ${DEB_POOL_URL:-https://snapshot.debian.org/archive/debian/20260803T082142Z/pool/main/}
         # Plan B donor image (only used by Dockerfile.donor):
         GL_DONOR_IMAGE: ${GL_DONOR_IMAGE:-eclipse-temurin:21-jdk-noble}
     ports:
