@@ -1,0 +1,121 @@
+# PLAN B v2 — HYBRID backend image (ADR-018, 2026-08-03). The operator's
+# best route: NO deb.debian.org contact AND no third-party donor distro.
+#
+# Two sources, both proven:
+#   1. FIVE libraries (libX11/libxcb/libXau/libXdmcp/libexpat) copied from
+#      python:3.11-trixie — the SAME Debian trixie release and the SAME
+#      python image line as the backend base below, so there is ZERO
+#      cross-distro glibc mixing (the weakness of the generic donor
+#      variant). Operator donor check, verbatim (2026-08-03):
+#        PRESENT: libX11.so.6, libxcb.so.1, libXau.so.6, libXdmcp.so.6,
+#                 libexpat.so.1
+#        MISSING: libGL.so.1, libGLX.so.0, libGLdispatch.so.0
+#                 (no libGL* files at all)
+#      The donor is pinned BY DIGEST (Amendment 1), pulled by the operator:
+#      python:3.11-trixie@sha256:c7220863…4b95fe2 (full pin below).
+#   2. The GL trio (libgl1/libglvnd0/libglx0) as LOCAL debs in ./debs/
+#      (build context) — sha256-verified against the SAME pins as the main
+#      Dockerfile's Layer 5. Proven, not trusted because they came from
+#      the operator's disk. Fetch commands (for another machine):
+#      docs/operator/01_starting_the_platform.md, Plan B section.
+#
+# deb.debian.org is never contacted. Docker Hub supplies the donor pull;
+# ./debs/ supplies the rest (176 KB total).
+#
+# ARG DISCIPLINE (operator rule, 2026-08-03): no ARG above the pip layers
+# except PIP_INDEX_URL, which the pip layers themselves use and whose value
+# has not changed — anything else in scope there silently re-keys every
+# cached pip RUN. The donor needs no ARG at all: it is pinned by digest in
+# the FROM below.
+#
+# Usage:
+#   set BACKEND_DOCKERFILE=Dockerfile.hybrid
+#   docker compose build backend && docker compose up -d backend
+# (Return to the default build:  set BACKEND_DOCKERFILE=   — empty.)
+
+FROM python:3.11-trixie@sha256:c7220863385ee39fb6d822da81f4469d0cd33ff893d92ce94105e5c3f4b95fe2 AS gldonor
+
+FROM python:3.11-slim-trixie
+
+WORKDIR /app
+
+ARG PIP_INDEX_URL=https://pypi.org/simple
+
+# Layers 1-4: identical to the main Dockerfile (pin consistency enforced
+# by tests/test_docker_pins.py against pyproject.toml).
+
+# Layer 1: OCCT kernel (~300 MB wheel — the long pole)
+RUN pip install --no-cache-dir --retries 10 --timeout 120 \
+    --index-url ${PIP_INDEX_URL} \
+    cadquery-ocp-novtk==7.9.3.1.1
+
+# Layer 2: scientific stack (hard requirements of build123d 0.11.1, ~100 MB)
+RUN pip install --no-cache-dir --retries 10 --timeout 120 \
+    --index-url ${PIP_INDEX_URL} \
+    numpy==2.4.6 scipy==1.17.1 scikit-learn==1.9.0
+
+# Layer 3: geometry kernel + mesh validation
+RUN pip install --no-cache-dir --retries 10 --timeout 120 \
+    --index-url ${PIP_INDEX_URL} \
+    build123d==0.11.1 trimesh==5.0.0
+
+# Layer 4: Phase 1 backend deps
+RUN pip install --no-cache-dir --retries 10 --timeout 120 \
+    --index-url ${PIP_INDEX_URL} \
+    fastapi==0.115.6 "uvicorn[standard]==0.32.1" sqlalchemy==2.0.36 \
+    pydantic==2.10.4 pydantic-settings==2.7.0 pyyaml==6.0.2 httpx==0.28.1 \
+    anthropic==0.42.0 openai==1.59.3 pillow==11.0.0 jsonschema==4.23.0 \
+    pytest==8.3.4
+
+# Local GL debs (build context). Positioned AFTER the pip layers for cache
+# safety. If ./debs/ does not exist this COPY fails here; if it exists but
+# is incomplete, the check inside the next layer names the exact missing
+# files and where to get them.
+COPY debs/ /tmp/gl-debs/
+
+# Layer 5 (hybrid): copy the 5 soname families from the pinned trixie donor
+# (cp -a preserves the soname symlinks), install the GL trio from ./debs/
+# with sha256 proof, then the SAME guarantees as every backend variant:
+# state checks, ldd guard, and the byte-identical smoke test next layer.
+RUN --mount=from=gldonor,source=/,target=/donor \
+    set -e; cd /donor/usr/lib/x86_64-linux-gnu \
+    && for pat in 'libX11.so.6*' 'libxcb.so.1*' 'libXau.so.6*' 'libXdmcp.so.6*' 'libexpat.so.1*'; do \
+        cp -a $pat /usr/lib/x86_64-linux-gnu/ 2>/dev/null || { echo "DONOR MISSING: $pat — the pinned donor no longer carries it (digest mismatch?); re-run the donor-selection command in Dockerfile.donor's header"; exit 1; }; \
+    done \
+    && { [ ! -d /donor/usr/share/X11 ] || cp -a /donor/usr/share/X11 /usr/share/X11; } \
+    && cd /tmp/gl-debs \
+    && for f in libgl1_1.7.0-1+b2_amd64.deb libglvnd0_1.7.0-1+b2_amd64.deb libglx0_1.7.0-1+b2_amd64.deb; do \
+        test -f "$f" || { echo "GL DEBS MISSING: $f — place all three in ./debs/ next to docker-compose.yml: libgl1_1.7.0-1+b2_amd64.deb libglvnd0_1.7.0-1+b2_amd64.deb libglx0_1.7.0-1+b2_amd64.deb (fetch commands: docs/operator/01_starting_the_platform.md, Plan B section)"; exit 1; }; \
+    done \
+    && echo "87fa2f6e5abaed4ed385fac879c8dd735af719ee2300222d901793c66e041678  libgl1_1.7.0-1+b2_amd64.deb" > sums.txt \
+    && echo "887f74008166549ce9e100c906aa937e95d6e5ce1c8d86efe8c95fd953359b9c  libglvnd0_1.7.0-1+b2_amd64.deb" >> sums.txt \
+    && echo "2721fdca0fe3bd963cb39482eabc253af52b88f4a7f6dbb69e475549daf5af3b  libglx0_1.7.0-1+b2_amd64.deb" >> sums.txt \
+    && sha256sum -c sums.txt \
+    && (dpkg --force-depends -i ./libgl1_1.7.0-1+b2_amd64.deb ./libglvnd0_1.7.0-1+b2_amd64.deb ./libglx0_1.7.0-1+b2_amd64.deb > dpkg.log 2>&1; rc=$?; cat dpkg.log; test $rc -eq 0) \
+    && ! grep 'is not installed' dpkg.log | grep -v 'libglx-mesa0' \
+    && for p in libgl1 libglvnd0 libglx0; do test "$(dpkg-query -W -f='${Status}' $p)" = "install ok installed" || { echo "GL-LAYER STATE FAIL: $p is not installed-ok"; exit 1; }; done \
+    && ldconfig \
+    && for s in libGL.so.1 libGLX.so.0 libGLdispatch.so.0 libX11.so.6 libxcb.so.1 libXau.so.6 libXdmcp.so.6 libexpat.so.1; do \
+        test -e /usr/lib/x86_64-linux-gnu/$s || { echo "HYBRID STATE FAIL: $s not resolvable after copy+install"; exit 1; }; \
+    done \
+    && ls /usr/local/lib/python3.11/site-packages/cadquery_ocp_novtk.libs/*.so* > /dev/null \
+    && ! ldd /usr/lib/x86_64-linux-gnu/libGL.so.1 /usr/lib/x86_64-linux-gnu/libGLX.so.0 /usr/lib/x86_64-linux-gnu/libGLdispatch.so.0 /usr/lib/x86_64-linux-gnu/libX11.so.6 /usr/lib/x86_64-linux-gnu/libxcb.so.1 /usr/lib/x86_64-linux-gnu/libXau.so.6 /usr/lib/x86_64-linux-gnu/libXdmcp.so.6 /usr/lib/x86_64-linux-gnu/libexpat.so.1 /usr/local/lib/python3.11/site-packages/cadquery_ocp_novtk.libs/*.so* | grep 'not found' \
+    && cd / && rm -rf /tmp/gl-debs
+
+# Layer 6: build-time smoke test — byte-identical to every backend variant.
+# import the kernel, build a trivial solid, exercise BOTH export paths
+# (STEP + GLB) HERE: a backend that cannot import its own kernel fails the
+# BUILD now, not at runtime in a restart loop.
+RUN python -c "import build123d; from build123d import Box, export_step, export_gltf; s = Box(10, 10, 10); assert abs(s.volume - 1000.0) < 1e-6; export_step(s, '/tmp/smoke.step'); export_gltf(s, '/tmp/smoke.glb', binary=True); import os; assert os.path.getsize('/tmp/smoke.step') > 1000 and open('/tmp/smoke.glb','rb').read(4) == b'glTF'; print('SMOKE OK: build123d', build123d.__version__, 'import + BREP + STEP + GLB')"
+
+# Layer 7: the app itself (deps already installed above)
+COPY pyproject.toml ./
+COPY backend ./backend
+RUN pip install --no-cache-dir --no-deps -e .
+COPY . .
+
+ENV LUXURYFORM_DB=/app/data/luxuryform.db
+VOLUME /app/data
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

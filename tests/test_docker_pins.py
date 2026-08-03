@@ -46,7 +46,7 @@ def dockerfile_pins(name: str = "Dockerfile") -> dict[str, str]:
 
 def test_dockerfile_pins_match_pyproject():
     pp = pyproject_pins()
-    for dockerfile in ("Dockerfile", "Dockerfile.donor"):
+    for dockerfile in ("Dockerfile", "Dockerfile.donor", "Dockerfile.hybrid"):
         df = dockerfile_pins(dockerfile)
         missing_in_docker = {k: v for k, v in pp.items() if k not in df}
         missing_in_pyproject = {k: v for k, v in df.items() if k not in pp}
@@ -70,7 +70,7 @@ def test_dockerfile_pins_match_pyproject():
 def test_heavy_transitives_pinned_first_layers():
     """cadquery-ocp-novtk must be installed in an earlier RUN layer than
     build123d, or the layer-cache protection is pointless (ADR-011)."""
-    for dockerfile in ("Dockerfile", "Dockerfile.donor"):
+    for dockerfile in ("Dockerfile", "Dockerfile.donor", "Dockerfile.hybrid"):
         text = (ROOT / dockerfile).read_text(encoding="utf-8")
         ocp_pos = text.index("cadquery-ocp-novtk==")
         b123d_pos = text.index("build123d==")
@@ -289,6 +289,82 @@ def test_donor_dockerfile_structure():
     assert code.index("build123d==") < code.index("RUN --mount=from=gldonor")
     assert code.index("RUN --mount=from=gldonor") < code.index(smoke)
     assert code.index(smoke) < code.index("COPY pyproject.toml")
+
+
+def test_hybrid_dockerfile_structure():
+    """Plan B v2 (ADR-018): Dockerfile.hybrid — the operator's best route.
+    Five libraries (X11 family + expat) copied from python:3.11-trixie
+    PINNED BY DIGEST (same trixie release, same python line — zero
+    cross-distro glibc mixing); the GL trio comes from LOCAL ./debs/
+    sha256-verified against the same pins as the main Dockerfile. Same
+    guarantees as every variant: state checks, ldd guard, identical smoke.
+    No ARG above the pip layers except PIP_INDEX_URL (used by them)."""
+    text = (ROOT / "Dockerfile.hybrid").read_text(encoding="utf-8")
+    code = _no_comments(text)
+    joined = re.sub(r"\\\n", " ", code)
+    # donor pinned BY DIGEST (Amendment 1) — exact operator-pulled pin
+    assert ("FROM python:3.11-trixie@sha256:c7220863385ee39fb6d822da81f4469"
+            "d0cd33ff893d92ce94105e5c3f4b95fe2 AS gldonor") in code
+    assert "FROM python:3.11-slim-trixie" in code, (
+        "final stage base must stay suite-pinned (ADR-014)"
+    )
+    # ARG discipline: the ONLY ARG before the first pip layer is
+    # PIP_INDEX_URL (used by the pip layers); nothing else may re-key them
+    head = code[:code.index("cadquery-ocp-novtk==")]
+    args_above = [l for l in head.splitlines() if l.startswith("ARG ")]
+    assert args_above == ["ARG PIP_INDEX_URL=https://pypi.org/simple"], (
+        f"no ARG but PIP_INDEX_URL may sit above the pip layers: {args_above}"
+    )
+    # local debs: COPY from context, AFTER the pip layers (cache safety)
+    assert "COPY debs/ /tmp/gl-debs/" in code
+    assert code.index("build123d==") < code.index("COPY debs/ /tmp/gl-debs/")
+    hyb_line = next(
+        (l for l in joined.splitlines() if l.startswith("RUN --mount=from=gldonor")),
+        None,
+    )
+    assert hyb_line, "hybrid layer must mount the pinned donor stage"
+    # five donor soname families, symlinks preserved, loud on incomplete donor
+    for pat in ("libX11.so.6*", "libxcb.so.1*", "libXau.so.6*",
+                "libXdmcp.so.6*", "libexpat.so.1*"):
+        assert pat in hyb_line, f"donor copy must include {pat}"
+    assert "cp -a" in hyb_line and "DONOR MISSING" in hyb_line
+    # GL trio: presence check fails loudly naming all three files...
+    for f in ("libgl1_1.7.0-1+b2_amd64.deb", "libglvnd0_1.7.0-1+b2_amd64.deb",
+              "libglx0_1.7.0-1+b2_amd64.deb"):
+        assert f in hyb_line, f"hybrid layer must name {f}"
+    assert "GL DEBS MISSING" in hyb_line and "exit 1" in hyb_line
+    # ...then sha256 proof against the SAME pins as the main Dockerfile
+    main_text = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    trio_hashes = re.findall(
+        r'echo "([0-9a-f]{64})\s+(?:libgl1|libglvnd0|libglx0)_1\.7\.0-1\+b2_amd64\.deb"',
+        main_text,
+    )
+    assert len(trio_hashes) == 3, "main Dockerfile must pin the GL trio"
+    for h in trio_hashes:
+        assert h in hyb_line, f"hybrid must reuse the main GL pin {h[:12]}…"
+    assert "sha256sum -c sums.txt" in hyb_line
+    # same guarantees: dpkg state loop for the trio, per-soname state check,
+    # ldconfig, ldd over all 8 sonames + wheel libs
+    assert "for p in libgl1 libglvnd0 libglx0;" in hyb_line
+    assert "dpkg-query -W -f='${Status}' $p" in hyb_line
+    assert '"install ok installed"' in hyb_line
+    assert "ldconfig" in hyb_line
+    for s in ("libGL.so.1", "libGLX.so.0", "libGLdispatch.so.0", "libX11.so.6",
+              "libxcb.so.1", "libXau.so.6", "libXdmcp.so.6", "libexpat.so.1"):
+        assert f"/usr/lib/x86_64-linux-gnu/{s}" in hyb_line, (
+            f"state check/ldd must cover {s}"
+        )
+    assert "ldd" in hyb_line and "'not found'" in hyb_line
+    assert "cadquery_ocp_novtk.libs/*.so*" in hyb_line
+    # identical smoke test; layer order pip -> debs COPY -> hybrid -> smoke
+    smoke = 'RUN python -c "import build123d; from build123d import Box, export_step, export_gltf'
+    assert smoke in code
+    assert code.index("RUN --mount=from=gldonor") < code.index(smoke)
+    assert code.index(smoke) < code.index("COPY pyproject.toml")
+    # the local debs must never be committed (they live on the operator's
+    # machine; fetch commands are documented in docs/operator/)
+    gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert "debs/" in gitignore.split(), "debs/ must be gitignored"
 
 
 def test_compose_backend_dockerfile_switch_and_args():

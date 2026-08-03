@@ -12,11 +12,15 @@ services:
   backend:
     build:
       context: .
-      # Plan B (ADR-017): if deb.debian.org AND all Debian mirrors are
-      # unreachable but Docker Hub works, build the donor variant instead:
-      #   set BACKEND_DOCKERFILE=Dockerfile.donor   (cmd)
-      #   set GL_DONOR_IMAGE=eclipse-temurin:21-jdk-noble   (or your donor)
+      # Plan B (ADR-017/018): if deb.debian.org AND all Debian mirrors are
+      # unreachable but Docker Hub works, build a donor variant instead.
+      # HYBRID (recommended — pinned python:3.11-trixie donor + 3 local
+      # GL debs in ./debs/; no third-party distro):
+      #   set BACKEND_DOCKERFILE=Dockerfile.hybrid   (cmd)
       #   docker compose build backend && docker compose up -d backend
+      # GENERIC (fallback — any single donor image):
+      #   set BACKEND_DOCKERFILE=Dockerfile.donor
+      #   set GL_DONOR_IMAGE=eclipse-temurin:21-jdk-noble   (or your donor)
       dockerfile: ${BACKEND_DOCKERFILE:-Dockerfile}
       args:
         # Package index for pip inside the image build (default PyPI).

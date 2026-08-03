@@ -114,10 +114,45 @@ If a mirror is missing a file, the build fails fast (about 10 seconds into
 that stage) and the last `GL-LAYER download:` line names it — try a
 different mirror.
 
-**Optional — no Debian server at all (Plan B):** if no Debian mirror works
-but Docker Hub does, use the donor variant, which takes the same 9
-libraries from another Docker image instead. First pick a donor image with
-the one-line check printed at the top of `Dockerfile.donor`, then:
+**Optional — no Debian server at all (Plan B, hybrid — recommended):** if
+no Debian server works but Docker Hub does, use the hybrid variant. It
+takes 5 of the 9 libraries from the full `python:3.11-trixie` image (the
+same Debian release as the backend, pinned to an exact digest) and the 3
+GL libraries from files you keep in a `debs` folder. You need those 3
+files in a folder called `debs` next to `docker-compose.yml`:
+
+- `libgl1_1.7.0-1+b2_amd64.deb` (89,504 bytes)
+- `libglvnd0_1.7.0-1+b2_amd64.deb` (51,960 bytes)
+- `libglx0_1.7.0-1+b2_amd64.deb` (34,892 bytes)
+
+If you ever need to fetch them again (another machine, lost folder), from
+the permanent archive — Command Prompt:
+
+```bat
+mkdir debs
+curl -L -o debs\libgl1_1.7.0-1+b2_amd64.deb https://snapshot.debian.org/archive/debian/20260803T082142Z/pool/main/libg/libglvnd/libgl1_1.7.0-1+b2_amd64.deb
+curl -L -o debs\libglvnd0_1.7.0-1+b2_amd64.deb https://snapshot.debian.org/archive/debian/20260803T082142Z/pool/main/libg/libglvnd/libglvnd0_1.7.0-1+b2_amd64.deb
+curl -L -o debs\libglx0_1.7.0-1+b2_amd64.deb https://snapshot.debian.org/archive/debian/20260803T082142Z/pool/main/libg/libglvnd/libglx0_1.7.0-1+b2_amd64.deb
+```
+
+Then build:
+
+```bat
+set BACKEND_DOCKERFILE=Dockerfile.hybrid
+docker compose build backend
+docker compose up -d backend
+```
+
+The three files are checksum-verified inside the build against the same
+pins as every other variant — a wrong or corrupted file fails the build
+loudly, it is never trusted because it came from your disk. If the `debs`
+folder is missing or incomplete, the build stops and names the exact
+files to place there. The `debs` folder is never committed to git.
+
+**Optional — generic donor variant (Plan B fallback):** if the hybrid's
+donor image ever fails its check, `Dockerfile.donor` takes all 9 libraries
+from any single donor image. Pick one with the one-line check printed at
+the top of `Dockerfile.donor`, then:
 
 ```bat
 set BACKEND_DOCKERFILE=Dockerfile.donor

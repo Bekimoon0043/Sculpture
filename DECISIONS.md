@@ -714,3 +714,55 @@ Plan B (Dockerfile.donor) is untouched by v2 — the operator is building it
 in parallel; its ARG GL_DONOR_IMAGE sits before the first FROM where it is
 not in scope for final-stage RUNs, so it has no cache effect on the pip
 layers.
+
+---
+
+## ADR-018 — HYBRID Plan B: pinned python:3.11-trixie donor + local GL debs (2026-08-03)
+
+**Operator donor check, verbatim, against python:3.11-trixie:**
+PRESENT: libX11.so.6, libxcb.so.1, libXau.so.6, libXdmcp.so.6,
+libexpat.so.1 — MISSING: libGL.so.1, libGLX.so.0, libGLdispatch.so.0 (no
+libGL* files at all). The operator already holds the three GL debs from an
+earlier partial fetch (sizes match our verified bytes:
+89,504 / 51,960 / 34,892).
+
+**Decision: new `Dockerfile.hybrid`, the recommended Plan B.** Two proven
+sources, zero deb.debian.org contact:
+
+1. Five libraries (X11 family + expat) copied from
+   `python:3.11-trixie@sha256:c7220863385ee39fb6d822da81f4469d0cd33ff893d92ce94105e5c3f4b95fe2`
+   (operator-pulled, pinned by digest — the integrity anchor for this
+   source, recorded here per the ADR-017 rule). **This is the strongest
+   donor available: the SAME Debian trixie release AND the SAME python
+   image line as the backend base — zero cross-distro glibc mixing, the
+   one weakness of the generic donor variant (Ubuntu-based donors).**
+   Copy via BuildKit mount + `cp -a` (soname symlinks preserved), X11
+   locale data included when present.
+2. The GL trio as LOCAL debs in `./debs/` (build context), sha256-verified
+   in-layer against the SAME three pins as the main Dockerfile's Layer 5 —
+   proven, not trusted because they came from the operator's disk. Missing
+   folder → Docker's COPY error; incomplete folder → `GL DEBS MISSING:
+   <file>` naming all three and pointing at the documented fetch commands
+   (snapshot URLs in docs/operator/01_starting_the_platform.md). `debs/`
+   added to `.gitignore` (binaries live on the operator's machine, never
+   in git). `.dockerignore` deliberately does NOT exclude it — the build
+   needs it in context.
+
+**Guarantees unchanged:** dpkg state loop (trio), per-soname `test -e`
+state check (all 8), ldconfig, ldd guard (all 8 sonames full-path + every
+wheel lib), byte-identical Layer 6 smoke test, same layer order. Verified
+in sandbox both directions: complete donor + real debs → LAYER-PASS with
+symlinks preserved and X11 data copied; missing deb → GL DEBS MISSING
+naming the file; corrupted deb (one appended byte) → sha256 FAILED;
+missing donor lib → DONOR MISSING: libexpat.so.1*. All RUN lines bash -n
+clean. No ARG sits above the pip layers except PIP_INDEX_URL (used by the
+pip layers themselves, value unchanged) — the donor needs no ARG at all
+because it is pinned by digest in the FROM. Structure test
+`test_hybrid_dockerfile_structure` locks all of it; pin-consistency and
+heavy-layer tests now cover all three Dockerfiles. 14/14 image-structure
+tests.
+
+Dockerfile.donor (generic, ARG-selectable donor) is kept as the fallback
+for the case the pinned hybrid donor ever fails its check; docs present
+hybrid as recommended and donor as fallback. Compose needs no functional
+change (BACKEND_DOCKERFILE passthrough); comments updated.
