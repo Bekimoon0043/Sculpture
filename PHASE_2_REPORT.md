@@ -149,9 +149,46 @@ dist/assets/index-CSsaUwrN.js   817.15 kB │ gzip: 217.90 kB
 
 ### Viewport rebuild measurement [ADD-5]
 
-viewport rebuild on operator hardware: ___ ms (operator fills from viewport
-readout — "Last rebuild: N ms" in the top-left corner of the viewport;
-instructions in docs/operator/gate_phase2_visual.md §3)
+viewport rebuild on operator hardware: **1400 ms** (server build: **1170 ms**)
+— operator machine (i7-8550U, 12 GB RAM, Docker 6 GB cap), measured from the
+viewport readout on 2026-08-04 per docs/operator/gate_phase2_visual.md §3,
+during the tiers 3 → 4 rebuild. For comparison, the build sandbox's
+in-process server builds (gate §6, no browser): 622.8 / 816.7 ms.
+
+## Gate results on operator hardware (2026-08-04) — PHASE 2 CLOSED
+
+Operator report, verbatim key points:
+
+- **PHASE 2 VISUAL GATE: PASS.** Cascade renders centred and framed on
+  load, no zooming needed (the ADR-020 bounding-box framing — the defect
+  that made the first visual attempt render nothing: OCCT writes GLB in
+  metres, the camera assumed millimetres).
+- tiers 3 → 4: fourth tier appears; volume 272,335,535 → 319,324,176 mm3;
+  rebuild 1400 ms (server 1170 ms).
+- basin_diameter_mm below threshold: correctly REFUSED with the real
+  required number in the error.
+- Validation panel PASS, watertight true.
+- The automatic gate (`scripts/gate_phase2_auto.py`) passed on the
+  operator machine first (the visual checklist requires it as step 0).
+
+**Two honest notes:**
+
+1. *tiers=4 volume differs between machines by design of the session, not
+   by defect.* The sandbox gate's tiers=4 build measured 340,426,916.278
+   mm3 (§6 above, all other parameters at defaults); the operator's
+   tiers=4 build measured 319,324,176 mm3 after a session of parameter
+   experimentation. Both builds printed CHANGED spec_hash/STEP-hash pairs,
+   which is what §6 asserts. Reconciliation is one command away if ever
+   wanted: rebuild tiers=4 with every other parameter at default and the
+   volumes must match the sandbox figure exactly.
+2. *Determinism proof status (Amendment 1).* The auto gate proves
+   byte-identical STEP across two processes on the SAME machine — now
+   demonstrated on both the build sandbox and the operator machine (both
+   gates PASS). Cross-MACHINE byte-equality (operator hash == sandbox
+   canonical e1a59fa6fd8ef05074373b9098feb62f10e186f9875c38679304e45f10ee6e13)
+   is established by comparing the sha256 line of the operator's gate §2
+   output against the canonical — requested from the operator at close;
+   the line is one paste away and will be recorded here.
 
 ## Deviations from spec (with justification)
 

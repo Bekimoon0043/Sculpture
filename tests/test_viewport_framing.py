@@ -79,3 +79,22 @@ def test_visual_gate_requires_framed_on_load():
     flat = re.sub(r"\s+", " ", gate)
     assert "framed to fill the view ON ITS OWN" in flat
     assert "you did not zoom, pan, or hunt for it" in flat
+
+
+def test_int_fields_normalize_leading_zero_drift():
+    """Operator cosmetic report (2026-08-04): the tiers field displayed
+    "04" after stepping. Mechanism: Number("04") === 4 equals the current
+    state, React's same-value bailout skips the re-render, and the DOM
+    keeps the stale string. The fix must normalize the DOM string for
+    INTEGER fields — and must NOT touch float fields, where rewriting
+    "0." to "0" would eat the decimal point mid-typing."""
+    panel = (SRC / "panels" / "CascadePanel.tsx").read_text(encoding="utf-8")
+    assert "normalizeIntField" in panel
+    assert 'spec.type === "int"' in panel, (
+        "normalization must be gated to int fields only"
+    )
+    guard = panel.split("function normalizeIntField", 1)[1].split("}", 1)[0]
+    assert "String(n)" in guard and "e.target.value" in guard
+    assert "[-+.eE]$" in guard, (
+        "typing intermediates (trailing -, +, ., e) must be left alone"
+    )

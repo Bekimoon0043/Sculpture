@@ -4,6 +4,23 @@
 import { useState } from "react";
 import type { DefaultsResponse } from "../api/client";
 
+// Leading-zero drift (operator cosmetic report, 2026-08-04): an int field
+// displays "04" after stepping. Mechanism — typing/stepping "04" fires
+// onChange with Number("04") === 4, which EQUALS the current state, so
+// React's same-value bailout skips the re-render and the DOM keeps the
+// stale "04". Fix: for INTEGER fields only, force the DOM string to the
+// normalized number when they disagree. NEVER do this for float fields:
+// rewriting "0." to "0" would eat the decimal point mid-typing.
+function normalizeIntField(
+  e: React.ChangeEvent<HTMLInputElement>,
+  n: number
+) {
+  const raw = e.target.value;
+  if (raw !== String(n) && !/[-+.eE]$/.test(raw) && !Number.isNaN(n)) {
+    e.target.value = String(n);
+  }
+}
+
 interface CascadePanelProps {
   defaults: DefaultsResponse;
   values: Record<string, number | string>;
@@ -62,7 +79,11 @@ export default function CascadePanel({
               min={spec.min ?? undefined}
               max={spec.max ?? undefined}
               step={spec.type === "int" ? 1 : "any"}
-              onChange={(e) => onChange(name, Number(e.target.value))}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                onChange(name, n);
+                if (spec.type === "int") normalizeIntField(e, n);
+              }}
             />
             <span className="param-unit">
               {spec.unit}
@@ -84,7 +105,11 @@ export default function CascadePanel({
           type="number"
           value={seed}
           step={1}
-          onChange={(e) => onSeedChange(Math.trunc(Number(e.target.value)))}
+          onChange={(e) => {
+            const n = Math.trunc(Number(e.target.value));
+            onSeedChange(n);
+            normalizeIntField(e, n);
+          }}
         />
         <span className="param-unit">determinism</span>
       </label>
