@@ -37,6 +37,8 @@ Open **http://localhost:5173** in your browser.
 
 - [ ] You see a dark 3D view on the left and two panels on the right:
       "Cascade parameters" and "Validation".
+      (An empty grid in the 3D view is normal before the first build —
+      there is no model file yet.)
 - [ ] The top-left corner of the 3D view shows
       `Last rebuild: — (press Rebuild)`.
 
@@ -46,6 +48,11 @@ Open **http://localhost:5173** in your browser.
 2. Change it to **4** and press **Rebuild**.
 3. Wait for the 3D model to reappear.
 
+- [ ] **The 3D model appears framed to fill the view ON ITS OWN — you did
+      not zoom, pan, or hunt for it.** The camera frames itself from the
+      model's bounding box on every load, at any model size. If you have
+      to touch the mouse to find the model, this box FAILS — write down
+      exactly what you see (empty grid? tiny speck? model half off-screen?).
 - [ ] The 3D model visibly changed (one more dish in the stack).
 - [ ] The corner readout now shows real numbers, e.g.
       `Last rebuild: N ms (server build: M ms)`.

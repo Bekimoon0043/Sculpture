@@ -34,6 +34,9 @@ body {
 }
 .side {
   overflow-y: auto;
+  /* reserve the scrollbar's width so its appearance never shifts or clips
+     the panels (validation verdict column was cut off, 2026-08-04) */
+  scrollbar-gutter: stable;
   border-left: 1px solid #2a3138;
   padding: 12px;
   display: flex;
@@ -52,7 +55,10 @@ body {
 }
 .param-row {
   display: grid;
-  grid-template-columns: 1fr 110px auto;
+  /* the middle column FITS its control: inputs are 110px, the material
+     select is 180px — a fixed 110px track made the select overflow onto
+     its unit label (2026-08-04) */
+  grid-template-columns: 1fr auto auto;
   gap: 8px;
   align-items: center;
   margin-bottom: 6px;
@@ -124,6 +130,13 @@ td {
 }
 td.num {
   font-variant-numeric: tabular-nums;
+  /* long numbers (volume_mm3) must not stretch the table past the panel —
+     they stay on one line and the panel scrolls instead (verdict column
+     was clipped at the right edge, 2026-08-04) */
+  white-space: nowrap;
+}
+.validation-panel {
+  overflow-x: auto;
 }
 .pass {
   color: #4cc38a;

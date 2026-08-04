@@ -844,3 +844,63 @@ change re-keys layer 1 (manifest COPY), so layer 2's `npm ci` re-runs
 against registry.npmjs.org. That is the intended and necessary cost; the
 BuildKit npm cache mount still bounds a mid-ci connection drop to
 seconds on retry.
+
+---
+
+## ADR-020 — empty viewport: OCCT exports GLB in METRES; camera now frames from the bounding box (2026-08-04)
+
+**Operator report:** POST /build 200, latest.glb 200 (640.69 kB,
+gltf-binary), validation PASS with real numbers, rebuild timer correct,
+console clean — yet an empty grid at every zoom. One WebGL warning:
+"drawArraysInstanced: Drawing to a destination rect smaller than the
+viewport rect."
+
+**Root cause (source-verified, not assumed).** build123d 0.11.1's
+export_gltf → `_create_xde` calls
+`XCAFDoc_DocumentTool.SetLengthUnit_s(doc, 1 / UNITS_PER_METER[unit])`
+(exporters3d.py, wheel read directly), and OCCT's RWGltf_CafWriter writes
+glTF in the spec unit — **metres** (glTF 2.0 §coordinate-system-and-units,
+referenced in the build123d source). The 2600 mm cascade therefore
+arrives **2.6 units wide**. The viewport camera was hardcoded for
+millimetres (position ~5,650 units out, 6,000-unit grid): the model was
+added to the scene and rendered every time — as a sub-pixel speck.
+Consistent with every symptom, including the timer firing (the load
+callback did run).
+
+**Fix — nothing assumes units (operator instruction #1, Phase-6-proof).**
+New `frontend/src/viewport/framing.ts`: `frameCameraToObject` measures
+the loaded model's Box3 and derives EVERYTHING from it — orbit target =
+bbox centre; camera distance fits the bounding sphere to 70% of the
+shorter view dimension (aspect-corrected); near = radius/1000,
+far = distance + 50·radius; degenerate loads fall back to a unit region
+instead of NaN planes. Grid rebuilt per load at 6·radius, parked just
+under `box.min.y`; sun + sun.target repositioned relative to the centre.
+Post-load `console.info` logs scene children count, bbox size/centre,
+camera distance and near/far (operator ask #2 — proof, per load).
+Lights existed all along (ask #3: hemisphere + directional present; the
+model was invisible from scale, not darkness). Renderer sizing now
+follows the CONTAINER via ResizeObserver + one post-layout pass (ask #5
+— the destination-rect warning: the canvas was sized once, pre-layout).
+
+**Verified with real three.js 0.185.1 in node** (framing.ts transpiled
+by tsc from the committed source, not a copy): 11/11 assertions — the
+actual incident case (2.6-unit model: sphere fully inside frustum, fills
+70.0% of view height, near/far sane), the 1000× mm case (scale
+independence), off-centre model (target == centre, view direction dot =
+1.000000), empty group (finite planes), narrow 0.5 aspect (no horizontal
+clip). Plus full `tsc --noEmit` (0 errors) and `vite build` (success)
+against the real dependency set.
+
+**UI defects (operator screenshot):** (a) material select overflowed its
+fixed 110px grid track onto the unit label — track now `auto`
+(fits-content); (b) validation verdict column clipped at the right edge —
+numbers now `nowrap` and the panel scrolls horizontally instead of
+clipping; `scrollbar-gutter: stable` stops scrollbar appearance shifting
+the panels.
+
+**Gate update:** gate_phase2_visual.md §3 now REQUIRES the model framed
+to fill the view on load with no zooming/panning (fail = write down
+exactly what you see); §2 notes an empty grid is normal before the first
+build. New `tests/test_viewport_framing.py` locks the framing module,
+the load-path logging, the CSS fixes, and the gate requirement.
+20/20 structure tests.
