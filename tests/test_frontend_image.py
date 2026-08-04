@@ -120,3 +120,25 @@ def test_compose_frontend_builds_image_no_start_time_install():
     assert "./frontend:/app" not in frontend_section, (
         "no bind mount over /app — it would shadow the image's node_modules"
     )
+
+
+def test_lockfile_resolved_urls_use_public_npmjs():
+    """ADR-019: the lockfile was generated inside a build sandbox whose npm
+    registry was an internal mirror (npm.mirrors.msh.team); that host was
+    baked into every `resolved` URL and does not exist outside the sandbox
+    — the operator's npm ci died with ENOTFOUND (2026-08-04). `npm ci`
+    follows `resolved` verbatim, so every resolved host must be the public
+    registry. Integrity hashes are content hashes and are mirror-
+    independent, so the rewritten URLs are still fully verified by npm."""
+    import json
+    import re
+    lock = (ROOT / "frontend" / "package-lock.json").read_text(encoding="utf-8")
+    hosts = set(re.findall(r'"resolved":\s*"https?://([^/"]+)', lock))
+    assert hosts, "lockfile must carry resolved URLs (npm ci fetches them)"
+    assert hosts == {"registry.npmjs.org"}, (
+        f"resolved URLs must all use registry.npmjs.org — a sandbox-internal "
+        f"mirror host leaks into the committed lockfile and breaks any "
+        f"machine outside the sandbox; found: {sorted(hosts)}"
+    )
+    data = json.loads(lock)  # must stay valid JSON after any rewrite
+    assert data["packages"], "lockfile packages section must be non-empty"

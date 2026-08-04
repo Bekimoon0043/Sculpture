@@ -766,3 +766,81 @@ Dockerfile.donor (generic, ARG-selectable donor) is kept as the fallback
 for the case the pinned hybrid donor ever fails its check; docs present
 hybrid as recommended and donor as fallback. Compose needs no functional
 change (BACKEND_DOCKERFILE passthrough); comments updated.
+
+---
+
+## ADR-019 — sandbox npm mirror leaked into the committed lockfile (2026-08-04)
+
+**Operator build failure, verbatim:** `npm error network request to
+https://npm.mirrors.msh.team/vite/-/vite-8.2.0.tgz failed — reason:
+getaddrinfo ENOTFOUND npm.mirrors.msh.team`.
+
+**Root cause, mine.** `frontend/package-lock.json` was generated inside
+the build sandbox, whose npm is configured with an internal mirror
+registry. npm bakes the serving registry into every `resolved` URL, and
+`npm ci` follows `resolved` verbatim — so all 64 tarball URLs pointed at
+a host that exists only inside the sandbox. The frontend Dockerfile
+itself was clean (no registry override, no .npmrc); the poison was
+entirely in the committed lockfile.
+
+**Fix:** every `resolved` host rewritten to `registry.npmjs.org` (path
+layout identical: `/<name>/-/<file>.tgz`). **Integrity is unaffected:**
+the lockfile's `integrity` fields are sha512 CONTENT hashes, independent
+of where bytes come from — npm verifies them after download regardless.
+Proven, not reasoned: vite-8.2.0.tgz (570,075 B) and three-0.185.1.tgz
+(5,320,348 B) fetched live from registry.npmjs.org on 2026-08-04 both
+hash byte-exact to the lockfile's integrity values. JSON re-validated.
+New test `test_lockfile_resolved_urls_use_public_npmjs` asserts every
+resolved host is registry.npmjs.org — the leak can never be committed
+again.
+
+**Method correction (standing):** any machine-generated manifest
+committed from a sandbox must be audited for sandbox-specific hosts
+before shipping — lockfiles (npm `resolved`, pip `--index-url` in
+requirements files, poetry/pdm sources) inherit the generating
+environment's registry config. This is the registry-host equivalent of
+ADR-009: sandbox state is not portable state.
+
+**STANDING RULE (operator directive, 2026-08-04, verbatim):** no host,
+URL, mirror or registry from the build sandbox environment ever reaches
+a committed file. Cost so far: three separate multi-hour operator
+blocks. The only permitted mention of a sandbox host is as incident
+history inside this log (as deb.debian.org's reset and the mirror
+outages are recorded) — never as a functional endpoint.
+
+**Version verification against the LIVE public registry (2026-08-04,
+operator requirement — checked, not assumed).** package.json uses EXACT
+pins (no ranges), and every operator-named version exists on
+registry.npmjs.org with dist.integrity byte-identical to the lockfile:
+
+| package | pinned | on public npm | integrity == lock |
+|---|---|---|---|
+| vite | 8.2.0 | yes | yes |
+| react | 19.2.8 | yes | yes |
+| three | 0.185.1 | yes | yes |
+| rolldown | 1.2.1 | yes | yes |
+| typescript | 5.9.3 | yes | yes |
+
+The internal mirror had served identical bytes and versions — the ONLY
+difference regeneration produces is the host, which the rewrite already
+corrected. No silent version drift; nothing to surface beyond the host.
+
+**Full-repo host audit (2026-08-04, every tracked file, every URL + raw
+IP sweep).** Sandbox-specific hosts: npm.mirrors.msh.team was the ONLY
+one, lockfile-only, now zero hits (`grep -c msh.team
+frontend/package-lock.json` = 0; its single remaining mention is this
+incident record). Everything else is one of: canonical public endpoints
+(registry.npmjs.org, pypi.org, snapshot.debian.org, api.moonshot.ai/.cn
+and console hosts for the provider keys — Phase-1-gated); documentation
+references (docker.com, opendesign.com, provider consoles); placeholders
+(your.mirror, address); schema identifiers never fetched
+(luxuryform.internal, json-schema.org); lockfile funding metadata never
+fetched (github.com/sponsors, opencollective, tidelift); compose/docs
+networking (localhost, backend). Raw-IP sweep: no private IPs — the
+regex hits were version strings (npm 10.8.2, 10.6.0).
+
+**Operator impact:** `docker compose build frontend` — the lockfile
+change re-keys layer 1 (manifest COPY), so layer 2's `npm ci` re-runs
+against registry.npmjs.org. That is the intended and necessary cost; the
+BuildKit npm cache mount still bounds a mid-ci connection drop to
+seconds on retry.
