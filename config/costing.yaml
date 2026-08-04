@@ -1,0 +1,79 @@
+# costing.yaml — LuxuryForm Studio v1 (Phase 3, operator amendment:
+# "COSTING IS IN SCOPE — design the rates schema now, not later")
+#
+# TEMPLATE — the nulls are filled by the OPERATOR with real Addis Ababa
+# rates (ballparks are fine for v1). The platform LOADS this file with
+# nulls, but any cost COMPUTATION with nulls fails loudly and names the
+# missing entries — a cost is never guessed (same rule as pricing.yaml).
+# Every cost report prints the costing_version that computed it.
+#
+# Format rules:
+#   - keep entries in the currency you actually pay in (per-entry currency);
+#   - `per` units: kg | m3 | sheet | slab | hour | piece | m2 | crew_day | day | trip
+#   - material keys under `materials:` must match config/materials.yaml ids;
+#   - one dated fx_rates block converts to USD for USD-normalized reporting.
+
+costing_version: "2026-08-v1"
+meta:
+  default_currency: USD
+  notes: "operator-provided rates, Addis Ababa 2026"
+
+materials:
+  bronze_cast:                            # must match materials.yaml ids
+    buy_price: { amount: null, currency: ETB, per: kg }
+    waste_factor_pct: null
+    fabrication:
+      method: null                        # cnc_mill | hand_carve | cast | sheet_fabricate
+      labor: { amount: null, currency: ETB, per: hour }
+      machine: { amount: null, currency: ETB, per: hour }       # null if hand work
+      hours_per_m3: null
+      mold_pattern: { amount: null, currency: ETB, per: piece } # cast only; null else
+    finishing: { amount: null, currency: ETB, per: m2 }         # polish/patina/seal
+  basalt_slab:
+    buy_price: { amount: null, currency: ETB, per: slab }       # slab or m3
+    waste_factor_pct: null
+    fabrication:
+      method: null
+      labor: { amount: null, currency: ETB, per: hour }
+      machine: { amount: null, currency: ETB, per: hour }
+      hours_per_m3: null
+      mold_pattern: { amount: null, currency: ETB, per: piece }
+    finishing: { amount: null, currency: ETB, per: m2 }
+  stainless_316l_sheet:
+    buy_price: { amount: null, currency: ETB, per: sheet }      # sheet or kg
+    waste_factor_pct: null
+    fabrication:
+      method: null
+      labor: { amount: null, currency: ETB, per: hour }
+      machine: { amount: null, currency: ETB, per: hour }
+      hours_per_m3: null
+      mold_pattern: { amount: null, currency: ETB, per: piece }
+    finishing: { amount: null, currency: ETB, per: m2 }
+  cast_concrete_c35_45:
+    buy_price: { amount: null, currency: ETB, per: m3 }
+    waste_factor_pct: null
+    fabrication:
+      method: null
+      labor: { amount: null, currency: ETB, per: hour }
+      machine: { amount: null, currency: ETB, per: hour }
+      hours_per_m3: null
+      mold_pattern: { amount: null, currency: ETB, per: piece }
+    finishing: { amount: null, currency: ETB, per: m2 }
+
+workshop:
+  overhead_pct: null                      # power, consumables, space
+
+install:
+  crew_day_rate: { amount: null, currency: ETB, per: crew_day }
+  crew_size: null
+  days_per_tonne: null
+  crane_day_rate: { amount: null, currency: ETB, per: day }     # null if none
+  transport: { amount: null, currency: ETB, per: trip }
+
+contingency_pct: null
+markup_pct: null
+
+# FX: one dated block converts local-currency entries to USD for reporting.
+# rate = units of `currency` per 1 USD (e.g. 140 means 140 ETB = 1 USD).
+fx_rates:
+  ETB: { rate: null, as_of: null }        # as_of: ISO date YYYY-MM-DD

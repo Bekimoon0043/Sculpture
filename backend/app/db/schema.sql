@@ -1,10 +1,15 @@
--- schema.sql — LuxuryForm Studio v1 (Phase 2 schema, version 2)
+-- schema.sql — LuxuryForm Studio v1 (Phase 3 schema, version 3)
 -- SQLite, WAL mode. All timestamps are UTC ISO-8601 text.
 -- Phase 2 evolution (ADR-010): the designs table gained the cascade build
 -- columns (seed, spec_hash, build_ms, glb_path, step_path) and spec_id became
--- nullable (a Phase 2 cascade build has no council Design Spec yet). Tracked
--- honestly in schema_migrations; a Phase 1 database file is RENAMED to
--- <name>.phase1-backup.db on startup, never deleted (SPEC_PHASE2 §2).
+-- nullable (a Phase 2 cascade build has no council Design Spec yet).
+-- Phase 3 evolution (PHASE_3_PLAN.md §3, operator-approved 2026-08-04):
+-- council_sessions/design_specs re-shaped for the real Council (v2 versions
+-- were NEVER populated — replacement is lossless), and the normalized
+-- Council tables arrive: council_calls (per-role cost measurement),
+-- engineering_reviews, defect_lists, arbiter_decisions.
+-- Migrations rename, never delete: Phase 1 files -> <name>.phase1-backup.db,
+-- Phase 2 files -> <name>.phase2-backup.db (SPEC_PHASE2 §2 pattern).
 
 -- ---------------------------------------------------------------------------
 -- Schema version bookkeeping (Phase 2)
@@ -78,22 +83,80 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 
 CREATE TABLE IF NOT EXISTS council_sessions (
-    id              TEXT PRIMARY KEY,        -- == sessions.id of the council run
-    created_at      TEXT NOT NULL,
-    project_id      TEXT NOT NULL REFERENCES projects(id),
-    transcript_json TEXT NOT NULL,           -- full role-by-role transcript
-    degraded        INTEGER NOT NULL DEFAULT 0,  -- 1 = ran without parallel comparison
-    verdict_json    TEXT                     -- Arbiter decision record
+    id                 TEXT PRIMARY KEY,     -- == sessions.id of the council run
+    created_at         TEXT NOT NULL,
+    brief_text         TEXT NOT NULL,        -- the plain-language brief (L1 intake)
+    status             TEXT NOT NULL,        -- running | completed | halted_budget | failed
+    started_at         TEXT NOT NULL,
+    ended_at           TEXT,                 -- NULL while running
+    total_cost_usd     REAL NOT NULL DEFAULT 0,  -- aggregate; council_calls is source of truth
+    pricing_version    TEXT NOT NULL,        -- pricing.yaml version that computed costs
+    arbiter_confidence REAL,                 -- copied from the binding decision (NULL pre-Arbiter)
+    degraded           INTEGER NOT NULL DEFAULT 0  -- 1 = ran without parallel comparison
+);
+
+-- Per-call record of a Council session (Phase 3). Mirrors ai_calls and adds
+-- role + side so the per-role x provider cost table (operator requirement:
+-- measure, then reassign from data) is a GROUP BY away. ai_calls stays the
+-- generic dispatch log; council_calls is the Council's own transcript index.
+CREATE TABLE IF NOT EXISTS council_calls (
+    id              TEXT PRIMARY KEY,
+    session_id      TEXT NOT NULL REFERENCES council_sessions(id),
+    ts              TEXT NOT NULL,           -- UTC ISO-8601
+    role            TEXT NOT NULL,           -- researcher|designer|geometrist|engineer|critic|arbiter
+    side            TEXT NOT NULL,           -- primary | parallel | tiebreaker
+    provider        TEXT NOT NULL,           -- anthropic | openai | kimi
+    model           TEXT NOT NULL,
+    prompt          TEXT NOT NULL,           -- full prompt, always (Rule 8)
+    response        TEXT NOT NULL,           -- full response, always (Rule 8); '' on error
+    tokens_in       INTEGER NOT NULL,
+    tokens_out      INTEGER NOT NULL,
+    latency_ms      REAL NOT NULL,
+    cost_usd        REAL NOT NULL,
+    pricing_version TEXT NOT NULL,
+    status          TEXT NOT NULL,           -- ok | error
+    error           TEXT
 );
 
 CREATE TABLE IF NOT EXISTS design_specs (
     id              TEXT PRIMARY KEY,        -- == meta.spec_id (uuid)
     created_at      TEXT NOT NULL,
-    project_id      TEXT NOT NULL REFERENCES projects(id),
+    session_id      TEXT NOT NULL REFERENCES council_sessions(id),
+    provider        TEXT NOT NULL,           -- the provider that PRODUCED it (Critic rule input)
+    alternative_no  INTEGER NOT NULL,        -- 1..3
     spec_json       TEXT NOT NULL,           -- validated against schemas/design_spec_v1.json
     spec_hash       TEXT NOT NULL,           -- Amendment 1: the reproducible unit of record
     seed            INTEGER NOT NULL,
-    provider        TEXT NOT NULL
+    schema_valid    INTEGER NOT NULL         -- 1 = passed design_spec_v1.json validation
+);
+
+CREATE TABLE IF NOT EXISTS engineering_reviews (
+    id              TEXT PRIMARY KEY,
+    created_at      TEXT NOT NULL,
+    session_id      TEXT NOT NULL REFERENCES council_sessions(id),
+    provider        TEXT NOT NULL,
+    side            TEXT NOT NULL,           -- primary | parallel
+    payload_json    TEXT NOT NULL            -- full engineering review document (JSON)
+);
+
+CREATE TABLE IF NOT EXISTS defect_lists (
+    id              TEXT PRIMARY KEY,
+    created_at      TEXT NOT NULL,
+    session_id      TEXT NOT NULL REFERENCES council_sessions(id),
+    provider        TEXT NOT NULL,
+    side            TEXT NOT NULL,           -- primary | parallel
+    payload_json    TEXT NOT NULL            -- the Critic's defect list (JSON)
+);
+
+CREATE TABLE IF NOT EXISTS arbiter_decisions (
+    id              TEXT PRIMARY KEY,
+    created_at      TEXT NOT NULL,
+    session_id      TEXT NOT NULL REFERENCES council_sessions(id),
+    chosen_spec_ids_json TEXT NOT NULL,      -- exactly 3, ranked best-first
+    confidence      REAL NOT NULL,           -- 0..1, stated by the Arbiter
+    rationale       TEXT NOT NULL,
+    disagreement_register_json TEXT NOT NULL,-- material disagreements surfaced, never averaged
+    binding         INTEGER NOT NULL DEFAULT 1  -- the Arbiter's decision is binding (always 1)
 );
 
 CREATE TABLE IF NOT EXISTS designs (

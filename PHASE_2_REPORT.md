@@ -171,24 +171,23 @@ Operator report, verbatim key points:
 - The automatic gate (`scripts/gate_phase2_auto.py`) passed on the
   operator machine first (the visual checklist requires it as step 0).
 
-**Two honest notes:**
+**Two notes from gate day — both CLOSED by the operator on 2026-08-04:**
 
-1. *tiers=4 volume differs between machines by design of the session, not
-   by defect.* The sandbox gate's tiers=4 build measured 340,426,916.278
-   mm3 (§6 above, all other parameters at defaults); the operator's
-   tiers=4 build measured 319,324,176 mm3 after a session of parameter
-   experimentation. Both builds printed CHANGED spec_hash/STEP-hash pairs,
-   which is what §6 asserts. Reconciliation is one command away if ever
-   wanted: rebuild tiers=4 with every other parameter at default and the
-   volumes must match the sandbox figure exactly.
-2. *Determinism proof status (Amendment 1).* The auto gate proves
-   byte-identical STEP across two processes on the SAME machine — now
-   demonstrated on both the build sandbox and the operator machine (both
-   gates PASS). Cross-MACHINE byte-equality (operator hash == sandbox
-   canonical e1a59fa6fd8ef05074373b9098feb62f10e186f9875c38679304e45f10ee6e13)
-   is established by comparing the sha256 line of the operator's gate §2
-   output against the canonical — requested from the operator at close;
-   the line is one paste away and will be recorded here.
+1. *tiers=4 volume delta — CLOSED, explained.* The sandbox gate's tiers=4
+   build measured 340,426,916.278 mm3 (§6, all other parameters at
+   defaults); the operator's measured 319,324,176 mm3. Operator
+   confirmation: the session was NOT at defaults — basin_diameter_mm was
+   2400, not the default 2600, left over from the constraint test.
+   Smaller basin, less material. No reconciliation needed.
+2. *Determinism (Amendment 1) — CLOSED, PROVEN cross-machine.* The
+   operator's gate §2 printed, verbatim:
+
+       STEP sha256 run A: e1a59fa6fd8ef05074373b9098feb62f10e186f9875c38679304e45f10ee6e13
+       STEP sha256 run B: e1a59fa6fd8ef05074373b9098feb62f10e186f9875c38679304e45f10ee6e13
+
+   Both identical to the sandbox canonical. Byte-identical STEP is now
+   proven across two processes on the same machine (both machines) AND
+   across machines (operator == sandbox canonical).
 
 ## Deviations from spec (with justification)
 

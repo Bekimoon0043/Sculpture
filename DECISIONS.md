@@ -904,3 +904,26 @@ exactly what you see); §2 notes an empty grid is normal before the first
 build. New `tests/test_viewport_framing.py` locks the framing module,
 the load-path logging, the CSS fixes, and the gate requirement.
 20/20 structure tests.
+
+---
+
+## Record — Phase 2 closure addendum (2026-08-04, operator-confirmed)
+
+Not a decision — two open items from the Phase 2 gate closed from data:
+
+1. **Cross-machine determinism (Amendment 1) — PROVEN.** The operator's
+   gate §2 printed STEP sha256 run A and run B, both
+   `e1a59fa6fd8ef05074373b9098feb62f10e186f9875c38679304e45f10ee6e13` —
+   identical to the sandbox canonical. Byte-identical STEP is now proven
+   same-machine (both machines) and cross-machine. Recorded in
+   PHASE_2_REPORT.md.
+2. **tiers=4 volume delta (319,324,176 vs 340,426,916.278 mm3) —
+   explained, not a defect.** The operator's gate session had
+   basin_diameter_mm=2400 (left over from the constraint test), not the
+   2600 default. Smaller basin, less material. No reconciliation needed.
+
+Phase 2 is CLOSED with zero open items. Phase 3 plan approved by the
+operator as written (PHASE_3_PLAN.md), including the split gate
+(fixture mode = $0 offline replay; --live mode only on operator
+command) and the ≈$1.15 session estimate, which will be checked against
+the MEASURED figure after the first live session.

@@ -73,9 +73,9 @@ class JobRow(Base):
 
 
 class ProjectRow(Base):
-    """Minimal mapping — Phase 2 does not populate projects (Phase 3 does);
-    the mapper exists because design_specs -> projects is a FK chain that
-    SQLAlchemy must resolve."""
+    """Minimal mapping — projects is not populated yet (the Phase 3 Council
+    keys design_specs on council_sessions, not projects; project grouping
+    arrives with the project-management phase)."""
 
     __tablename__ = "projects"
 
@@ -87,18 +87,95 @@ class ProjectRow(Base):
 
 
 class DesignSpecRow(Base):
-    """Minimal mapping — no council Design Spec exists in Phase 2; the mapper
-    exists so designs.spec_id's foreign key resolves."""
+    """Phase 3 shape — a Council-produced Design Spec bound to its session."""
 
     __tablename__ = "design_specs"
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     created_at: Mapped[str] = mapped_column(Text)
-    project_id: Mapped[str] = mapped_column(Text, ForeignKey("projects.id"))
+    session_id: Mapped[str] = mapped_column(Text, ForeignKey("council_sessions.id"))
+    provider: Mapped[str] = mapped_column(Text)
+    alternative_no: Mapped[int] = mapped_column(Integer)
     spec_json: Mapped[str] = mapped_column(Text)
     spec_hash: Mapped[str] = mapped_column(Text)
     seed: Mapped[int] = mapped_column(Integer)
+    schema_valid: Mapped[int] = mapped_column(Integer)
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 Council tables (populated by the Council orchestrator / replay)
+# ---------------------------------------------------------------------------
+
+
+class CouncilSessionRow(Base):
+    __tablename__ = "council_sessions"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    created_at: Mapped[str] = mapped_column(Text)
+    brief_text: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    started_at: Mapped[str] = mapped_column(Text)
+    ended_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    total_cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    pricing_version: Mapped[str] = mapped_column(Text)
+    arbiter_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    degraded: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class CouncilCallRow(Base):
+    __tablename__ = "council_calls"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    session_id: Mapped[str] = mapped_column(Text, ForeignKey("council_sessions.id"))
+    ts: Mapped[str] = mapped_column(Text)
+    role: Mapped[str] = mapped_column(Text)
+    side: Mapped[str] = mapped_column(Text)
     provider: Mapped[str] = mapped_column(Text)
+    model: Mapped[str] = mapped_column(Text)
+    prompt: Mapped[str] = mapped_column(Text)
+    response: Mapped[str] = mapped_column(Text)
+    tokens_in: Mapped[int] = mapped_column(Integer)
+    tokens_out: Mapped[int] = mapped_column(Integer)
+    latency_ms: Mapped[float] = mapped_column(Float)
+    cost_usd: Mapped[float] = mapped_column(Float)
+    pricing_version: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class EngineeringReviewRow(Base):
+    __tablename__ = "engineering_reviews"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    created_at: Mapped[str] = mapped_column(Text)
+    session_id: Mapped[str] = mapped_column(Text, ForeignKey("council_sessions.id"))
+    provider: Mapped[str] = mapped_column(Text)
+    side: Mapped[str] = mapped_column(Text)
+    payload_json: Mapped[str] = mapped_column(Text)
+
+
+class DefectListRow(Base):
+    __tablename__ = "defect_lists"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    created_at: Mapped[str] = mapped_column(Text)
+    session_id: Mapped[str] = mapped_column(Text, ForeignKey("council_sessions.id"))
+    provider: Mapped[str] = mapped_column(Text)
+    side: Mapped[str] = mapped_column(Text)
+    payload_json: Mapped[str] = mapped_column(Text)
+
+
+class ArbiterDecisionRow(Base):
+    __tablename__ = "arbiter_decisions"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    created_at: Mapped[str] = mapped_column(Text)
+    session_id: Mapped[str] = mapped_column(Text, ForeignKey("council_sessions.id"))
+    chosen_spec_ids_json: Mapped[str] = mapped_column(Text)
+    confidence: Mapped[float] = mapped_column(Float)
+    rationale: Mapped[str] = mapped_column(Text)
+    disagreement_register_json: Mapped[str] = mapped_column(Text)
+    binding: Mapped[int] = mapped_column(Integer, default=1)
 
 
 class DesignRow(Base):

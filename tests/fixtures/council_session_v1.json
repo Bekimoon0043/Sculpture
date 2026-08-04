@@ -1,0 +1,941 @@
+{
+  "fixture_version": "1.0.0",
+  "synthetic": true,
+  "note": "SYNTHETIC hand-authored fixture (Phase 3 build step 1) — used to develop the replay pipeline and offline gate at $0 before any live session exists. Replaced/augmented by the captured first live session at build step 4. Prompt/response bodies are placeholders; token counts are realistic-order synthetic values. Costs are NOT recorded here: replay recomputes them from tokens x pricing.yaml.",
+  "session": {
+    "id": "54e12d62-c11c-48aa-b235-5d9e90715905",
+    "brief_text": "A monumental fountain for a roundabout in Hawassa: Ethiopian lotus motif, basalt and bronze, visible by night, maintainable by a two-person crew.",
+    "started_at": "2026-08-04T10:00:00+00:00",
+    "ended_at": "2026-08-04T10:06:30+00:00",
+    "degraded": 0
+  },
+  "calls": [
+    {
+      "id": "81efc1ab-52c8-4cc5-b97c-4695ce4bb82a",
+      "role": "researcher",
+      "side": "primary",
+      "provider": "kimi",
+      "model": "kimi-k3",
+      "ts": "2026-08-04T10:00:00+00:00",
+      "prompt": "[researcher prompt — synthetic fixture text]",
+      "response": "Site and precedent research digest (synthetic).",
+      "tokens_in": 4200,
+      "tokens_out": 9800,
+      "latency_ms": 41200.0,
+      "status": "ok",
+      "error": null
+    },
+    {
+      "id": "f4d02d00-f6ad-4579-95d9-9d54e127d9b8",
+      "role": "researcher",
+      "side": "parallel",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "ts": "2026-08-04T10:00:00+00:00",
+      "prompt": "[researcher prompt — synthetic fixture text]",
+      "response": "Site and precedent research digest, second opinion (synthetic).",
+      "tokens_in": 4200,
+      "tokens_out": 2100,
+      "latency_ms": 8300.0,
+      "status": "ok",
+      "error": null
+    },
+    {
+      "id": "e05b8bf8-76de-474b-8bae-4c40c6165d5b",
+      "role": "designer",
+      "side": "primary",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "ts": "2026-08-04T10:00:00+00:00",
+      "prompt": "[designer prompt — synthetic fixture text]",
+      "response": "Design Spec alternative 1 JSON (synthetic; persisted in design_specs).",
+      "tokens_in": 6100,
+      "tokens_out": 3400,
+      "latency_ms": 15700.0,
+      "status": "ok",
+      "error": null
+    },
+    {
+      "id": "a6c76897-1ffb-411b-bc2e-5f528e1fd9ad",
+      "role": "designer",
+      "side": "parallel",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "ts": "2026-08-04T10:00:00+00:00",
+      "prompt": "[designer prompt — synthetic fixture text]",
+      "response": "Design Spec alternative 1 critique-draft JSON (synthetic).",
+      "tokens_in": 6100,
+      "tokens_out": 3200,
+      "latency_ms": 12400.0,
+      "status": "ok",
+      "error": null
+    },
+    {
+      "id": "8379095a-5165-4d3f-9cdf-29c16731580e",
+      "role": "designer",
+      "side": "primary",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "ts": "2026-08-04T10:00:00+00:00",
+      "prompt": "[designer prompt — synthetic fixture text]",
+      "response": "Design Spec alternative 2 JSON (synthetic; persisted in design_specs).",
+      "tokens_in": 6400,
+      "tokens_out": 3400,
+      "latency_ms": 15700.0,
+      "status": "ok",
+      "error": null
+    },
+    {
+      "id": "9db41005-1221-49cd-8d2f-feeecc96ad3a",
+      "role": "designer",
+      "side": "parallel",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "ts": "2026-08-04T10:00:00+00:00",
+      "prompt": "[designer prompt — synthetic fixture text]",
+      "response": "Design Spec alternative 2 critique-draft JSON (synthetic).",
+      "tokens_in": 6400,
+      "tokens_out": 3200,
+      "latency_ms": 12400.0,
+      "status": "ok",
+      "error": null
+    },
+    {
+      "id": "e751aea3-7f58-40a6-a154-8112fa719df1",
+      "role": "designer",
+      "side": "primary",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "ts": "2026-08-04T10:00:00+00:00",
+      "prompt": "[designer prompt — synthetic fixture text]",
+      "response": "Design Spec alternative 3 JSON (synthetic; persisted in design_specs).",
+      "tokens_in": 6700,
+      "tokens_out": 3400,
+      "latency_ms": 15700.0,
+      "status": "ok",
+      "error": null
+    },
+    {
+      "id": "db1450a4-5fe1-4e7e-88ea-e987e3e16ce9",
+      "role": "designer",
+      "side": "parallel",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "ts": "2026-08-04T10:00:00+00:00",
+      "prompt": "[designer prompt — synthetic fixture text]",
+      "response": "Design Spec alternative 3 critique-draft JSON (synthetic).",
+      "tokens_in": 6700,
+      "tokens_out": 3200,
+      "latency_ms": 12400.0,
+      "status": "ok",
+      "error": null
+    },
+    {
+      "id": "beb133b2-64ff-4ac7-ac07-86247c1eade2",
+      "role": "geometrist",
+      "side": "primary",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "ts": "2026-08-04T10:00:00+00:00",
+      "prompt": "[geometrist prompt — synthetic fixture text]",
+      "response": "All six candidates validated against design_spec_v1.json; three shortlisted (synthetic).",
+      "tokens_in": 9400,
+      "tokens_out": 2600,
+      "latency_ms": 13100.0,
+      "status": "ok",
+      "error": null
+    },
+    {
+      "id": "f6af58cc-e321-4d7f-9d20-1b4a2e272d85",
+      "role": "geometrist",
+      "side": "parallel",
+      "provider": "kimi",
+      "model": "kimi-k3",
+      "ts": "2026-08-04T10:00:00+00:00",
+      "prompt": "[geometrist prompt — synthetic fixture text]",
+      "response": "Independent schema + fabricability check, concurring with reservations (synthetic).",
+      "tokens_in": 9400,
+      "tokens_out": 8100,
+      "latency_ms": 38600.0,
+      "status": "ok",
+      "error": null
+    },
+    {
+      "id": "eaca8ac5-161a-47af-8537-079a973c73d7",
+      "role": "engineer",
+      "side": "primary",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "ts": "2026-08-04T10:00:00+00:00",
+      "prompt": "[engineer prompt — synthetic fixture text]",
+      "response": "Hydraulic/structural review of the three bound specs (synthetic).",
+      "tokens_in": 11200,
+      "tokens_out": 2900,
+      "latency_ms": 14900.0,
+      "status": "ok",
+      "error": null
+    },
+    {
+      "id": "192675ff-8f11-4706-a71b-a8f72f2eb306",
+      "role": "engineer",
+      "side": "parallel",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "ts": "2026-08-04T10:00:00+00:00",
+      "prompt": "[engineer prompt — synthetic fixture text]",
+      "response": "Independent engineering review, flags pump head margin on alt 3 (synthetic).",
+      "tokens_in": 11200,
+      "tokens_out": 2700,
+      "latency_ms": 16200.0,
+      "status": "ok",
+      "error": null
+    },
+    {
+      "id": "eb1e576d-d1f3-403f-989f-5e1f220b4d72",
+      "role": "critic",
+      "side": "primary",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "ts": "2026-08-04T10:00:00+00:00",
+      "prompt": "[critic prompt — synthetic fixture text]",
+      "response": "Defect list: 7 defects across the three specs, none fatal (synthetic).",
+      "tokens_in": 12800,
+      "tokens_out": 2400,
+      "latency_ms": 11800.0,
+      "status": "ok",
+      "error": null
+    },
+    {
+      "id": "10e487d2-7455-4303-be50-0e52ffa957b2",
+      "role": "critic",
+      "side": "parallel",
+      "provider": "kimi",
+      "model": "kimi-k3",
+      "ts": "2026-08-04T10:00:00+00:00",
+      "prompt": "[critic prompt — synthetic fixture text]",
+      "response": "Independent defect list, adds maintenance-access defect on alt 2 (synthetic).",
+      "tokens_in": 12800,
+      "tokens_out": 7600,
+      "latency_ms": 35400.0,
+      "status": "ok",
+      "error": null
+    },
+    {
+      "id": "09cd6993-0773-49f8-bb35-3c1b9bc351df",
+      "role": "arbiter",
+      "side": "primary",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "ts": "2026-08-04T10:00:00+00:00",
+      "prompt": "[arbiter prompt — synthetic fixture text]",
+      "response": "Binding decision: rank alt 1 > alt 3 > alt 2, confidence 0.78 (synthetic).",
+      "tokens_in": 15600,
+      "tokens_out": 3100,
+      "latency_ms": 17400.0,
+      "status": "ok",
+      "error": null
+    },
+    {
+      "id": "c5d26eef-15c9-4715-844c-52c2cb22f7d0",
+      "role": "arbiter",
+      "side": "parallel",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "ts": "2026-08-04T10:00:00+00:00",
+      "prompt": "[arbiter prompt — synthetic fixture text]",
+      "response": "Concurrence with ranking; registers disagreement on alt 2 maintainability (synthetic).",
+      "tokens_in": 15600,
+      "tokens_out": 2900,
+      "latency_ms": 16800.0,
+      "status": "ok",
+      "error": null
+    }
+  ],
+  "design_specs": [
+    {
+      "spec": {
+        "meta": {
+          "spec_id": "c775c7a6-cf8e-41de-8918-3dd24425a217",
+          "schema_version": "1.0.0",
+          "project_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+          "seed": 42,
+          "spec_hash": "sha256:3d52b20de5ef7e9f40ee843fe5189a422ecac01d792555570f1073ce52d10719",
+          "created_by": "DESIGNER",
+          "provider": "anthropic",
+          "alternative_no": 1,
+          "designdna_precedents": []
+        },
+        "form_language": {
+          "concept": "Monumental abstracted lotus rising from a still basin",
+          "cultural_basis": "Ethiopian lotus motif, abstracted",
+          "silhouette": "radial",
+          "proportion_system": {
+            "system": "golden",
+            "ratio": 1.618
+          },
+          "symmetry": "radial",
+          "symmetry_order": 8
+        },
+        "massing": {
+          "elements": [
+            {
+              "element_id": "basin_01",
+              "primitive": "basin_round",
+              "parameters": {
+                "diameter": {
+                  "value": 6.0,
+                  "unit": "m"
+                },
+                "wall": {
+                  "value": 3,
+                  "unit": "mm"
+                }
+              },
+              "material_id": "stainless_316l_sheet",
+              "position": {
+                "x_m": 0.0,
+                "y_m": 0.0,
+                "z_m": 0.0
+              }
+            },
+            {
+              "element_id": "lotus_crown_01",
+              "primitive": "lotus_array",
+              "parameters": {
+                "height": {
+                  "value": 2400,
+                  "unit": "mm"
+                },
+                "petal_count": {
+                  "value": 8,
+                  "unit": "deg"
+                }
+              },
+              "material_id": "bronze_cast",
+              "position": {
+                "x_m": 0.0,
+                "y_m": 0.0,
+                "z_m": 0.8
+              },
+              "parent_id": "basin_01"
+            }
+          ]
+        },
+        "materials": [
+          {
+            "material_id": "stainless_316l_sheet",
+            "name": "316L stainless steel sheet",
+            "category": "metal",
+            "finish": "mirror polish"
+          },
+          {
+            "material_id": "bronze_cast",
+            "name": "Cast bronze",
+            "category": "metal"
+          }
+        ],
+        "water": {
+          "has_water": true,
+          "choreography": [
+            {
+              "name": "crown_jets",
+              "nozzle_elements": [
+                "lotus_crown_01"
+              ],
+              "flow_L_per_s": 4.0,
+              "jet_height_m": 2.5,
+              "sequence": "programmed"
+            }
+          ],
+          "reservoir_element_id": "basin_01",
+          "makeup_water": true
+        },
+        "hydraulic_network": {
+          "nodes": [
+            {
+              "node_id": "pump_01",
+              "type": "pump",
+              "elevation_m": -0.5,
+              "element_id": "basin_01",
+              "pump_curve_ref": "lowara_esv_3_2"
+            },
+            {
+              "node_id": "nozzle_ring_01",
+              "type": "nozzle",
+              "elevation_m": 2.4,
+              "element_id": "lotus_crown_01",
+              "nozzle_bore_mm": 12.0
+            },
+            {
+              "node_id": "drain_01",
+              "type": "drain",
+              "elevation_m": -0.6,
+              "element_id": "basin_01"
+            }
+          ],
+          "edges": [
+            {
+              "edge_id": "riser_01",
+              "from_node": "pump_01",
+              "to_node": "nozzle_ring_01",
+              "diameter_mm": 50.0,
+              "length_m": 3.2,
+              "material": "hdpe_pe100",
+              "fittings": [
+                {
+                  "type": "elbow_90",
+                  "count": 2
+                },
+                {
+                  "type": "valve_check",
+                  "count": 1
+                }
+              ],
+              "elevation_change_m": 2.9
+            }
+          ]
+        },
+        "site": {
+          "climate_zone": "tropical_highland",
+          "design_wind_m_per_s": 12.0,
+          "frost_risk": false,
+          "seismic_zone": "II",
+          "viewing_distance_m": 25.0
+        },
+        "fabrication": {
+          "method": "hybrid",
+          "max_module_m": {
+            "x": 2.4,
+            "y": 2.4,
+            "z": 2.2
+          },
+          "max_lift_kg": 800.0,
+          "local_capability_notes": "Addis Ababa sheet shop; bronze cast locally"
+        },
+        "constraints": {
+          "budget": {
+            "amount": 4500000.0,
+            "currency": "ETB",
+            "fx_date": "2026-07-15"
+          },
+          "hard_constraints": [
+            "no element taller than 6 m",
+            "potable-grade wetted parts"
+          ]
+        },
+        "confidence": 78,
+        "assumptions": [
+          {
+            "statement": "Mains water available at site boundary",
+            "sourced": true,
+            "source": "Hawassa utility letter, 2026-06"
+          },
+          {
+            "statement": "Soil bearing capacity at least 150 kPa",
+            "sourced": false
+          }
+        ]
+      }
+    },
+    {
+      "spec": {
+        "meta": {
+          "spec_id": "93b4ec5b-0929-4c97-b83c-f511148c9ba5",
+          "schema_version": "1.0.0",
+          "project_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+          "seed": 77,
+          "spec_hash": "sha256:d89f5022d7b258271746012c00e229d8297f4b6dfb1fe069730a9def54355480",
+          "created_by": "DESIGNER",
+          "provider": "openai",
+          "alternative_no": 2,
+          "designdna_precedents": []
+        },
+        "form_language": {
+          "concept": "Interlocking basalt monolith ring with central jet",
+          "cultural_basis": "Ethiopian lotus motif, abstracted",
+          "silhouette": "radial",
+          "proportion_system": {
+            "system": "golden",
+            "ratio": 1.618
+          },
+          "symmetry": "radial",
+          "symmetry_order": 8
+        },
+        "massing": {
+          "elements": [
+            {
+              "element_id": "basin_01",
+              "primitive": "basin_round",
+              "parameters": {
+                "diameter": {
+                  "value": 5.2,
+                  "unit": "m"
+                },
+                "wall": {
+                  "value": 3,
+                  "unit": "mm"
+                }
+              },
+              "material_id": "stainless_316l_sheet",
+              "position": {
+                "x_m": 0.0,
+                "y_m": 0.0,
+                "z_m": 0.0
+              }
+            },
+            {
+              "element_id": "lotus_crown_01",
+              "primitive": "lotus_array",
+              "parameters": {
+                "height": {
+                  "value": 2400,
+                  "unit": "mm"
+                },
+                "petal_count": {
+                  "value": 8,
+                  "unit": "deg"
+                }
+              },
+              "material_id": "bronze_cast",
+              "position": {
+                "x_m": 0.0,
+                "y_m": 0.0,
+                "z_m": 0.8
+              },
+              "parent_id": "basin_01"
+            }
+          ]
+        },
+        "materials": [
+          {
+            "material_id": "stainless_316l_sheet",
+            "name": "316L stainless steel sheet",
+            "category": "metal",
+            "finish": "mirror polish"
+          },
+          {
+            "material_id": "bronze_cast",
+            "name": "Cast bronze",
+            "category": "metal"
+          }
+        ],
+        "water": {
+          "has_water": true,
+          "choreography": [
+            {
+              "name": "crown_jets",
+              "nozzle_elements": [
+                "lotus_crown_01"
+              ],
+              "flow_L_per_s": 4.0,
+              "jet_height_m": 2.5,
+              "sequence": "programmed"
+            }
+          ],
+          "reservoir_element_id": "basin_01",
+          "makeup_water": true
+        },
+        "hydraulic_network": {
+          "nodes": [
+            {
+              "node_id": "pump_01",
+              "type": "pump",
+              "elevation_m": -0.5,
+              "element_id": "basin_01",
+              "pump_curve_ref": "lowara_esv_3_2"
+            },
+            {
+              "node_id": "nozzle_ring_01",
+              "type": "nozzle",
+              "elevation_m": 2.4,
+              "element_id": "lotus_crown_01",
+              "nozzle_bore_mm": 12.0
+            },
+            {
+              "node_id": "drain_01",
+              "type": "drain",
+              "elevation_m": -0.6,
+              "element_id": "basin_01"
+            }
+          ],
+          "edges": [
+            {
+              "edge_id": "riser_01",
+              "from_node": "pump_01",
+              "to_node": "nozzle_ring_01",
+              "diameter_mm": 50.0,
+              "length_m": 3.2,
+              "material": "hdpe_pe100",
+              "fittings": [
+                {
+                  "type": "elbow_90",
+                  "count": 2
+                },
+                {
+                  "type": "valve_check",
+                  "count": 1
+                }
+              ],
+              "elevation_change_m": 2.9
+            }
+          ]
+        },
+        "site": {
+          "climate_zone": "tropical_highland",
+          "design_wind_m_per_s": 12.0,
+          "frost_risk": false,
+          "seismic_zone": "II",
+          "viewing_distance_m": 25.0
+        },
+        "fabrication": {
+          "method": "hybrid",
+          "max_module_m": {
+            "x": 2.4,
+            "y": 2.4,
+            "z": 2.2
+          },
+          "max_lift_kg": 800.0,
+          "local_capability_notes": "Addis Ababa sheet shop; bronze cast locally"
+        },
+        "constraints": {
+          "budget": {
+            "amount": 4500000.0,
+            "currency": "ETB",
+            "fx_date": "2026-07-15"
+          },
+          "hard_constraints": [
+            "no element taller than 6 m",
+            "potable-grade wetted parts"
+          ]
+        },
+        "confidence": 78,
+        "assumptions": [
+          {
+            "statement": "Mains water available at site boundary",
+            "sourced": true,
+            "source": "Hawassa utility letter, 2026-06"
+          },
+          {
+            "statement": "Soil bearing capacity at least 150 kPa",
+            "sourced": false
+          }
+        ]
+      }
+    },
+    {
+      "spec": {
+        "meta": {
+          "spec_id": "47983dcf-5ff6-4a18-8206-cb664ceff471",
+          "schema_version": "1.0.0",
+          "project_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+          "seed": 103,
+          "spec_hash": "sha256:9f319c447acf678683e914985ad92e518e4a575141383ccb07ed7efd1d17ec9a",
+          "created_by": "DESIGNER",
+          "provider": "anthropic",
+          "alternative_no": 3,
+          "designdna_precedents": []
+        },
+        "form_language": {
+          "concept": "Folded 316L ribbon cascade over a stepped plinth",
+          "cultural_basis": "Ethiopian lotus motif, abstracted",
+          "silhouette": "radial",
+          "proportion_system": {
+            "system": "golden",
+            "ratio": 1.618
+          },
+          "symmetry": "radial",
+          "symmetry_order": 8
+        },
+        "massing": {
+          "elements": [
+            {
+              "element_id": "basin_01",
+              "primitive": "basin_round",
+              "parameters": {
+                "diameter": {
+                  "value": 6.8,
+                  "unit": "m"
+                },
+                "wall": {
+                  "value": 3,
+                  "unit": "mm"
+                }
+              },
+              "material_id": "stainless_316l_sheet",
+              "position": {
+                "x_m": 0.0,
+                "y_m": 0.0,
+                "z_m": 0.0
+              }
+            },
+            {
+              "element_id": "lotus_crown_01",
+              "primitive": "lotus_array",
+              "parameters": {
+                "height": {
+                  "value": 2400,
+                  "unit": "mm"
+                },
+                "petal_count": {
+                  "value": 8,
+                  "unit": "deg"
+                }
+              },
+              "material_id": "bronze_cast",
+              "position": {
+                "x_m": 0.0,
+                "y_m": 0.0,
+                "z_m": 0.8
+              },
+              "parent_id": "basin_01"
+            }
+          ]
+        },
+        "materials": [
+          {
+            "material_id": "stainless_316l_sheet",
+            "name": "316L stainless steel sheet",
+            "category": "metal",
+            "finish": "mirror polish"
+          },
+          {
+            "material_id": "bronze_cast",
+            "name": "Cast bronze",
+            "category": "metal"
+          }
+        ],
+        "water": {
+          "has_water": true,
+          "choreography": [
+            {
+              "name": "crown_jets",
+              "nozzle_elements": [
+                "lotus_crown_01"
+              ],
+              "flow_L_per_s": 4.0,
+              "jet_height_m": 2.5,
+              "sequence": "programmed"
+            }
+          ],
+          "reservoir_element_id": "basin_01",
+          "makeup_water": true
+        },
+        "hydraulic_network": {
+          "nodes": [
+            {
+              "node_id": "pump_01",
+              "type": "pump",
+              "elevation_m": -0.5,
+              "element_id": "basin_01",
+              "pump_curve_ref": "lowara_esv_3_2"
+            },
+            {
+              "node_id": "nozzle_ring_01",
+              "type": "nozzle",
+              "elevation_m": 2.4,
+              "element_id": "lotus_crown_01",
+              "nozzle_bore_mm": 12.0
+            },
+            {
+              "node_id": "drain_01",
+              "type": "drain",
+              "elevation_m": -0.6,
+              "element_id": "basin_01"
+            }
+          ],
+          "edges": [
+            {
+              "edge_id": "riser_01",
+              "from_node": "pump_01",
+              "to_node": "nozzle_ring_01",
+              "diameter_mm": 50.0,
+              "length_m": 3.2,
+              "material": "hdpe_pe100",
+              "fittings": [
+                {
+                  "type": "elbow_90",
+                  "count": 2
+                },
+                {
+                  "type": "valve_check",
+                  "count": 1
+                }
+              ],
+              "elevation_change_m": 2.9
+            }
+          ]
+        },
+        "site": {
+          "climate_zone": "tropical_highland",
+          "design_wind_m_per_s": 12.0,
+          "frost_risk": false,
+          "seismic_zone": "II",
+          "viewing_distance_m": 25.0
+        },
+        "fabrication": {
+          "method": "hybrid",
+          "max_module_m": {
+            "x": 2.4,
+            "y": 2.4,
+            "z": 2.2
+          },
+          "max_lift_kg": 800.0,
+          "local_capability_notes": "Addis Ababa sheet shop; bronze cast locally"
+        },
+        "constraints": {
+          "budget": {
+            "amount": 4500000.0,
+            "currency": "ETB",
+            "fx_date": "2026-07-15"
+          },
+          "hard_constraints": [
+            "no element taller than 6 m",
+            "potable-grade wetted parts"
+          ]
+        },
+        "confidence": 78,
+        "assumptions": [
+          {
+            "statement": "Mains water available at site boundary",
+            "sourced": true,
+            "source": "Hawassa utility letter, 2026-06"
+          },
+          {
+            "statement": "Soil bearing capacity at least 150 kPa",
+            "sourced": false
+          }
+        ]
+      }
+    }
+  ],
+  "engineering_reviews": [
+    {
+      "id": "de59a1d7-228c-4116-9d4f-bea1f312b355",
+      "provider": "openai",
+      "side": "primary",
+      "payload": {
+        "summary": "All three specs are buildable; alt 3 pump head margin is thin.",
+        "per_spec": [
+          {
+            "spec_id": "c775c7a6-cf8e-41de-8918-3dd24425a217",
+            "verdict": "pass",
+            "notes": "Lotus cascade hydraulics within envelope; basin wall 3mm ok in 316L."
+          },
+          {
+            "spec_id": "93b4ec5b-0929-4c97-b83c-f511148c9ba5",
+            "verdict": "pass_with_notes",
+            "notes": "Basalt monolith ring needs foundation check; jet nozzle access poor."
+          },
+          {
+            "spec_id": "47983dcf-5ff6-4a18-8206-cb664ceff471",
+            "verdict": "pass_with_notes",
+            "notes": "Ribbon cascade: specify pump with >=20% head margin."
+          }
+        ]
+      }
+    },
+    {
+      "id": "d06842d4-a7ac-4ee5-8e7b-789025d4b93d",
+      "provider": "anthropic",
+      "side": "parallel",
+      "payload": {
+        "summary": "Concurs with primary; adds seismic note for the monolith ring.",
+        "per_spec": [
+          {
+            "spec_id": "c775c7a6-cf8e-41de-8918-3dd24425a217",
+            "verdict": "pass",
+            "notes": "Concur."
+          },
+          {
+            "spec_id": "93b4ec5b-0929-4c97-b83c-f511148c9ba5",
+            "verdict": "pass_with_notes",
+            "notes": "Add seismic overturning check; Hawassa is low-risk but non-zero."
+          },
+          {
+            "spec_id": "47983dcf-5ff6-4a18-8206-cb664ceff471",
+            "verdict": "pass",
+            "notes": "Head margin note accepted."
+          }
+        ]
+      }
+    }
+  ],
+  "defect_lists": [
+    {
+      "id": "ca7d179a-17dd-48ac-94fa-62603577f599",
+      "provider": "openai",
+      "side": "primary",
+      "payload": {
+        "defects": [
+          {
+            "id": "D1",
+            "severity": "major",
+            "spec_id": "47983dcf-5ff6-4a18-8206-cb664ceff471",
+            "defect": "Pump head margin under 10% — undersized for dry-season flow."
+          },
+          {
+            "id": "D2",
+            "severity": "minor",
+            "spec_id": "93b4ec5b-0929-4c97-b83c-f511148c9ba5",
+            "defect": "Jet nozzle not reachable without draining basin."
+          },
+          {
+            "id": "D3",
+            "severity": "minor",
+            "spec_id": "c775c7a6-cf8e-41de-8918-3dd24425a217",
+            "defect": "Night lighting glare toward traffic not addressed."
+          }
+        ]
+      }
+    },
+    {
+      "id": "2761268f-2fbe-4916-83af-0db4d28f29b8",
+      "provider": "kimi",
+      "side": "parallel",
+      "payload": {
+        "defects": [
+          {
+            "id": "D4",
+            "severity": "major",
+            "spec_id": "93b4ec5b-0929-4c97-b83c-f511148c9ba5",
+            "defect": "Maintenance access to ring interior not shown."
+          },
+          {
+            "id": "D5",
+            "severity": "minor",
+            "spec_id": "47983dcf-5ff6-4a18-8206-cb664ceff471",
+            "defect": "Ribbon edge sharpness vs public contact not resolved."
+          }
+        ]
+      }
+    }
+  ],
+  "arbiter_decision": {
+    "id": "73b84659-9634-4704-9dfb-c0529fed49b0",
+    "chosen_spec_ids": [
+      "c775c7a6-cf8e-41de-8918-3dd24425a217",
+      "47983dcf-5ff6-4a18-8206-cb664ceff471",
+      "93b4ec5b-0929-4c97-b83c-f511148c9ba5"
+    ],
+    "confidence": 0.78,
+    "rationale": "Alternative 1 (lotus) is the strongest cultural and hydraulic fit with zero major defects. Alternative 3 follows contingent on the pump up-spec. Alternative 2 is retained third: two majors (maintenance access, nozzle reachability) are both fixable in detailing.",
+    "disagreement_register": [
+      {
+        "topic": "Alt 2 maintainability",
+        "positions": {
+          "openai": "two majors, fixable in detailing",
+          "anthropic": "maintenance access is a concept-level flaw"
+        },
+        "resolution": "recorded; ranked third, not rejected"
+      },
+      {
+        "topic": "Alt 3 pump margin",
+        "positions": {
+          "engineer-openai": "thin margin",
+          "engineer-anthropic": "acceptable with up-spec"
+        },
+        "resolution": "binding condition: >=20% head margin"
+      }
+    ]
+  }
+}

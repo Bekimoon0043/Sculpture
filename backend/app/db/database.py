@@ -26,11 +26,16 @@ SCHEMA_SQL_PATH = Path(__file__).resolve().parent / "schema.sql"
 DEFAULT_DB_PATH = "./data/luxuryform.db"
 
 #: Current schema version. v2 = Phase 2 (designs cascade columns,
-#: schema_migrations bookkeeping).
-SCHEMA_VERSION = 2
+#: schema_migrations bookkeeping). v3 = Phase 3 (normalized Council tables:
+#: council_calls, engineering_reviews, defect_lists, arbiter_decisions;
+#: council_sessions/design_specs re-shaped for the real Council).
+SCHEMA_VERSION = 3
 
-#: Column whose presence proves a `designs` table is already Phase 2 shape.
+#: Column whose presence proves a `designs` table is at least Phase 2 shape.
 _PHASE2_DESIGNS_MARKER_COLUMN = "spec_hash"
+
+#: Table whose presence proves the file is already Phase 3 shape.
+_PHASE3_MARKER_TABLE = "arbiter_decisions"
 
 
 class Database:
@@ -61,13 +66,15 @@ class Database:
     def init_db(self) -> None:
         """Migrate if needed, then create every table from schema.sql.
 
-        Migration (SPEC_PHASE2 §2): if the file already holds a Phase 1
-        `designs` table (no spec_hash column), the file is RENAMED to
-        ``<name>.phase1-backup.db`` (plus ``-2``, ``-3`` ... if a backup
-        already exists) and a fresh Phase 2 database is created. Data is
-        never silently dropped — rename, don't delete.
+        Migration (SPEC_PHASE2 §2 pattern, extended in Phase 3): an old
+        database file is RENAMED to a backup (never deleted) and a fresh
+        current-schema database is created. Phase 1 file (designs without
+        spec_hash) -> ``<name>.phase1-backup.db``; Phase 2 file (has
+        spec_hash but no arbiter_decisions table) ->
+        ``<name>.phase2-backup.db`` (plus ``-2``, ``-3`` ... if a backup
+        already exists).
         """
-        note = self._migrate_phase1_file_if_needed()
+        note = self._migrate_old_file_if_needed()
         script = SCHEMA_SQL_PATH.read_text(encoding="utf-8")
         with self.engine.connect() as conn:
             conn.exec_driver_sql("PRAGMA foreign_keys=ON")
@@ -83,11 +90,11 @@ class Database:
                 },
             )
 
-    def _migrate_phase1_file_if_needed(self) -> str:
-        """Rename a Phase 1 database file out of the way; return the
-        schema_migrations note for this init."""
+    def _migrate_old_file_if_needed(self) -> str:
+        """Rename a Phase 1 or Phase 2 database file out of the way; return
+        the schema_migrations note for this init."""
         if not self.path.exists():
-            return "fresh Phase 2 schema (v2) created"
+            return "fresh Phase 3 schema (v3) created"
         conn = sqlite3.connect(str(self.path))
         try:
             tables = {
@@ -96,15 +103,27 @@ class Database:
                     "SELECT name FROM sqlite_master WHERE type='table'"
                 )
             }
-            if "designs" not in tables:
-                return "existing database without designs table; Phase 2 schema (v2) applied"
-            columns = {row[1] for row in conn.execute("PRAGMA table_info(designs)")}
+            columns = (
+                {row[1] for row in conn.execute("PRAGMA table_info(designs)")}
+                if "designs" in tables
+                else set()
+            )
         finally:
             conn.close()
-        if _PHASE2_DESIGNS_MARKER_COLUMN in columns:
-            return "existing Phase 2 database; schema (v2) verified idempotently"
 
-        backup = self._next_backup_path()
+        if _PHASE3_MARKER_TABLE in tables:
+            return "existing Phase 3 database; schema (v3) verified idempotently"
+
+        if "designs" in tables and _PHASE2_DESIGNS_MARKER_COLUMN not in columns:
+            phase, backup_tag = "Phase 1", "phase1-backup"
+        elif "designs" not in tables:
+            # Pre-Phase-2 file without designs (only possible from very early
+            # Phase 1 dev); treat as Phase 1.
+            phase, backup_tag = "Phase 1", "phase1-backup"
+        else:
+            phase, backup_tag = "Phase 2", "phase2-backup"
+
+        backup = self._next_backup_path(backup_tag)
         # Close our own engine's connections before moving the file.
         self.engine.dispose()
         for suffix in ("", "-wal", "-shm"):
@@ -112,19 +131,20 @@ class Database:
             if candidate.exists():
                 candidate.rename(Path(str(backup) + suffix))
         log.warning(
-            "Phase 1 database %s renamed to %s; a fresh Phase 2 database was "
+            "%s database %s renamed to %s; a fresh Phase 3 database was "
             "created. The backup is never deleted automatically.",
+            phase,
             self.path,
             backup,
         )
         return (
-            f"Phase 1 database renamed to {backup.name} (never deleted); "
-            "fresh Phase 2 schema (v2) created"
+            f"{phase} database renamed to {backup.name} (never deleted); "
+            "fresh Phase 3 schema (v3) created"
         )
 
-    def _next_backup_path(self) -> Path:
-        """First free <stem>.phase1-backup<.suffix>[, -2, -3...] path."""
-        base = self.path.with_name(f"{self.path.stem}.phase1-backup{self.path.suffix}")
+    def _next_backup_path(self, tag: str = "phase1-backup") -> Path:
+        """First free <stem>.<tag><.suffix>[, -2, -3...] path."""
+        base = self.path.with_name(f"{self.path.stem}.{tag}{self.path.suffix}")
         candidate = base
         counter = 2
         while candidate.exists():

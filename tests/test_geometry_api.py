@@ -158,6 +158,9 @@ def test_phase1_db_is_renamed_not_deleted(tmp_path, monkeypatch):
     fresh = sqlite3.connect(str(db_path))
     cols = {row[1] for row in fresh.execute("PRAGMA table_info(designs)")}
     assert "spec_hash" in cols
+    assert "arbiter_decisions" in {
+        row[0] for row in fresh.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
     versions = fresh.execute("SELECT version FROM schema_migrations").fetchall()
-    assert (2,) in versions
+    assert (3,) in versions
     fresh.close()

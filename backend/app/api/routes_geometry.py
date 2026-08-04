@@ -126,6 +126,10 @@ def post_build(request: BuildRequest) -> dict[str, Any]:
                 step_path=str(step_path),
             )
         )
+        session.flush()  # parent row first: the unit of work does not order
+        # cross-mapper inserts without relationship() dependency processors,
+        # so a child INSERT can otherwise be emitted before its parent (FK
+        # violation under PRAGMA foreign_keys=ON — found in Phase 3 replay).
         session.add(
             ValidationReportRow(
                 id=str(uuid.uuid4()),

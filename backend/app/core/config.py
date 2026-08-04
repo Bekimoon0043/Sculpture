@@ -205,6 +205,144 @@ class BudgetConfig(BaseModel):
     on_breach: Literal["halt_and_report"]
 
 
+# --- costing.yaml (Phase 3 operator amendment: rates schema designed NOW) ----
+
+_CURRENCY_RE = r"^[A-Z]{3}$"
+_COST_PER_UNITS = ("kg", "m3", "sheet", "slab", "hour", "piece", "m2",
+                   "crew_day", "day", "trip")
+_FABRICATION_METHODS = ("cnc_mill", "hand_carve", "cast", "sheet_fabricate")
+
+
+class CostAmount(BaseModel):
+    """A money amount with explicit currency and unit. amount=null means
+    'template not filled yet' — loading is fine, COMPUTING is not."""
+    amount: float | None = Field(default=None, ge=0)
+    currency: str = Field(pattern=_CURRENCY_RE)
+    per: str
+
+    @field_validator("per")
+    @classmethod
+    def _known_unit(cls, value: str) -> str:
+        if value not in _COST_PER_UNITS:
+            raise ValueError(f"per must be one of {_COST_PER_UNITS}, got {value!r}")
+        return value
+
+
+class FabricationRates(BaseModel):
+    method: str | None = None
+    labor: CostAmount
+    machine: CostAmount          # amount null if hand work
+    hours_per_m3: float | None = Field(default=None, ge=0)
+    mold_pattern: CostAmount     # cast only; amount null else
+
+    @field_validator("method")
+    @classmethod
+    def _known_method(cls, value: str | None) -> str | None:
+        if value is not None and value not in _FABRICATION_METHODS:
+            raise ValueError(
+                f"method must be one of {_FABRICATION_METHODS}, got {value!r}"
+            )
+        return value
+
+
+class MaterialRates(BaseModel):
+    buy_price: CostAmount
+    waste_factor_pct: float | None = Field(default=None, ge=0)
+    fabrication: FabricationRates
+    finishing: CostAmount
+
+
+class InstallRates(BaseModel):
+    crew_day_rate: CostAmount
+    crew_size: int | None = Field(default=None, ge=1)
+    days_per_tonne: float | None = Field(default=None, ge=0)
+    crane_day_rate: CostAmount   # amount null if none
+    transport: CostAmount
+
+
+class FxRate(BaseModel):
+    """Units of the local currency per 1 USD, dated (anti-stale-data rule)."""
+    rate: float | None = Field(default=None, gt=0)
+    as_of: str | None = None
+
+    @field_validator("as_of")
+    @classmethod
+    def _date_or_none(cls, value: str | None) -> str | None:
+        if value is not None:
+            import datetime as _dt
+
+            try:
+                _dt.date.fromisoformat(value)
+            except ValueError as exc:
+                raise ValueError(
+                    f"fx as_of must be an ISO date (YYYY-MM-DD), got {value!r}"
+                ) from exc
+        return value
+
+
+class CostingConfig(BaseModel):
+    """Operator-provided rate card. LOADS with nulls (template state); any
+    cost computation must call require_filled() first — a cost is never
+    guessed (same rule as pricing.yaml)."""
+
+    costing_version: str
+    meta: dict
+    materials: dict[str, MaterialRates]
+    workshop: dict
+    install: InstallRates
+    contingency_pct: float | None = Field(default=None, ge=0)
+    markup_pct: float | None = Field(default=None, ge=0)
+    fx_rates: dict[str, FxRate]
+
+    def missing_entries(self) -> list[str]:
+        """Dotted paths of every rate that is still null (template state)."""
+        missing: list[str] = []
+
+        def amount(path: str, a: CostAmount) -> None:
+            if a.amount is None:
+                missing.append(path)
+
+        for mid, m in self.materials.items():
+            amount(f"materials.{mid}.buy_price", m.buy_price)
+            if m.waste_factor_pct is None:
+                missing.append(f"materials.{mid}.waste_factor_pct")
+            if m.fabrication.method is None:
+                missing.append(f"materials.{mid}.fabrication.method")
+            amount(f"materials.{mid}.fabrication.labor", m.fabrication.labor)
+            if m.fabrication.hours_per_m3 is None:
+                missing.append(f"materials.{mid}.fabrication.hours_per_m3")
+            amount(f"materials.{mid}.finishing", m.finishing)
+            # machine / mold_pattern stay legitimately null by method — not flagged
+        if self.workshop.get("overhead_pct") is None:
+            missing.append("workshop.overhead_pct")
+        amount("install.crew_day_rate", self.install.crew_day_rate)
+        if self.install.crew_size is None:
+            missing.append("install.crew_size")
+        if self.install.days_per_tonne is None:
+            missing.append("install.days_per_tonne")
+        amount("install.transport", self.install.transport)
+        if self.contingency_pct is None:
+            missing.append("contingency_pct")
+        if self.markup_pct is None:
+            missing.append("markup_pct")
+        for cur, fx in self.fx_rates.items():
+            if fx.rate is None:
+                missing.append(f"fx_rates.{cur}.rate")
+            if fx.as_of is None:
+                missing.append(f"fx_rates.{cur}.as_of")
+        return missing
+
+    def require_filled(self) -> None:
+        """Hard error naming every unfilled rate. Called before ANY cost
+        computation — never compute from a half-filled rate card."""
+        missing = self.missing_entries()
+        if missing:
+            raise ConfigError(
+                "costing.yaml is not filled in — cannot compute costs. "
+                f"Missing {len(missing)} entries: " + ", ".join(missing)
+            )
+
+
 # --- materials.yaml ----------------------------------------------------------
 
 class StockSizeMm(BaseModel):
@@ -235,15 +373,35 @@ class ConfigBundle(BaseModel):
     pricing: PricingConfig
     budget: BudgetConfig
     materials: MaterialsConfig
+    costing: CostingConfig
 
 
 def load_config_bundle() -> ConfigBundle:
-    """Load and validate every config file. Raises ConfigError on any defect."""
+    """Load and validate every config file. Raises ConfigError on any defect.
+
+    Cross-file check: costing.yaml material keys must be a subset of
+    materials.yaml ids (a rate for a material the library doesn't know is a
+    typo the operator must see at startup, not at costing time)."""
+    council = _validate(CouncilConfig, _load_yaml("council.yaml"), "council.yaml")
+    pricing = _validate(PricingConfig, _load_yaml("pricing.yaml"), "pricing.yaml")
+    budget = _validate(BudgetConfig, _load_yaml("budget.yaml"), "budget.yaml")
+    materials = _validate(
+        MaterialsConfig, _load_yaml("materials.yaml"), "materials.yaml"
+    )
+    costing = _validate(CostingConfig, _load_yaml("costing.yaml"), "costing.yaml")
+    unknown = set(costing.materials) - set(materials.materials)
+    if unknown:
+        raise ConfigError(
+            f"costing.yaml has rates for unknown material ids {sorted(unknown)}; "
+            f"ids must match config/materials.yaml ({sorted(materials.materials)})"
+        )
+    missing_rates = set(materials.materials) - set(costing.materials)
+    if missing_rates:
+        raise ConfigError(
+            f"costing.yaml is missing rate blocks for library materials "
+            f"{sorted(missing_rates)} (null amounts are fine; the block must exist)"
+        )
     return ConfigBundle(
-        council=_validate(CouncilConfig, _load_yaml("council.yaml"), "council.yaml"),
-        pricing=_validate(PricingConfig, _load_yaml("pricing.yaml"), "pricing.yaml"),
-        budget=_validate(BudgetConfig, _load_yaml("budget.yaml"), "budget.yaml"),
-        materials=_validate(
-            MaterialsConfig, _load_yaml("materials.yaml"), "materials.yaml"
-        ),
+        council=council, pricing=pricing, budget=budget,
+        materials=materials, costing=costing,
     )
