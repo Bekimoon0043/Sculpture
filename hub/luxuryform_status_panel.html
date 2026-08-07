@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LuxuryForm — repo status panel</title>
+<style>
+  /* Page chrome for standalone preview only. NOT part of the paste block. */
+  body { margin: 0; padding: 24px; background: #f4f4f5; font-family: ui-sans-serif, system-ui, sans-serif; }
+  @media (prefers-color-scheme: dark) { body { background: #0b0b0d; } }
+</style>
+</head>
+<body>
+
+<!-- ==================== BEGIN PASTE ====================================== -->
+<!--
+  LuxuryForm -> Hub status panel.  ONE DIRECTION: this block only ever issues
+  GET requests for the status JSON.  There is no POST/PUT/DELETE anywhere in
+  it; the Hub cannot write to the repo.
+
+  To use: paste everything between BEGIN PASTE and END PASTE into your Hub
+  HTML, and put luxuryform_status.json in the same directory as the Hub file
+  (same origin -> no CORS setup needed).
+
+  Configure with data- attributes on the div below:
+    data-status-url   path to the JSON            (default ./luxuryform_status.json)
+    data-poll-seconds polling interval in seconds (default 30)
+    data-stale-minutes age at which the panel flags the data as stale (default 20)
+-->
+<div id="lf-status"
+     data-status-url="./luxuryform_status.json"
+     data-poll-seconds="30"
+     data-stale-minutes="20">
+  <div class="lf-boot">Loading LuxuryForm status…</div>
+</div>
+
+<style>
+#lf-status {
+  --lf-bg: #ffffff; --lf-fg: #18181b; --lf-muted: #71717a; --lf-line: #e4e4e7;
+  --lf-card: #fafafa; --lf-accent: #6d28d9; --lf-ok: #15803d; --lf-warn: #b45309;
+  --lf-bad: #b91c1c; --lf-null: #a1a1aa;
+  box-sizing: border-box; max-width: 980px; margin: 0 auto;
+  background: var(--lf-bg); color: var(--lf-fg); border: 1px solid var(--lf-line);
+  border-radius: 12px; padding: 18px 20px 20px;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px; line-height: 1.5;
+}
+@media (prefers-color-scheme: dark) {
+  #lf-status {
+    --lf-bg: #131316; --lf-fg: #f4f4f5; --lf-muted: #a1a1aa; --lf-line: #2a2a30;
+    --lf-card: #1b1b20; --lf-accent: #a78bfa; --lf-ok: #4ade80; --lf-warn: #fbbf24;
+    --lf-bad: #f87171; --lf-null: #71717a;
+  }
+}
+#lf-status * { box-sizing: border-box; }
+#lf-status .lf-boot { color: var(--lf-muted); padding: 8px 0; }
+
+#lf-status .lf-topline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+#lf-status .lf-title { font-weight: 700; letter-spacing: .02em; font-size: 13px; text-transform: uppercase; color: var(--lf-muted); }
+
+/* The commit sha is the anti-staleness signal: it gets the loudest treatment. */
+#lf-status .lf-sha {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 26px; font-weight: 700; letter-spacing: .04em; color: var(--lf-accent);
+  cursor: help; word-break: break-all;
+}
+#lf-status .lf-subject { color: var(--lf-fg); font-size: 13px; }
+#lf-status .lf-meta { color: var(--lf-muted); font-size: 12px; margin-top: 2px; }
+
+#lf-status .lf-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px;
+  font-weight: 700; letter-spacing: .03em; text-transform: uppercase; border: 1px solid currentColor;
+}
+#lf-status .lf-ok { color: var(--lf-ok); }
+#lf-status .lf-warn { color: var(--lf-warn); }
+#lf-status .lf-bad { color: var(--lf-bad); }
+#lf-status .lf-dim { color: var(--lf-muted); }
+
+#lf-status .lf-banner {
+  margin: 12px 0 0; padding: 9px 12px; border-radius: 8px; font-size: 13px;
+  border: 1px solid currentColor;
+}
+#lf-status .lf-banner.lf-bad { background: color-mix(in srgb, var(--lf-bad) 10%, transparent); }
+#lf-status .lf-banner.lf-warn { background: color-mix(in srgb, var(--lf-warn) 12%, transparent); }
+
+#lf-status .lf-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px; margin-top: 14px;
+}
+#lf-status .lf-card { background: var(--lf-card); border: 1px solid var(--lf-line); border-radius: 10px; padding: 11px 13px; }
+#lf-status .lf-card h4 {
+  margin: 0 0 7px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--lf-muted); font-weight: 700;
+}
+#lf-status .lf-big { font-size: 21px; font-weight: 700; font-variant-numeric: tabular-nums; }
+#lf-status .lf-sub { font-size: 12px; color: var(--lf-muted); margin-top: 3px; }
+#lf-status .lf-null { color: var(--lf-null); font-style: italic; font-weight: 400; }
+
+#lf-status .lf-steps { display: flex; gap: 4px; margin: 7px 0 5px; }
+#lf-status .lf-step { flex: 1; height: 6px; border-radius: 3px; background: var(--lf-line); }
+#lf-status .lf-step.done { background: var(--lf-accent); }
+
+#lf-status .lf-gates { display: flex; flex-wrap: wrap; gap: 6px; }
+#lf-status .lf-gate { border: 1px solid var(--lf-line); border-radius: 7px; padding: 4px 9px; font-size: 12px; }
+
+#lf-status ul.lf-list { margin: 0; padding-left: 17px; }
+#lf-status ul.lf-list li { margin: 3px 0; font-size: 12.5px; }
+#lf-status .lf-wide { grid-column: 1 / -1; }
+#lf-status details { margin-top: 12px; font-size: 12.5px; }
+#lf-status summary { cursor: pointer; color: var(--lf-muted); font-weight: 600; }
+#lf-status details ul { margin: 7px 0 0; padding-left: 17px; }
+#lf-status code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px; background: var(--lf-card); padding: 1px 4px; border-radius: 4px;
+}
+#lf-status .lf-foot { margin-top: 13px; padding-top: 10px; border-top: 1px solid var(--lf-line); color: var(--lf-muted); font-size: 11.5px; }
+</style>
+
+<script>
+(function () {
+  "use strict";
+  var root = document.getElementById("lf-status");
+  if (!root) return;
+
+  var URL_        = root.dataset.statusUrl    || "./luxuryform_status.json";
+  var POLL_MS     = (parseInt(root.dataset.pollSeconds, 10) || 30) * 1000;
+  var STALE_MS    = (parseInt(root.dataset.staleMinutes, 10) || 20) * 60 * 1000;
+
+  var last = null;          // last successfully parsed payload
+  var lastFetchOk = null;   // Date of last successful fetch
+  var lastError = null;
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  // Renders JSON null as an explicit, visible "not determined" — never blank,
+  // never a stand-in value.
+  function val(v, fmt) {
+    if (v === null || v === undefined) return '<span class="lf-null">null</span>';
+    return esc(fmt ? fmt(v) : v);
+  }
+  function money(n) { return "$" + Number(n).toFixed(6); }
+  function ago(ms) {
+    var s = Math.round(ms / 1000);
+    if (s < 60) return s + "s ago";
+    if (s < 3600) return Math.round(s / 60) + "m ago";
+    if (s < 86400) return Math.round(s / 3600) + "h ago";
+    return Math.round(s / 86400) + "d ago";
+  }
+
+  function render() {
+    if (!last) {
+      root.innerHTML = '<div class="lf-banner lf-bad">Could not load LuxuryForm status from <code>'
+        + esc(URL_) + '</code><br>' + esc(lastError || "unknown error")
+        + '<br><span class="lf-sub">Run the generator in the repo, then make sure the JSON sits beside this Hub file.</span></div>';
+      return;
+    }
+
+    var d = last;
+    var src = d.source || {};
+    var ph = d.phase || {};
+    var step = ph.build_step || {};
+    var sp = d.spend || {};
+    var lim = d.limitations || {};
+    var adr = d.latest_adr || {};
+    var und = d.undetermined || [];
+
+    var genAt = d.generated_at_utc ? new Date(d.generated_at_utc) : null;
+    var age = genAt ? (Date.now() - genAt.getTime()) : null;
+    var stale = age !== null && age > STALE_MS;
+
+    var h = "";
+
+    // ---- header: commit sha is the headline -------------------------------
+    h += '<div class="lf-topline"><span class="lf-title">LuxuryForm — source commit</span>';
+    if (src.working_tree_clean === true) {
+      h += '<span class="lf-badge lf-ok">tree clean</span>';
+    } else if (src.working_tree_clean === false) {
+      var n = (src.dirty_paths || []).length;
+      h += '<span class="lf-badge lf-warn">tree dirty (' + n + ')</span>';
+    } else {
+      h += '<span class="lf-badge lf-dim">tree unknown</span>';
+    }
+    h += '</div>';
+    h += '<div class="lf-sha" title="' + esc(src.commit_sha || "commit sha not determined") + '">'
+       + (src.commit_sha_short ? esc(src.commit_sha_short) : '<span class="lf-null">no commit sha</span>')
+       + '</div>';
+    h += '<div class="lf-subject">' + val(src.commit_subject) + '</div>';
+    h += '<div class="lf-meta">committed ' + val(src.commit_date_utc)
+       + ' &nbsp;·&nbsp; branch <code>' + (src.branch ? esc(src.branch) : "null") + '</code>'
+       + ' &nbsp;·&nbsp; status generated ' + val(d.generated_at_utc)
+       + (age !== null ? ' (' + esc(ago(age)) + ')' : '') + '</div>';
+
+    // ---- staleness / transport banners ------------------------------------
+    if (lastError) {
+      h += '<div class="lf-banner lf-bad"><strong>Fetch failed — this view is frozen, not live.</strong><br>'
+         + esc(lastError) + '<br><span class="lf-sub">Showing the last payload that loaded'
+         + (lastFetchOk ? ' (' + esc(ago(Date.now() - lastFetchOk.getTime())) + ')' : '')
+         + '. Compare the commit sha above against the repo before trusting it.</span></div>';
+    } else if (stale) {
+      h += '<div class="lf-banner lf-warn"><strong>Stale.</strong> This status was generated '
+         + esc(ago(age)) + '. Re-run the generator in the repo to refresh it.</div>';
+    }
+
+    // ---- cards -------------------------------------------------------------
+    h += '<div class="lf-grid">';
+
+    // phase + build step
+    h += '<div class="lf-card"><h4>Phase</h4>';
+    h += '<div class="lf-big">' + val(ph.current_phase) + ' <span class="lf-sub">of ' + val(ph.total_phases) + '</span></div>';
+    h += '<div class="lf-sub">' + val(ph.current_phase_state) + '</div>';
+    if (step.total_steps) {
+      var done = step.last_completed_step || 0;
+      h += '<div class="lf-steps">';
+      for (var i = 1; i <= step.total_steps; i++) {
+        h += '<div class="lf-step' + (i <= done ? ' done' : '') + '"></div>';
+      }
+      h += '</div>';
+      h += '<div class="lf-sub">build step ' + val(step.last_completed_step) + ' of '
+         + esc(step.total_steps) + ' complete</div>';
+      if (step.next_step_description) {
+        h += '<div class="lf-sub">next: ' + esc(step.next_step) + '. ' + esc(step.next_step_description) + '</div>';
+      }
+    } else {
+      h += '<div class="lf-sub">build step: ' + val(null) + '</div>';
+    }
+    h += '</div>';
+
+    // gates
+    h += '<div class="lf-card"><h4>Gates</h4><div class="lf-gates">';
+    (d.gates || []).forEach(function (g) {
+      var cls = g.status === "PASS" || g.status === "CLOSED" ? "lf-ok"
+              : g.status === "FAIL" ? "lf-bad" : "lf-dim";
+      h += '<span class="lf-gate ' + cls + '" title="' + esc(g.evidence || "no recorded verdict") + '">P'
+         + esc(g.phase) + ' ' + (g.status ? esc(g.status) : "null")
+         + (g.date ? ' <span class="lf-sub">' + esc(g.date) + '</span>' : '') + '</span>';
+    });
+    h += '</div></div>';
+
+    // spend
+    h += '<div class="lf-card"><h4>API spend</h4>';
+    h += '<div class="lf-big">' + val(sp.cumulative_usd, money) + '</div>';
+    h += '<div class="lf-sub">cumulative · ' + val(sp.call_count) + ' calls'
+       + (sp.error_count ? ', ' + esc(sp.error_count) + (sp.error_count === 1 ? ' error' : ' errors') : '') + '</div>';
+    if (sp.last_session) {
+      h += '<div class="lf-sub" style="margin-top:6px">last session '
+         + val(sp.last_session.cost_usd, money) + ' · '
+         + val(sp.last_session.call_count) + ' calls · ' + val(sp.last_session.status) + '</div>';
+    } else {
+      h += '<div class="lf-sub" style="margin-top:6px">last session: ' + val(null) + '</div>';
+    }
+    if (sp.budget_events && sp.budget_events.total) {
+      h += '<div class="lf-sub">budget events: ' + esc(sp.budget_events.total)
+         + ' (' + esc(Object.keys(sp.budget_events.by_type || {}).join(", ")) + ')</div>';
+    }
+    if (sp.db_present === false) {
+      h += '<div class="lf-sub lf-warn">database not present where the generator ran</div>';
+    }
+    h += '</div>';
+
+    // latest ADR
+    h += '<div class="lf-card"><h4>Latest ADR</h4>';
+    h += '<div class="lf-big">' + val(adr.id) + '</div>';
+    h += '<div class="lf-sub">' + val(adr.date) + '</div>';
+    h += '<div class="lf-sub" style="margin-top:4px">' + val(adr.title) + '</div>';
+    h += '</div>';
+
+    // open limitations
+    h += '<div class="lf-card lf-wide"><h4>Open limitations — ' + val(lim.open_count)
+       + (lim.retired_count !== null && lim.retired_count !== undefined
+          ? ' <span class="lf-sub">(' + esc(lim.retired_count) + ' retired, hidden)</span>' : '')
+       + '</h4><ul class="lf-list">';
+    (lim.open || []).forEach(function (item) {
+      h += '<li><strong>§' + esc(item.number) + '</strong> ' + esc(item.title);
+      if (item.sub_items && item.sub_items.length) {
+        h += '<div class="lf-sub">' + esc(item.sub_items.join(" · ")) + '</div>';
+      }
+      h += '</li>';
+    });
+    if (!(lim.open || []).length) h += '<li class="lf-null">none listed</li>';
+    h += '</ul></div>';
+
+    h += '</div>'; // .lf-grid
+
+    // ---- undetermined ------------------------------------------------------
+    if (und.length) {
+      h += '<details><summary>' + und.length + ' field'
+         + (und.length === 1 ? '' : 's') + ' could not be determined (written as null, never guessed)</summary><ul>';
+      und.forEach(function (u) {
+        h += '<li><code>' + esc(u.field) + '</code> — ' + esc(u.reason) + '</li>';
+      });
+      h += '</ul></details>';
+    }
+
+    h += '<div class="lf-foot">one-way: repo → Hub (this panel only issues GET requests) · polling <code>'
+       + esc(URL_) + '</code> every ' + (POLL_MS / 1000) + 's · schema <code>'
+       + esc(d.schema || "unknown") + '</code></div>';
+
+    root.innerHTML = h;
+  }
+
+  function poll() {
+    // Cache-busted GET. No other HTTP method is used anywhere in this panel.
+    fetch(URL_ + (URL_.indexOf("?") === -1 ? "?" : "&") + "_t=" + Date.now(), {
+      method: "GET",
+      cache: "no-store",
+      credentials: "omit"
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status + " " + r.statusText);
+        return r.json();
+      })
+      .then(function (data) {
+        last = data;
+        lastFetchOk = new Date();
+        lastError = null;
+        render();
+      })
+      .catch(function (e) {
+        lastError = e.message || String(e);
+        render();
+      });
+  }
+
+  poll();
+  setInterval(poll, POLL_MS);
+})();
+</script>
+<!-- ===================== END PASTE ======================================= -->
+
+</body>
+</html>

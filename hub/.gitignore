@@ -1,0 +1,8 @@
+# The status JSON is DERIVED output, never source. Committing it would let a
+# stale copy outlive the commit it describes — exactly the failure the panel's
+# commit-sha display exists to catch. Regenerate it instead:
+#
+#   python scripts/generate_hub_status.py
+#
+luxuryform_status.json
+luxuryform_status.json.tmp
