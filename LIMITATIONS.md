@@ -66,8 +66,10 @@ early):
   (council_sessions / council_calls / design_specs / engineering_reviews /
   defect_lists / arbiter_decisions), the $0 fixture replay pipeline, the
   costing rates schema (`config/costing.yaml` template, operator fills the
-  nulls), and the Council orchestrator (offline-proven against a scripted
-  dispatcher; live run is step 4). NOT built yet: transcript UI (step 3),
+  nulls), the Council orchestrator (offline-proven against a scripted
+  dispatcher; live run is step 4), and cache-aware pricing (ADR-022:
+  kimi/anthropic cache token classes priced separately at first-party
+  rates). NOT built yet: transcript UI (step 3),
   live session capture (step 4), split gate (step 5).
 - **Phase 4** — the sandbox for AI-written geometry code (isolation level
   already fixed in ADR-005), Blender workers.
@@ -84,37 +86,30 @@ of the Phase 1 gate on the operator's machine. Amendment 5 is fully
 satisfied; this entry is retired. (Section numbers are preserved so existing
 references to §7 stay valid.)
 
-## 7. Offline test transports mirror an ASSUMED SDK response shape
+## 7. ~~Offline test transports mirror an ASSUMED SDK response shape~~ — RETIRED 2026-08-07
 
-The offline test suite (`tests/conftest.py`: `InjectedAnthropicTransport`,
-`InjectedOpenAITransport`) uses **hand-constructed** response objects — mocks
-that pretend to be a provider's SDK client. They mirror the anthropic/openai
-SDK response shape (content blocks / choices / usage) **as assumed, not as
-verified against a real API response**.
+**RETIRED (live-verified, operator run 2026-08-07).** The operator ran
+`scripts/live_verify_providers.py` against their real account. Verbatim
+results, matching the offline transports exactly:
 
-Consequence: if a real SDK response shape differs from the assumption, the
-offline suite **passes while production fails**. This limitation is retired
-only by a fully green live Phase 1 gate — the gate exercises the real SDKs
-against the real endpoints. Until that run passes, treat the
-offline suite as proof of the dispatch path *around* the SDK call, never as
-proof of the SDK call itself.
+- `[kimi]` top-level keys = choices, created, id, model, object,
+  service_tier, system_fingerprint, usage
+- `[kimi]` choices[0].message keys include `content`; content returned `'OK'`
+- `[kimi]` usage keys = cached_tokens, completion_tokens,
+  completion_tokens_details, prompt_tokens, prompt_tokens_details,
+  total_tokens
+- `[openai]` message keys include `content` (gpt-4o present in
+  models.list(): TRUE, 124 models)
+- `[anthropic]` content block types = ['text']; usage includes
+  cache_creation_input_tokens and cache_read_input_tokens
+  (claude-sonnet-4-5 present: TRUE, 10 models)
 
-**Progress 2026-08-01 (operator's live gate):** anthropic and openai passed
-BOTH text and vision live; kimi passed vision live. These live calls validate
-the assumed SDK shapes for those paths. Remaining unverified path: kimi text
-(a 400 parameter-validation response already proves the request/response
-plumbing reaches the API correctly — the failure was a fixed-temperature
-constraint, not an SDK shape mismatch).
-
-**Progress 2026-08-07 (ADR-021):** kimi text shape DOC-VERIFIED against the
-live chat quickstart (platform.kimi.ai/docs/api/chat-completion, fetched
-2026-08-07): OpenAI-compatible, text at `choices[0].message.content`, usage
-at `usage.prompt_tokens` / `usage.completion_tokens` — the exact shape the
-offline transports assume. LIVE verification (one minimal kimi-k3 text call,
-a few cents) is scripted at `scripts/live_verify_providers.py` — operator
-runs it per docs/operator/03_provider_verification.md; the sandbox holds no
-keys. This section is RETIRED once that output matches (and the transports
-are corrected first if it does not).
+All six paths (3 providers x text/vision) are now verified against live
+responses rather than assumed. The transports in `tests/conftest.py` were
+updated to include the live-verified cache usage fields (ADR-022), and the
+kimi/anthropic providers now SPLIT cache-token classes for pricing (see
+DECISIONS.md ADR-022). The historical text of this limitation is preserved
+in git history (section numbers are never reused).
 
 ---
 

@@ -154,6 +154,11 @@ class PriceEntry(BaseModel):
     usd_per_1m_input_tokens: float = Field(gt=0)
     usd_per_1m_output_tokens: float = Field(gt=0)
     effective_date: str  # ISO date text; presence is what matters for honesty
+    # Optional cache-class prices (ADR-022). Absent = that class is UNPRICED;
+    # if a live response then reports tokens in that class, cost_usd raises —
+    # a price is never guessed.
+    usd_per_1m_cached_input_tokens: float | None = Field(default=None, gt=0)
+    usd_per_1m_cache_write_input_tokens: float | None = Field(default=None, gt=0)
 
     @field_validator("effective_date")
     @classmethod
@@ -185,12 +190,43 @@ class PricingConfig(BaseModel):
         return entry
 
     def cost_usd(
-        self, provider: str, model: str, tokens_in: int, tokens_out: int
+        self,
+        provider: str,
+        model: str,
+        tokens_in: int,
+        tokens_out: int,
+        *,
+        cached_input_tokens: int = 0,
+        cache_write_input_tokens: int = 0,
     ) -> float:
-        """Exact cost from real token counts, rounded to 6 decimal places."""
+        """Exact cost from real token counts, rounded to 6 decimal places.
+
+        ADR-022 cache classes: ``tokens_in`` is the UNCACHED input count
+        (providers normalise at the boundary). Cache-read and cache-write
+        tokens price at their own classes; if a call reports tokens in a
+        class the price entry does not cover, this raises — never guesses.
+        """
         entry = self.price_for(provider, model)
+        if cached_input_tokens and entry.usd_per_1m_cached_input_tokens is None:
+            raise PricingLookupError(
+                f"{provider}/{model} returned {cached_input_tokens} cache-READ "
+                f"input tokens but config/pricing.yaml (pricing_version "
+                f"{self.pricing_version}) has no usd_per_1m_cached_input_tokens "
+                "price for it; add the verified price rather than guessing"
+            )
+        if cache_write_input_tokens and entry.usd_per_1m_cache_write_input_tokens is None:
+            raise PricingLookupError(
+                f"{provider}/{model} returned {cache_write_input_tokens} "
+                f"cache-WRITE input tokens but config/pricing.yaml "
+                f"(pricing_version {self.pricing_version}) has no "
+                "usd_per_1m_cache_write_input_tokens price for it; add the "
+                "verified price rather than guessing"
+            )
         cost = (
             tokens_in * entry.usd_per_1m_input_tokens
+            + cached_input_tokens * (entry.usd_per_1m_cached_input_tokens or 0.0)
+            + cache_write_input_tokens
+            * (entry.usd_per_1m_cache_write_input_tokens or 0.0)
             + tokens_out * entry.usd_per_1m_output_tokens
         ) / 1_000_000
         return round(cost, 6)

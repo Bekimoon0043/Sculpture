@@ -44,6 +44,8 @@ class LiveDispatcher:
             text=resp.text,
             tokens_in=resp.tokens_in,
             tokens_out=resp.tokens_out,
+            cached_input_tokens=resp.cached_input_tokens,
+            cache_write_input_tokens=resp.cache_write_input_tokens,
             latency_ms=resp.latency_ms,
             cost_usd=resp.cost_usd,
             pricing_version=resp.pricing_version,

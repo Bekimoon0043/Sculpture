@@ -1,4 +1,4 @@
-# LuxuryForm Studio v1 — Phase 2
+# LuxuryForm Studio v1 — Phase 3 of 7 in progress
 
 **What this is:** an internal design platform for LuxuryCon (Addis Ababa). It
 turns a client brief for a sculpture or fountain into a design that is
@@ -6,10 +6,12 @@ defensible in numbers — real wall thickness, real weight, real water flow —
 using a council of AI models (Claude, GPT, Kimi) whose every call is logged
 and spend-capped, plus a real CAD engine.
 
-**Current phase status:** Phases 1 and 2 are built and CLOSED (operator
-gates PASS, 2026-08-01 / 2026-08-04). **Phase 3 (the AI Council) is in
-progress:** build step 1 of 5 is done — schema v3 persistence, the $0
-fixture replay pipeline, and the costing rates schema. What works today:
+**Current phase status:** This platform has 7 phases. **Phase 3 of 7 is in
+progress** (build steps 1–2 of 5 done). Phases 1 and 2 are built and CLOSED
+(operator gates PASS, 2026-08-01 / 2026-08-04). Phase 3 so far: schema v3
+persistence, the $0 fixture replay pipeline, the costing rates schema, the
+Council orchestrator (offline-proven), and cache-aware provider pricing
+(ADR-022). What works today:
 everything from Phase 1 (provider layer, spend caps, audit logging, gates)
 PLUS the geometry kernel — one fully parametric tiered-cascade fountain
 built as a single watertight CAD solid, hard design constraints with real

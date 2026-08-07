@@ -80,11 +80,13 @@ class DispatchOutcome:
     provider: str
     model: str
     text: str
-    tokens_in: int
+    tokens_in: int             # uncached input, normalised (ADR-022)
     tokens_out: int
     latency_ms: float
     cost_usd: float
     pricing_version: str
+    cached_input_tokens: int = 0
+    cache_write_input_tokens: int = 0
     status: str = "ok"           # ok | error
     error: str | None = None
 
@@ -167,6 +169,8 @@ class CouncilOrchestrator:
                     response=outcome.text,
                     tokens_in=outcome.tokens_in,
                     tokens_out=outcome.tokens_out,
+                    cached_input_tokens=outcome.cached_input_tokens,
+                    cache_write_input_tokens=outcome.cache_write_input_tokens,
                     latency_ms=outcome.latency_ms,
                     cost_usd=outcome.cost_usd,
                     pricing_version=outcome.pricing_version,

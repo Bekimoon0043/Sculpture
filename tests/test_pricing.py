@@ -8,7 +8,7 @@ from app.core.config import PricingLookupError
 
 
 def test_pricing_yaml_loads_with_version(config):
-    assert config.pricing.pricing_version == "2026-08-v2"
+    assert config.pricing.pricing_version == "2026-08-v3"
 
 
 def test_every_council_default_model_has_a_price(config):

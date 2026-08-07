@@ -14,6 +14,23 @@ import anthropic
 
 from app.ai.provider import AIProvider, RawResult
 
+
+def _cache_fields(usage) -> tuple[int, int]:
+    """Anthropic cache classes -> (cache_read, cache_write) input tokens.
+
+    Live-verified shape (operator run 2026-08-07, claude-sonnet-4-5): usage
+    carries cache_creation_input_tokens and cache_read_input_tokens.
+    Anthropic's input_tokens ALREADY EXCLUDES both cache classes, so no
+    subtraction here (unlike kimi) — the classes price separately
+    ($0.30 read / $3.75 5m-write per MTok — platform.claude.com/docs,
+    fetched 2026-08-07). getattr defaults keep older SDK responses working.
+    """
+
+    return (
+        int(getattr(usage, "cache_read_input_tokens", 0) or 0),
+        int(getattr(usage, "cache_creation_input_tokens", 0) or 0),
+    )
+
 _MEDIA_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
                 ".gif": "image/gif", ".webp": "image/webp"}
 
@@ -53,10 +70,13 @@ class AnthropicProvider(AIProvider):
             block.text for block in resp.content
             if getattr(block, "type", None) == "text"
         )
+        cache_read, cache_write = _cache_fields(resp.usage)
         return RawResult(
             text=text,
             tokens_in=resp.usage.input_tokens,
             tokens_out=resp.usage.output_tokens,
+            cached_input_tokens=cache_read,
+            cache_write_input_tokens=cache_write,
         )
 
     def _raw_vision(
@@ -92,8 +112,11 @@ class AnthropicProvider(AIProvider):
             block.text for block in resp.content
             if getattr(block, "type", None) == "text"
         )
+        cache_read, cache_write = _cache_fields(resp.usage)
         return RawResult(
             text=text,
             tokens_in=resp.usage.input_tokens,
             tokens_out=resp.usage.output_tokens,
+            cached_input_tokens=cache_read,
+            cache_write_input_tokens=cache_write,
         )

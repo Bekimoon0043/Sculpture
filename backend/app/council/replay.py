@@ -199,9 +199,13 @@ def replay_session(db: Database, pricing: PricingConfig, fixture: dict) -> str:
     call_rows: list[CouncilCallRow] = []
     total_cost = 0.0
     for call in fixture["calls"]:
+        cached_in = int(call.get("cached_input_tokens", 0))
+        cache_write_in = int(call.get("cache_write_input_tokens", 0))
         cost = pricing.cost_usd(
             call["provider"], call["model"],
             call["tokens_in"], call["tokens_out"],
+            cached_input_tokens=cached_in,
+            cache_write_input_tokens=cache_write_in,
         )
         total_cost += cost
         call_rows.append(
@@ -217,6 +221,8 @@ def replay_session(db: Database, pricing: PricingConfig, fixture: dict) -> str:
                 response=call["response"],
                 tokens_in=call["tokens_in"],
                 tokens_out=call["tokens_out"],
+                cached_input_tokens=cached_in,
+                cache_write_input_tokens=cache_write_in,
                 latency_ms=call["latency_ms"],
                 cost_usd=cost,
                 pricing_version=pricing.pricing_version,

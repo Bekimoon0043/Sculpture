@@ -30,6 +30,31 @@ import openai
 
 from app.ai.provider import AIProvider, RawResult
 
+
+def _split_cached(usage) -> tuple[int, int]:
+    """Normalise Moonshot usage -> (uncached_input, cached_input).
+
+    Live-verified shape (operator run 2026-08-07, kimi-k3): usage carries
+    top-level cached_tokens alongside prompt_tokens/completion_tokens.
+    cached_tokens is the cache-HIT SUBSET of prompt_tokens, billed at a lower
+    class ($0.30 vs $3.00 per MTok — platform.kimi.ai/docs/pricing,
+    fetched 2026-08-07). Falls back to prompt_tokens_details.cached_tokens
+    (OpenAI-compatible spelling) if the top-level field is absent.
+    """
+
+    prompt_total = usage.prompt_tokens
+    cached = getattr(usage, "cached_tokens", None)
+    if cached is None:
+        details = getattr(usage, "prompt_tokens_details", None)
+        cached = getattr(details, "cached_tokens", 0) if details is not None else 0
+    cached = int(cached or 0)
+    if cached > prompt_total:  # shape anomaly — fail loudly, never guess
+        raise ValueError(
+            f"kimi usage reports cached_tokens={cached} > "
+            f"prompt_tokens={prompt_total}; cannot split input classes"
+        )
+    return prompt_total - cached, cached
+
 # Default only — config/council.yaml endpoints.kimi and env MOONSHOT_BASE_URL
 # take precedence (ADR-009: endpoints live in config, not code).
 DEFAULT_KIMI_BASE_URL = "https://api.moonshot.ai/v1"
@@ -80,10 +105,12 @@ class KimiProvider(AIProvider):
         if temperature is not None:
             kwargs["temperature"] = temperature
         resp = self._client.chat.completions.create(**kwargs)
+        uncached, cached = _split_cached(resp.usage)
         return RawResult(
             text=resp.choices[0].message.content or "",
-            tokens_in=resp.usage.prompt_tokens,
+            tokens_in=uncached,
             tokens_out=resp.usage.completion_tokens,
+            cached_input_tokens=cached,
         )
 
     def _raw_vision(
@@ -119,8 +146,10 @@ class KimiProvider(AIProvider):
             raise RuntimeError(
                 f"kimi vision call failed (model={model}): {exc}"
             ) from exc
+        uncached, cached = _split_cached(resp.usage)
         return RawResult(
             text=resp.choices[0].message.content or "",
-            tokens_in=resp.usage.prompt_tokens,
+            tokens_in=uncached,
             tokens_out=resp.usage.completion_tokens,
+            cached_input_tokens=cached,
         )

@@ -30,15 +30,30 @@ class ProviderResponse:
     latency_ms: float
     cost_usd: float
     pricing_version: str
+    # Cache-split input tokens (ADR-022; live-verified shapes 2026-08-07).
+    # tokens_in is ALWAYS the UNCACHED input count, normalised per provider.
+    cached_input_tokens: int = 0
+    cache_write_input_tokens: int = 0
 
 
 @dataclass(frozen=True)
 class RawResult:
-    """What a provider SDK call returns before logging/costing."""
+    """What a provider SDK call returns before logging/costing.
+
+    Cache-split input tokens (ADR-022). Providers NORMALISE at the boundary:
+    tokens_in is always the UNCACHED input count (kimi subtracts
+    usage.cached_tokens from usage.prompt_tokens; anthropic's input_tokens
+    already excludes cache reads/writes). cached_input_tokens = cache-read
+    class (kimi cached_tokens / anthropic cache_read_input_tokens);
+    cache_write_input_tokens = anthropic cache_creation_input_tokens (0 for
+    OpenAI-compatible APIs, which have no write class).
+    """
 
     text: str
     tokens_in: int
     tokens_out: int
+    cached_input_tokens: int = 0
+    cache_write_input_tokens: int = 0
 
 
 class ProviderError(Exception):

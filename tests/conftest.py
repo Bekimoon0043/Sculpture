@@ -64,11 +64,13 @@ def db(tmp_path) -> Database:
 # these ARE mocks that pretend to be a provider's SDK client. They are
 # legitimate test infrastructure, but they are mocks, and we call them that.
 #
-# They are HAND-CONSTRUCTED, not recorded: no real API response was ever
-# captured to build them. They mirror the SDK response shape AS ASSUMED
-# (content blocks / choices / usage), not as verified. If a real SDK shape
-# differs, this suite passes while production fails — see LIMITATIONS.md.
-# That assumption is retired only by the live gate run with real API keys.
+# They are HAND-CONSTRUCTED, not recorded: no raw API payload was captured to
+# build them. Their SHAPES are live-verified against the operator's account
+# (scripts/live_verify_providers.py run 2026-08-07 — see DECISIONS.md
+# ADR-021/ADR-022): anthropic content-block + usage cache fields, openai/kimi
+# choices/message/usage incl. kimi cached_tokens. If a provider changes its
+# shape, this suite passes while production fails — re-run the live verify
+# script to detect that.
 #
 # What they DO prove: the real production code path around the SDK call —
 # estimate -> BudgetEnforcer.pre_dispatch_check -> dispatch -> real token/cost
@@ -87,13 +89,21 @@ class InjectedAnthropicTransport:
     .messages.create(**kwargs) -> object shaped like the assumed Message."""
 
     def __init__(self, text: str, input_tokens: int, output_tokens: int,
-                 error: Exception | None = None) -> None:
+                 error: Exception | None = None,
+                 cache_read_input_tokens: int = 0,
+                 cache_creation_input_tokens: int = 0) -> None:
         self.calls: list[dict] = []
         self._error = error
         self._response = SimpleNamespace(
             content=[SimpleNamespace(type="text", text=text)],
+            # Live-verified usage keys (2026-08-07): input_tokens (uncached),
+            # output_tokens, cache_creation_input_tokens,
+            # cache_read_input_tokens.
             usage=SimpleNamespace(
-                input_tokens=input_tokens, output_tokens=output_tokens
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cache_read_input_tokens=cache_read_input_tokens,
+                cache_creation_input_tokens=cache_creation_input_tokens,
             ),
         )
         self.messages = SimpleNamespace(create=self._create)
@@ -110,13 +120,23 @@ class InjectedOpenAITransport:
     OpenAI-compatible): .chat.completions.create(**kwargs) -> assumed shape."""
 
     def __init__(self, text: str, input_tokens: int, output_tokens: int,
-                 error: Exception | None = None) -> None:
+                 error: Exception | None = None,
+                 cached_tokens: int = 0) -> None:
         self.calls: list[dict] = []
         self._error = error
         self._response = SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content=text))],
+            # Live-verified usage keys (2026-08-07, kimi-k3): prompt_tokens,
+            # completion_tokens, cached_tokens, total_tokens +
+            # *_details objects. prompt_tokens is the TOTAL input;
+            # cached_tokens is its cache-hit subset.
             usage=SimpleNamespace(
-                prompt_tokens=input_tokens, completion_tokens=output_tokens
+                prompt_tokens=input_tokens,
+                completion_tokens=output_tokens,
+                total_tokens=input_tokens + output_tokens,
+                cached_tokens=cached_tokens,
+                prompt_tokens_details=SimpleNamespace(cached_tokens=cached_tokens),
+                completion_tokens_details=SimpleNamespace(),
             ),
         )
         self.chat = SimpleNamespace(
