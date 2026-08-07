@@ -52,20 +52,23 @@ and update the file (bump `pricing_version` when you do). Every logged call
 records which pricing version computed its cost, so stale numbers can always
 be identified — but they are still stale until you update them.
 
-## 5. Phases 3–7 are not fully built yet (Phase 2 CLOSED 2026-08-04)
+## 5. Phases 3–7 are not fully built yet
+
+**CLOSED phases (no longer limitations):** Phase 1 (gate PASS 2026-08-01)
+and Phase 2 (gate PASS 2026-08-04 — cascade primitive, STEP/GLB export,
+determinism PROVEN cross-machine, viewport framing; see PHASE_2_REPORT.md).
+Phase 2's scope limits are documented in §8 below, not here.
 
 Not present in this repository, by design (later-phase code is not created
 early):
 
-- ~~**Phase 2** — geometry engine~~ — **BUILT and CLOSED** (operator gate
-  PASS 2026-08-04: cascade primitive, STEP/GLB export, determinism PROVEN
-  cross-machine, viewport framing). See PHASE_2_REPORT.md.
-- **Phase 3 — IN PROGRESS.** Built so far (step 1 of 5): schema v3
+- **Phase 3 — IN PROGRESS.** Built (steps 1–2 of 5): schema v3
   (council_sessions / council_calls / design_specs / engineering_reviews /
-  defect_lists / arbiter_decisions), the $0 fixture replay pipeline, and the
+  defect_lists / arbiter_decisions), the $0 fixture replay pipeline, the
   costing rates schema (`config/costing.yaml` template, operator fills the
-  nulls). NOT built yet: the Council orchestrator (step 2), transcript UI
-  (step 3), live session capture (step 4), split gate (step 5).
+  nulls), and the Council orchestrator (offline-proven against a scripted
+  dispatcher; live run is step 4). NOT built yet: transcript UI (step 3),
+  live session capture (step 4), split gate (step 5).
 - **Phase 4** — the sandbox for AI-written geometry code (isolation level
   already fixed in ADR-005), Blender workers.
 - **Phase 5** — validation gates (mesh, hydraulics, structure, fabrication)

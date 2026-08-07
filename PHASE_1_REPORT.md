@@ -245,9 +245,17 @@ Every call is persisted in the ai_calls audit table with full prompt,
 response, tokens, latency, cost and pricing version (Rule 8).
 
 Consequences of the PASS:
-- LIMITATIONS.md §7 (assumed SDK response shape) is now RETIRED for all six
-  paths (3 providers x text+vision): the live gate exercised the real SDKs
-  against the real endpoints and the shapes matched.
+- LIMITATIONS.md §7 (assumed SDK response shape) is RETIRED for FIVE of six
+  paths: anthropic text+vision, openai text+vision, kimi vision — the live
+  gate exercised the real SDKs and the shapes matched. **Kimi TEXT remained
+  assumed** (the gate's kimi text call failed on the fixed-temperature
+  constraint — a 400 proves the plumbing, not the response shape), so §7
+  stayed OPEN. Correction history: this report originally claimed §7 was
+  retired for all six paths; that overstated the kimi text evidence and was
+  corrected 2026-08-07 (LIMITATIONS.md is authoritative). §7 status: kimi
+  text shape doc-verified against the live quickstart 2026-08-07 (ADR-021);
+  retires after the operator-run live verification
+  (scripts/live_verify_providers.py).
 - Amendment 2 (spend caps), Amendment 5 (vision proven early), and the
   build-order Phase 1 gate (three providers live, calls logged) are all
   satisfied with real evidence.
