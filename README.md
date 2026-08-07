@@ -6,15 +6,19 @@ defensible in numbers — real wall thickness, real weight, real water flow —
 using a council of AI models (Claude, GPT, Kimi) whose every call is logged
 and spend-capped, plus a real CAD engine.
 
-**Current phase status:** Phase 2 of 7 is built. What works today: everything
-from Phase 1 (provider layer, spend caps, audit logging, gates) PLUS the
-geometry kernel — one fully parametric tiered-cascade fountain built as a
-single watertight CAD solid, hard design constraints with real numbers in
-every error, trimesh validation, deterministic STEP export (same spec + same
-seed = byte-identical file, proven by printed sha256 hashes), GLB export, and
-a three.js browser viewport at http://localhost:5173. The council
-orchestrator, AI-written geometry sandbox, rendering and the remaining
-primitives arrive in Phases 3–7 (see `LIMITATIONS.md`).
+**Current phase status:** Phases 1 and 2 are built and CLOSED (operator
+gates PASS, 2026-08-01 / 2026-08-04). **Phase 3 (the AI Council) is in
+progress:** build step 1 of 5 is done — schema v3 persistence, the $0
+fixture replay pipeline, and the costing rates schema. What works today:
+everything from Phase 1 (provider layer, spend caps, audit logging, gates)
+PLUS the geometry kernel — one fully parametric tiered-cascade fountain
+built as a single watertight CAD solid, hard design constraints with real
+numbers in every error, trimesh validation, deterministic STEP export (same
+spec + same seed = byte-identical file, proven cross-machine by printed
+sha256 hashes), GLB export, and a three.js browser viewport at
+http://localhost:5173. The council orchestrator, AI-written geometry
+sandbox, rendering and the remaining primitives arrive in the rest of
+Phases 3–7 (see `LIMITATIONS.md`).
 
 ## One-command start (with Docker)
 

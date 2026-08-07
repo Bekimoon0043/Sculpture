@@ -1,5 +1,15 @@
 # PHASE_3_PLAN.md — The AI Council (2026-08-04)
 
+**STATUS (updated 2026-08-07):** plan APPROVED by the operator 2026-08-04.
+Build steps (§9): **step 1 DONE** (schema v3 + fixture replay pipeline +
+costing rates schema — commit 457e6e0); step 2 (orchestrator) IN PROGRESS;
+steps 3–5 pending. ADR-009 pre-code fetches executed 2026-08-07 (ADR-021);
+pricing re-verified, `pricing_version` bumped to 2026-08-v2. Account-level
+checks (models.list ×3, live kimi text shape) scripted for the operator
+(scripts/live_verify_providers.py) — sandbox holds no keys. First live
+session spend (~$1–2.50) PRE-APPROVED by the operator; measured cost will
+be reported against the §7 estimate (≈$1.15).
+
 Scope per the master build order: all six Council agents, multi-provider,
 Design Spec JSON schema, Arbiter decision record, full transcript UI.
 

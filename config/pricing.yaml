@@ -3,34 +3,52 @@
 # OPERATOR: verify against current provider price pages before relying on cost
 # numbers; bump pricing_version on every edit.
 #
-# The prices below are the published list prices as of 2026-07 (best current
-# knowledge at build time), EXCEPT kimi-k3 which was fetched from the LIVE
-# docs (see entry). They MUST be verified against the providers' live
-# price pages before any cost figure is trusted. Every AI call logged in the
-# database records the pricing_version that computed its cost, so stale prices
-# can never silently rewrite history.
-pricing_version: "2026-08-v1"
+# RE-VERIFIED 2026-08-07 (ADR-021, all three providers, before Phase 3
+# provider-touching code):
+#   - anthropic: FIRST-PARTY https://platform.claude.com/docs/en/about-claude/pricing
+#     fetched 2026-08-07 — Claude Sonnet 4.5 $3/$15 per MTok, UNCHANGED.
+#     (Current gen is Claude Sonnet 5 at intro $2/$10 through 2026-08-31 then
+#     $3/$15; we stay on claude-sonnet-4-5, still listed and served.)
+#   - openai: first-party https://platform.openai.com/docs/pricing fetched
+#     2026-08-07 — its current chat table lists the gpt-5.x generation;
+#     gpt-4o does NOT appear there. GPT-4o $2.50/$10 (cached $1.25) is
+#     corroborated by THREE independent dated trackers (aipricing.guru synced
+#     2026-08-07; pricepertoken 2026-08-06; valueaddvc 2026-06-21). Account-level
+#     availability is confirmed by models.list() — scripts/live_verify_providers.py
+#     (operator runs it; sandbox has no keys).
+#   - kimi: FIRST-PARTY https://platform.kimi.ai/docs/pricing/chat-k3.md
+#     fetched 2026-08-07 — kimi-k3 $0.30 cache-hit / $3.00 cache-miss input,
+#     $15.00 output, context 1,048,576 — UNCHANGED. We bill input at the
+#     CACHE-MISS rate ($3.00, conservative) since caching is automatic and
+#     unpredictable.
+# Every AI call logged in the database records the pricing_version that
+# computed its cost, so stale prices can never silently rewrite history.
+pricing_version: "2026-08-v2"
 
 providers:
   anthropic:
-    # https://www.anthropic.com/pricing — Claude Sonnet 4.5 list price
+    # platform.claude.com/docs/en/about-claude/pricing — Claude Sonnet 4.5 list
+    # price, first-party fetched 2026-08-07 (unchanged).
     claude-sonnet-4-5:
       usd_per_1m_input_tokens: 3.00
       usd_per_1m_output_tokens: 15.00
       effective_date: "2025-09-29"
   openai:
-    # https://openai.com/api/pricing — GPT-4o list price
+    # GPT-4o $2.50/$10 — not on the first-party table fetched 2026-08-07
+    # (gpt-5.x generation only); corroborated by three independent dated
+    # trackers (see header). models.list() verification pending (operator key).
     gpt-4o:
       usd_per_1m_input_tokens: 2.50
       usd_per_1m_output_tokens: 10.00
       effective_date: "2024-08-06"
   kimi:
-    # Source: https://platform.kimi.ai/docs/pricing/chat-k3.md fetched LIVE
-    # 2026-08-01 (ADR-009). Table row: kimi-k3, per 1M tokens —
+    # Source: https://platform.kimi.ai/docs/pricing/chat-k3.md re-fetched LIVE
+    # 2026-08-07 (ADR-009/ADR-021). Table row: kimi-k3, per 1M tokens —
     # input (cache hit) $0.30, input (cache miss) $3.00, output $15.00,
-    # context 1,048,576 tokens. We bill input at the CACHE-MISS rate
-    # ($3.00, conservative) since caching is automatic and unpredictable.
-    # Vision is the same kimi-k3 model (native image input) — same prices.
+    # context 1,048,576 tokens — UNCHANGED since the 2026-08-01 fetch.
+    # We bill input at the CACHE-MISS rate ($3.00, conservative) since caching
+    # is automatic and unpredictable. Vision is the same kimi-k3 model
+    # (native image input) — same prices.
     kimi-k3:
       usd_per_1m_input_tokens: 3.00
       usd_per_1m_output_tokens: 15.00

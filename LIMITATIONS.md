@@ -52,16 +52,20 @@ and update the file (bump `pricing_version` when you do). Every logged call
 records which pricing version computed its cost, so stale numbers can always
 be identified — but they are still stale until you update them.
 
-## 5. Everything from Phases 2–7 is not built yet
+## 5. Phases 3–7 are not fully built yet (Phase 2 CLOSED 2026-08-04)
 
 Not present in this repository, by design (later-phase code is not created
 early):
 
-- **Phase 2** — geometry engine (build123d/OpenCASCADE), primitive registry,
-  STEP/STL/GLB export, determinism hash gate.
-- **Phase 3** — the AI council orchestrator (Researcher, Designer,
-  Geometrist, Engineer, Critic, Arbiter roles from `config/council.yaml`),
-  parallel dual-provider runs, Arbiter decision records.
+- ~~**Phase 2** — geometry engine~~ — **BUILT and CLOSED** (operator gate
+  PASS 2026-08-04: cascade primitive, STEP/GLB export, determinism PROVEN
+  cross-machine, viewport framing). See PHASE_2_REPORT.md.
+- **Phase 3 — IN PROGRESS.** Built so far (step 1 of 5): schema v3
+  (council_sessions / council_calls / design_specs / engineering_reviews /
+  defect_lists / arbiter_decisions), the $0 fixture replay pipeline, and the
+  costing rates schema (`config/costing.yaml` template, operator fills the
+  nulls). NOT built yet: the Council orchestrator (step 2), transcript UI
+  (step 3), live session capture (step 4), split gate (step 5).
 - **Phase 4** — the sandbox for AI-written geometry code (isolation level
   already fixed in ADR-005), Blender workers.
 - **Phase 5** — validation gates (mesh, hydraulics, structure, fabrication)
@@ -98,6 +102,16 @@ the assumed SDK shapes for those paths. Remaining unverified path: kimi text
 (a 400 parameter-validation response already proves the request/response
 plumbing reaches the API correctly — the failure was a fixed-temperature
 constraint, not an SDK shape mismatch).
+
+**Progress 2026-08-07 (ADR-021):** kimi text shape DOC-VERIFIED against the
+live chat quickstart (platform.kimi.ai/docs/api/chat-completion, fetched
+2026-08-07): OpenAI-compatible, text at `choices[0].message.content`, usage
+at `usage.prompt_tokens` / `usage.completion_tokens` — the exact shape the
+offline transports assume. LIVE verification (one minimal kimi-k3 text call,
+a few cents) is scripted at `scripts/live_verify_providers.py` — operator
+runs it per docs/operator/03_provider_verification.md; the sandbox holds no
+keys. This section is RETIRED once that output matches (and the transports
+are corrected first if it does not).
 
 ---
 

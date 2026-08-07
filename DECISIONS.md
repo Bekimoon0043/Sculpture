@@ -927,3 +927,54 @@ operator as written (PHASE_3_PLAN.md), including the split gate
 (fixture mode = $0 offline replay; --live mode only on operator
 command) and the ≈$1.15 session estimate, which will be checked against
 the MEASURED figure after the first live session.
+
+---
+
+## ADR-021 — Phase 3 pre-code provider re-verification (ADR-009 fetches, 2026-08-07)
+
+Operator order before any Phase 3 provider-touching code: re-fetch every
+provider detail live, record fetch dates, re-verify pricing. The build
+sandbox holds NO provider API keys (they live with the operator), so
+account-specific checks are scripted for the operator to run
+(`scripts/live_verify_providers.py`) — nothing about them is claimed here.
+
+**Pricing re-verification (pricing_version bumped 2026-08-v1 → 2026-08-v2):**
+
+- **anthropic** — FIRST-PARTY
+  `platform.claude.com/docs/en/about-claude/pricing`, fetched 2026-08-07:
+  Claude Sonnet 4.5 = $3 / $15 per MTok, UNCHANGED. (Context: current
+  generation is Sonnet 5 at intro $2/$10 through 2026-08-31, then $3/$15;
+  `claude-sonnet-4-5` remains listed and served.)
+- **openai** — first-party `platform.openai.com/docs/pricing`, fetched
+  2026-08-07: the current chat table lists the gpt-5.x generation;
+  **gpt-4o does not appear on it**. GPT-4o $2.50 / $10 (cached $1.25)
+  corroborated by three independent dated trackers (aipricing.guru synced
+  2026-08-07; pricepertoken 2026-08-06; valueaddvc 2026-06-21). Account
+  availability is settled by the operator-run `models.list()`, not assumed.
+- **kimi** — FIRST-PARTY `platform.kimi.ai/docs/pricing/chat-k3.md`,
+  fetched 2026-08-07: kimi-k3 $0.30 cache-hit / $3.00 cache-miss input,
+  $15.00 output, context 1,048,576 — UNCHANGED since the 2026-08-01 fetch.
+  We bill input at cache-miss (conservative).
+
+**SDK shapes / parameters:**
+
+- **kimi-k3** — Model Parameter Reference
+  (`platform.kimi.ai/docs/api/models-overview`, page updated 2026-08-04,
+  fetched 2026-08-07): temperature fixed at 1.0, "do not pass explicitly";
+  `reasoning_effort` top-level field (`low`/`high`/`max`, default `max`).
+  Our council.yaml handling (temperature null = omit) matches the doc.
+- **kimi text response shape** — chat quickstart
+  (`platform.kimi.ai/docs/api/chat-completion`, fetched 2026-08-07):
+  OpenAI-compatible; text at `choices[0].message.content`, usage at
+  `usage.prompt_tokens` / `usage.completion_tokens` — the shape our
+  InjectedOpenAITransport assumes. DOC-VERIFIED; a live kimi text call is
+  still pending (no key in the sandbox) — see LIMITATIONS §7 and the
+  operator script. If the live dump differs, the offline transports are
+  updated to match reality before the first live Council session.
+- **anthropic / openai SDK shapes** — already LIVE-verified by the
+  operator's Phase 1 gate (2026-08-01: text and vision passed on both) —
+  stronger evidence than docs; not re-fetched.
+
+**models.list() per provider** — requires the operator's keys; scripted
+(`scripts/live_verify_providers.py`, exact commands in
+`docs/operator/03_provider_verification.md`). NOT claimed done.
