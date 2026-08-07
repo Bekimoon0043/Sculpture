@@ -9,16 +9,16 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from app.api import routes_geometry, routes_health, routes_logs
+from app.api import routes_council, routes_geometry, routes_health, routes_logs
 from app.db.database import get_default_db
 
 app = FastAPI(
     title="LuxuryForm Studio v1",
-    version="0.2.0",
+    version="0.3.0",
     description=(
         "Local-first sculpture/fountain design platform for LuxuryCon — "
-        "Phase 2: geometry kernel, tiered-cascade primitive, mesh validation, "
-        "GLB viewport."
+        "Phase 3 (in progress): the AI Council — orchestrator, transcript "
+        "API; Phase 2 geometry kernel and viewport remain available."
     ),
 )
 
@@ -31,3 +31,4 @@ def _startup() -> None:
 app.include_router(routes_health.router, prefix="/api")
 app.include_router(routes_logs.router, prefix="/api")
 app.include_router(routes_geometry.router, prefix="/api")
+app.include_router(routes_council.router, prefix="/api")

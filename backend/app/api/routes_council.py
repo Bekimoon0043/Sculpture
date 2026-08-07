@@ -1,0 +1,250 @@
+"""Council transcript API (Phase 3, build step 3).
+
+GET  /api/council/sessions            -> session list (newest first)
+GET  /api/council/sessions/{id}       -> full transcript: calls, specs,
+                                         engineering reviews, defect lists,
+                                         arbiter decision, cost rollup
+POST /api/council/demo-session        -> replays the COMMITTED synthetic
+                                         fixture into the database so the
+                                         transcript UI is explorable offline
+                                         ($0). The fixture is labeled
+                                         synthetic everywhere it surfaces.
+
+Cost rollup is computed from council_calls rows (themselves recomputed from
+tokens x pricing.yaml on replay — fixture costs are never trusted). The
+rollup also reports cache_savings_usd: what the same calls WOULD have cost
+had every input token billed at the full input rate, minus what they
+actually cost (ADR-022 cache classes). Honest arithmetic from logged fields.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException
+from sqlalchemy import select
+
+from app.core.config import REPO_ROOT, load_config_bundle
+from app.council.replay import FixtureError, load_fixture, replay_session
+from app.db.database import get_default_db
+from app.db.models import (
+    ArbiterDecisionRow,
+    CouncilCallRow,
+    CouncilSessionRow,
+    DefectListRow,
+    DesignSpecRow,
+    EngineeringReviewRow,
+)
+
+router = APIRouter(tags=["council"])
+
+DEMO_FIXTURE_PATH = REPO_ROOT / "tests" / "fixtures" / "council_session_v1.json"
+FIXTURE_DIR = REPO_ROOT / "tests" / "fixtures"
+
+
+def _synthetic_ids() -> set[str]:
+    """Session ids that came from a committed synthetic fixture.
+
+    The database does not stamp fixture sessions; the honest marker is that
+    the session id appears verbatim in a committed fixture file (which is
+    labeled synthetic: true inside). Live session ids are random uuids and
+    can never collide with a fixture recorded in git.
+    """
+    ids: set[str] = set()
+    if FIXTURE_DIR.exists():
+        for path in FIXTURE_DIR.glob("*.json"):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if data.get("synthetic") and "session" in data:
+                    ids.add(data["session"]["id"])
+            except Exception:
+                continue
+    return ids
+
+
+@router.get("/council/sessions")
+def list_council_sessions() -> dict:
+    db = get_default_db()
+    with db.get_session() as s:
+        rows = s.execute(
+            select(CouncilSessionRow).order_by(CouncilSessionRow.created_at.desc())
+        ).scalars().all()
+    synthetic_ids = _synthetic_ids()
+    return {
+        "count": len(rows),
+        "sessions": [
+            {
+                "id": r.id,
+                "created_at": r.created_at,
+                "brief_text": r.brief_text,
+                "status": r.status,
+                "total_cost_usd": r.total_cost_usd,
+                "pricing_version": r.pricing_version,
+                "arbiter_confidence": r.arbiter_confidence,
+                "degraded": r.degraded,
+                "synthetic": r.id in synthetic_ids,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/council/sessions/{session_id}")
+def council_session_detail(session_id: str) -> dict:
+    db = get_default_db()
+    bundle = load_config_bundle()
+    caps = bundle.budget
+    with db.get_session() as s:
+        sess = s.get(CouncilSessionRow, session_id)
+        if sess is None:
+            raise HTTPException(status_code=404, detail="council session not found")
+        calls = s.execute(
+            select(CouncilCallRow)
+            .where(CouncilCallRow.session_id == session_id)
+            .order_by(CouncilCallRow.ts.asc())
+        ).scalars().all()
+        specs = s.execute(
+            select(DesignSpecRow).where(DesignSpecRow.session_id == session_id)
+        ).scalars().all()
+        reviews = s.execute(
+            select(EngineeringReviewRow)
+            .where(EngineeringReviewRow.session_id == session_id)
+        ).scalars().all()
+        defects = s.execute(
+            select(DefectListRow).where(DefectListRow.session_id == session_id)
+        ).scalars().all()
+        decisions = s.execute(
+            select(ArbiterDecisionRow)
+            .where(ArbiterDecisionRow.session_id == session_id)
+        ).scalars().all()
+
+    # Cost rollup — actual vs hypothetical all-full-input-rate (ADR-022).
+    by_role: dict[str, float] = {}
+    by_provider: dict[str, float] = {}
+    cache_savings = 0.0
+    for c in calls:
+        by_role[c.role] = round(by_role.get(c.role, 0.0) + c.cost_usd, 6)
+        by_provider[c.provider] = round(
+            by_provider.get(c.provider, 0.0) + c.cost_usd, 6
+        )
+        entry = bundle.pricing.price_for(c.provider, c.model)
+        full_rate_cost = (
+            (c.tokens_in + c.cached_input_tokens + c.cache_write_input_tokens)
+            * entry.usd_per_1m_input_tokens
+            + c.tokens_out * entry.usd_per_1m_output_tokens
+        ) / 1_000_000
+        cache_savings += full_rate_cost - c.cost_usd
+
+    return {
+        "session": {
+            "id": sess.id,
+            "created_at": sess.created_at,
+            "brief_text": sess.brief_text,
+            "status": sess.status,
+            "started_at": sess.started_at,
+            "ended_at": sess.ended_at,
+            "total_cost_usd": sess.total_cost_usd,
+            "pricing_version": sess.pricing_version,
+            "arbiter_confidence": sess.arbiter_confidence,
+            "degraded": sess.degraded,
+            "synthetic": sess.id in _synthetic_ids(),
+        },
+        "calls": [
+            {
+                "id": c.id,
+                "ts": c.ts,
+                "role": c.role,
+                "side": c.side,
+                "provider": c.provider,
+                "model": c.model,
+                "prompt": c.prompt,
+                "response": c.response,
+                "tokens_in": c.tokens_in,
+                "tokens_out": c.tokens_out,
+                "cached_input_tokens": c.cached_input_tokens,
+                "cache_write_input_tokens": c.cache_write_input_tokens,
+                "latency_ms": c.latency_ms,
+                "cost_usd": c.cost_usd,
+                "pricing_version": c.pricing_version,
+                "status": c.status,
+                "error": c.error,
+            }
+            for c in calls
+        ],
+        "specs": [
+            {
+                "id": r.id,
+                "provider": r.provider,
+                "alternative_no": r.alternative_no,
+                "spec_json": r.spec_json,
+                "spec_hash": r.spec_hash,
+                "seed": r.seed,
+                "schema_valid": r.schema_valid,
+            }
+            for r in specs
+        ],
+        "engineering_reviews": [
+            {"id": r.id, "provider": r.provider, "side": r.side,
+             "payload_json": r.payload_json}
+            for r in reviews
+        ],
+        "defect_lists": [
+            {"id": r.id, "provider": r.provider, "side": r.side,
+             "payload_json": r.payload_json}
+            for r in defects
+        ],
+        "arbiter_decision": (
+            None
+            if not decisions
+            else {
+                "id": decisions[0].id,
+                "chosen_spec_ids_json": decisions[0].chosen_spec_ids_json,
+                "confidence": decisions[0].confidence,
+                "rationale": decisions[0].rationale,
+                "disagreement_register_json": decisions[0].disagreement_register_json,
+                "binding": decisions[0].binding,
+            }
+        ),
+        "cost_rollup": {
+            "total_cost_usd": sess.total_cost_usd,
+            "by_role": by_role,
+            "by_provider": by_provider,
+            "cache_savings_usd": round(cache_savings, 6),
+            "session_cap_usd": caps.session_cap_usd,
+            "day_cap_usd": caps.day_cap_usd,
+            "call_count": len(calls),
+            "pricing_version": sess.pricing_version,
+        },
+    }
+
+
+@router.post("/council/demo-session")
+def load_demo_session() -> dict:
+    """Replay the committed synthetic fixture ($0, offline, idempotent)."""
+    if not Path(DEMO_FIXTURE_PATH).exists():
+        raise HTTPException(status_code=500, detail="demo fixture missing")
+    db = get_default_db()
+    bundle = load_config_bundle()
+    try:
+        fixture = load_fixture(DEMO_FIXTURE_PATH)
+    except FixtureError as exc:
+        raise HTTPException(status_code=500, detail=f"fixture invalid: {exc}")
+    session_id = fixture["session"]["id"]
+    with db.get_session() as s:
+        existing = s.get(CouncilSessionRow, session_id)
+    if existing is None:
+        replay_session(db, bundle.pricing, fixture)
+        created = True
+    else:
+        created = False
+    return {
+        "session_id": session_id,
+        "created": created,
+        "synthetic": True,
+        "note": (
+            "Synthetic fixture (tests/fixtures/council_session_v1.json) — no "
+            "real API calls were made; costs recomputed from tokens x "
+            "pricing.yaml on load. Safe to reload; it never overwrites."
+        ),
+    }

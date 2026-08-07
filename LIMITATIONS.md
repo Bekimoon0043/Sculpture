@@ -62,14 +62,16 @@ Phase 2's scope limits are documented in §8 below, not here.
 Not present in this repository, by design (later-phase code is not created
 early):
 
-- **Phase 3 — IN PROGRESS.** Built (steps 1–2 of 5): schema v3
+- **Phase 3 — IN PROGRESS.** Built (steps 1–3 of 5): schema v3
   (council_sessions / council_calls / design_specs / engineering_reviews /
   defect_lists / arbiter_decisions), the $0 fixture replay pipeline, the
   costing rates schema (`config/costing.yaml` template, operator fills the
   nulls), the Council orchestrator (offline-proven against a scripted
   dispatcher; live run is step 4), and cache-aware pricing (ADR-022:
   kimi/anthropic cache token classes priced separately at first-party
-  rates). NOT built yet: transcript UI (step 3),
+  rates), and the transcript UI (step 3: session list, per-call role cards,
+  Arbiter decision card, cost rollup vs caps with cache-savings display;
+  demo session replays the synthetic fixture at $0). NOT built yet:
   live session capture (step 4), split gate (step 5).
 - **Phase 4** — the sandbox for AI-written geometry code (isolation level
   already fixed in ADR-005), Blender workers.

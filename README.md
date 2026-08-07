@@ -7,11 +7,12 @@ using a council of AI models (Claude, GPT, Kimi) whose every call is logged
 and spend-capped, plus a real CAD engine.
 
 **Current phase status:** This platform has 7 phases. **Phase 3 of 7 is in
-progress** (build steps 1–2 of 5 done). Phases 1 and 2 are built and CLOSED
+progress** (build steps 1–3 of 5 done). Phases 1 and 2 are built and CLOSED
 (operator gates PASS, 2026-08-01 / 2026-08-04). Phase 3 so far: schema v3
 persistence, the $0 fixture replay pipeline, the costing rates schema, the
-Council orchestrator (offline-proven), and cache-aware provider pricing
-(ADR-022). What works today:
+Council orchestrator (offline-proven), cache-aware provider pricing
+(ADR-022), and the transcript UI with cost panel (step 3). What works
+today:
 everything from Phase 1 (provider layer, spend caps, audit logging, gates)
 PLUS the geometry kernel — one fully parametric tiered-cascade fountain
 built as a single watertight CAD solid, hard design constraints with real

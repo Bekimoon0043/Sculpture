@@ -4,7 +4,9 @@
 Build steps (§9): **step 1 DONE** (schema v3 + fixture replay pipeline +
 costing rates schema — commit 457e6e0); **step 2 DONE** (Council
 orchestrator, offline-proven with scripted dispatcher — commit 7539788);
-steps 3–5 pending. ADR-009 pre-code fetches executed 2026-08-07 (ADR-021);
+**step 3 DONE** (transcript API + Council UI panel with cost rollup and
+cache-savings display; demo session = synthetic fixture, $0); steps 4–5
+pending. ADR-009 pre-code fetches executed 2026-08-07 (ADR-021);
 account-level checks (models.list ×3, live kimi text shape) returned by the
 operator 2026-08-07 — LIMITATIONS §7 RETIRED. Cache-aware pricing landed
 2026-08-07 (ADR-022): kimi/anthropic cache token classes split and priced

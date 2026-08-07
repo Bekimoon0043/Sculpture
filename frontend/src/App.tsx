@@ -13,6 +13,7 @@ import {
   postBuild,
 } from "./api/client";
 import CascadePanel from "./panels/CascadePanel";
+import CouncilPanel from "./panels/CouncilPanel";
 import ValidationPanel from "./panels/ValidationPanel";
 import Viewport from "./viewport/Viewport";
 
@@ -25,6 +26,7 @@ export default function App() {
   const [fatalError, setFatalError] = useState<string | null>(null);
   const [validation, setValidation] = useState<Validation | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const [view, setView] = useState<"cascade" | "council">("cascade");
   const [serverBuildMs, setServerBuildMs] = useState<number | null>(null);
   const [lastRebuildMs, setLastRebuildMs] = useState<number | null>(null);
   const rebuildStartRef = useRef<number | null>(null);
@@ -87,6 +89,20 @@ export default function App() {
     [reloadToken]
   );
 
+  if (view === "council") {
+    return (
+      <div className="council-wrap">
+        <nav className="view-nav">
+          <button onClick={() => setView("cascade")}>Cascade viewport</button>
+          <button className="active" disabled>
+            AI Council
+          </button>
+        </nav>
+        <CouncilPanel />
+      </div>
+    );
+  }
+
   if (fatalError) {
     return (
       <div className="fatal">
@@ -104,7 +120,14 @@ export default function App() {
   }
 
   return (
-    <div className="app-grid">
+    <div>
+      <nav className="view-nav">
+        <button className="active" disabled>
+          Cascade viewport
+        </button>
+        <button onClick={() => setView("council")}>AI Council</button>
+      </nav>
+      <div className="app-grid">
       <div className="viewport-wrap">
         <Viewport
           reloadToken={reloadToken}
@@ -131,6 +154,7 @@ export default function App() {
           onRebuild={onRebuild}
         />
         <ValidationPanel validation={validation} />
+      </div>
       </div>
     </div>
   );
