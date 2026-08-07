@@ -71,8 +71,10 @@ early):
   kimi/anthropic cache token classes priced separately at first-party
   rates), and the transcript UI (step 3: session list, per-call role cards,
   Arbiter decision card, cost rollup vs caps with cache-savings display;
-  demo session replays the synthetic fixture at $0). NOT built yet:
-  live session capture (step 4), split gate (step 5).
+  demo session replays the synthetic fixture at $0), and the live-run
+  machinery (step 4: POST /api/council/sessions, budget-capped; the first
+  live session itself is run by the operator — the sandbox holds no keys).
+  NOT built yet: split gate (step 5).
 - **Phase 4** — the sandbox for AI-written geometry code (isolation level
   already fixed in ADR-005), Blender workers.
 - **Phase 5** — validation gates (mesh, hydraulics, structure, fabrication)

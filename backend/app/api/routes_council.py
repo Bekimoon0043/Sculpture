@@ -25,7 +25,12 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
 
-from app.core.config import REPO_ROOT, load_config_bundle
+from pydantic import BaseModel
+
+from app.core.config import REPO_ROOT, get_settings, load_config_bundle
+from app.core.budget import BudgetEnforcer, BudgetHalt
+from app.council.dispatch import LiveDispatcher
+from app.council.orchestrator import CouncilOrchestrator, OrchestratorError
 from app.council.replay import FixtureError, load_fixture, replay_session
 from app.db.database import get_default_db
 from app.db.models import (
@@ -248,3 +253,68 @@ def load_demo_session() -> dict:
             "pricing.yaml on load. Safe to reload; it never overwrites."
         ),
     }
+
+
+class RunSessionRequest(BaseModel):
+    brief_text: str
+
+
+@router.post("/council/sessions", status_code=201)
+def run_council_session(req: RunSessionRequest) -> dict:
+    """Run one LIVE Council session (Phase 3, build step 4) — real API calls,
+    real money, hard-capped by budget.yaml ($5 session / $25 day,
+    pre-dispatch check per call).
+
+    Synchronous by design: a full session is ~15 provider calls and takes
+    minutes; the HTTP request stays open until the session completes. The
+    full transcript is visible afterwards via GET /api/council/sessions/{id}
+    (and live in ai_calls/council_calls as it runs).
+    """
+    brief = req.brief_text.strip()
+    if not brief:
+        raise HTTPException(status_code=422, detail="brief_text is empty")
+    db = get_default_db()
+    bundle = load_config_bundle()
+    settings = get_settings()
+
+    import uuid
+
+    from app.ai.providers import build_providers
+
+    # Pre-generate the session id so the BudgetEnforcer watches the SAME
+    # session the calls are written to (session-cap accounting reads
+    # ai_calls by session_id).
+    session_id = str(uuid.uuid4())
+    budget = BudgetEnforcer(
+        session_id,
+        bundle.budget.session_cap_usd,
+        bundle.budget.day_cap_usd,
+        db,
+    )
+    providers = build_providers(settings, bundle, db, budget)
+    orchestrator = CouncilOrchestrator(
+        db, bundle.pricing, LiveDispatcher(providers), bundle.council
+    )
+    try:
+        orchestrator.run_session(brief, session_id=session_id)
+    except BudgetHalt as exc:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"budget halt: {exc.reason} (spent ${exc.spent_usd:.4f} of "
+                f"${exc.cap_usd:.2f} cap); partial session {exc.session_id} "
+                "is persisted and visible in the transcript API"
+            ),
+        ) from exc
+    except OrchestratorError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # e.g. ProviderError("provider not configured") — the session row is
+        # already finalized "failed" by the orchestrator; report honestly.
+        raise HTTPException(
+            status_code=500,
+            detail=f"council session {session_id} failed: {exc}",
+        ) from exc
+    return {"session_id": session_id, "status": "completed"}

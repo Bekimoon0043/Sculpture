@@ -306,11 +306,16 @@ class CouncilOrchestrator:
 
     # -- the session --------------------------------------------------------
 
-    def run_session(self, brief: str) -> str:
-        """Run one full Council session. Returns the council session id."""
+    def run_session(self, brief: str, session_id: str | None = None) -> str:
+        """Run one full Council session. Returns the council session id.
+
+        ``session_id`` lets the caller (the live API route) pre-generate the
+        id so the BudgetEnforcer watches the SAME session rows the calls are
+        written to — session-cap accounting is blind otherwise.
+        """
         if not brief.strip():
             raise OrchestratorError("empty brief")
-        session_id = str(uuid.uuid4())
+        session_id = session_id or str(uuid.uuid4())
         now = _utc_now_iso()
         with self._db.get_session() as s:
             s.add(

@@ -124,3 +124,30 @@ def test_main_app_wires_council_router():
 def test_unknown_session_404(client):
     r = client.get("/api/council/sessions/does-not-exist")
     assert r.status_code == 404
+
+
+def test_live_run_without_keys_fails_honestly(client, monkeypatch):
+    # No API keys in the test environment: the run endpoint must NOT hang or
+    # pretend — it 500s with the provider error, and the session row is
+    # finalized "failed" (never left "running").
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "MOONSHOT_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    try:
+        r = client.post(
+            "/api/council/sessions",
+            json={"brief_text": "A basalt monolith for the lobby."},
+        )
+        assert r.status_code == 500
+        assert "not configured" in r.json()["detail"]
+
+        sessions = client.get("/api/council/sessions").json()["sessions"]
+        assert len(sessions) == 1
+        assert sessions[0]["status"] == "failed"
+
+        r = client.post("/api/council/sessions", json={"brief_text": "   "})
+        assert r.status_code == 422
+    finally:
+        get_settings.cache_clear()
