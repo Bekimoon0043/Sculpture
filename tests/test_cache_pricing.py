@@ -181,3 +181,68 @@ def test_pricing_yaml_v3_has_first_party_cache_prices(config):
     # openai: deliberately unpriced for cache (see pricing.yaml note)
     oai = config.pricing.price_for("openai", "gpt-4o")
     assert oai.usd_per_1m_cached_input_tokens is None
+
+
+# --- ADR-024: cache-break prompt structure + anthropic cache_control --------
+
+def test_designer_prompt_static_prefix_then_variant_after_break(config):
+    from app.ai.provider import CACHE_BREAK
+    from app.council import prompts
+
+    p1 = prompts.designer_prompt("BRIEF", "RESEARCH", 1, "SCHEMA")
+    p2 = prompts.designer_prompt("BRIEF", "RESEARCH", 2, "SCHEMA")
+    assert CACHE_BREAK in p1 and CACHE_BREAK in p2
+    # identical static prefixes — the cacheable part
+    assert p1.split(CACHE_BREAK)[0] == p2.split(CACHE_BREAK)[0]
+    # the alternative number varies ONLY after the break
+    assert "ALTERNATIVE 1" in p1.split(CACHE_BREAK)[1]
+    assert "ALTERNATIVE 2" in p2.split(CACHE_BREAK)[1]
+    assert "ALTERNATIVE" not in p1.split(CACHE_BREAK)[0]
+
+
+def test_post_designer_roles_share_context_prefix():
+    from app.ai.provider import CACHE_BREAK
+    from app.council import prompts
+
+    brief, summary = "BRIEF", "SUMMARY"
+    prefixes = [
+        prompts.geometrist_prompt(brief, summary),
+        prompts.engineer_prompt(brief, summary, "GEO"),
+        prompts.critic_prompt(brief, summary, "ENG"),
+        prompts.arbiter_prompt(brief, summary, "ENG", "DEFECTS"),
+    ]
+    split = [p.split(CACHE_BREAK) for p in prefixes]
+    assert all(len(s) == 2 for s in split)
+    first = split[0][0]
+    assert all(s[0] == first for s in split)  # one shared cache prefix
+    # role-specific content lives after the break
+    assert "GEOMETRIST" in split[0][1] and "ARBITER" in split[3][1]
+    assert "GEO" in split[1][1] and "DEFECTS" in split[3][1]
+
+
+def test_anthropic_sends_cache_control_on_break(db, config, anthropic_transport):
+    from app.ai.provider import CACHE_BREAK
+
+    client = anthropic_transport("OK", 10, 5)
+    models = config.council.model_defaults["anthropic"]
+    budget = BudgetEnforcer("cache-break", 5.0, 25.0, db)
+    provider = AnthropicProvider(
+        "test-key-not-real", client=client, text_model=models.text,
+        vision_model=models.vision_or_text(),
+        default_temperature=models.temperature, db=db,
+        pricing=config.pricing, budget=budget,
+    )
+    provider.complete(f"STATIC PREFIX{CACHE_BREAK}varying part",
+                      purpose="test", session_id="cache-break")
+
+    content = client.calls[0]["messages"][0]["content"]
+    assert isinstance(content, list) and len(content) == 2
+    assert content[0]["text"] == "STATIC PREFIX"
+    assert content[0]["cache_control"] == {"type": "ephemeral"}
+    assert content[1]["text"] == "varying part"
+
+    # no sentinel -> plain string content, unchanged behavior
+    client2 = anthropic_transport("OK", 10, 5)
+    provider._client = client2
+    provider.complete("ordinary prompt", purpose="test", session_id="cache-break")
+    assert client2.calls[0]["messages"][0]["content"] == "ordinary prompt"

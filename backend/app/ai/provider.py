@@ -16,6 +16,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 
+#: Cache-break sentinel (ADR-024). Prompt builders place everything static
+#: BEFORE this marker; the anthropic provider splits on it and marks the
+#: prefix block cache_control=ephemeral (first-party docs fetched
+#: 2026-08-07). Inert HTML comment for providers that cache automatically.
+CACHE_BREAK = "\n\n<!-- cache-break -->\n\n"
+
+
 def provider_timeout_s() -> float:
     """Per-attempt HTTP timeout for provider SDK clients.
 
