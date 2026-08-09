@@ -97,7 +97,8 @@ CREATE TABLE IF NOT EXISTS council_sessions (
     total_cost_usd     REAL NOT NULL DEFAULT 0,  -- aggregate; council_calls is source of truth
     pricing_version    TEXT NOT NULL,        -- pricing.yaml version that computed costs
     arbiter_confidence REAL,                 -- copied from the binding decision (NULL pre-Arbiter)
-    degraded           INTEGER NOT NULL DEFAULT 0  -- 1 = ran without parallel comparison
+    degraded           INTEGER NOT NULL DEFAULT 0, -- 1 = provider failure left a seat empty/reduced
+    corrected          INTEGER NOT NULL DEFAULT 0  -- ADR-025: 1 = a bounded re-ask succeeded (self-correction)
 );
 
 -- Per-call record of a Council session (Phase 3). Mirrors ai_calls and adds

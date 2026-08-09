@@ -74,9 +74,14 @@ cache_savings_usd: 0.000690
 
 ## Known scope limits (carried in LIMITATIONS.md)
 
-- The static designer pair (anthropic‖openai) leaves only kimi eligible
+- ~~The static designer pair (anthropic‖openai) leaves only kimi eligible
   for the critic under the dynamic rule → sessions are degraded=1 by
-  construction until the config gains a fourth option or the pair changes.
+  construction~~ — CORRECTED 2026-08-09 (ADR-025): that semantics made the
+  badge meaningless (the operator's first live session flagged degraded
+  with ZERO failed calls — it was the by-design critic exclusion). The
+  flags are now split: **degraded** = a provider FAILURE left a seat
+  empty/reduced; **corrected** = a bounded re-ask succeeded. The critic's
+  producer exclusion is the rule working — informational, unflagged.
 - The geometrist's Phase 3 output is prose feasibility notes; it WRITES
   code only from Phase 4.
 - Designer spend is 58% of a session ($0.4879 of $0.8438). Options priced

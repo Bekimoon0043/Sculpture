@@ -1151,3 +1151,37 @@ anthropic-designer >= $0.3813 (3 calls, ~$0.127 each).
   operator before Phase 5 multiplies sessions. Per-call latency data will
   refine it (kimi slowness noted by the operator; anthropic and kimi are
   comparable per call, ~$0.08; openai ~$0.018).
+
+## ADR-025 — Session health flags: degraded vs corrected (2026-08-09)
+
+**Trigger (operator, 2026-08-09):** live session 32e1c68f wore the
+**degraded** badge with ZERO failed calls — no error rows, no timeout, no
+outage. Code reading found the cause: `_resolve_critic_providers` flagged
+`degraded=1` whenever the never-a-producer rule left the critic with one
+provider. With the static designer pair (anthropic‖openai) the critic
+primary (openai) is ALWAYS a producer, so EVERY healthy session flagged
+degraded — the badge was meaningless, and the operator rightly said they
+must be able to trust it.
+
+**Decision — two flags with disjoint meanings:**
+
+- **degraded** = a provider FAILURE left a role seat empty or reduced
+  (optional-call failure, researcher outage, designer call failure).
+  Something the Council needed did not run. Action-worthy.
+- **corrected** = a bounded re-ask SUCCEEDED (designer or Arbiter first
+  reply failed validation, retry produced valid output). The Council did
+  its job and corrected itself. Informational, no action needed.
+- The critic's single-provider coverage under the never-a-producer rule is
+  the rule WORKING AS DESIGNED — logged, visible in the call list, and
+  flagged as NEITHER.
+
+**Schema:** `council_sessions.corrected INTEGER NOT NULL DEFAULT 0`, added
+to schema.sql AND to the ADR-023 additive patch registry — the operator's
+live database is ALTERed at next startup, data preserved, patch recorded
+in schema_patches (proven in tests/test_schema_patches.py against a
+script matching their real pre-patch database).
+
+**Comment correction (visible history):** the old schema comment said
+"degraded = ran without parallel comparison"; the happy-path test even
+asserted `degraded == 1` "by design". Both corrected; PHASE_3_REPORT.md
+carries a strikethrough correction note.

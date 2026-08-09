@@ -251,6 +251,7 @@ def replay_session(db: Database, pricing: PricingConfig, fixture: dict) -> str:
                 pricing_version=pricing.pricing_version,
                 arbiter_confidence=float(confidence),
                 degraded=int(sess.get("degraded", 0)),
+                corrected=int(sess.get("corrected", 0)),
             )
         )
         s.flush()  # parent row exists before any child insert is emitted

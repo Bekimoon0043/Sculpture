@@ -126,6 +126,7 @@ export interface CouncilSessionSummary {
   pricing_version: string;
   arbiter_confidence: number | null;
   degraded: number;
+  corrected: number;
   synthetic: boolean;
 }
 

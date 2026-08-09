@@ -33,13 +33,25 @@ _CACHE_FRAGMENTS = [
     "    cache_write_input_tokens INTEGER NOT NULL DEFAULT 0, -- cache-WRITE class (anthropic only)\n",
 ]
 
+# ADR-025: the corrected column postdates the operator's live database too.
+_CORRECTED_BLOCK = (
+    "    degraded           INTEGER NOT NULL DEFAULT 0, -- 1 = provider failure left a seat empty/reduced\n"
+    "    corrected          INTEGER NOT NULL DEFAULT 0  -- ADR-025: 1 = a bounded re-ask succeeded (self-correction)\n"
+)
+_CORRECTED_ORIGINAL = (
+    "    degraded           INTEGER NOT NULL DEFAULT 0  -- 1 = ran without parallel comparison\n"
+)
+
 
 def _old_v3_script() -> str:
-    """The v3 schema as it existed BEFORE the ADR-022 cache columns."""
+    """The v3 schema as it existed BEFORE the ADR-022 cache columns and the
+    ADR-025 corrected column (i.e. the operator's real live database)."""
     script = SCHEMA
     for frag in _CACHE_FRAGMENTS:
         assert frag in script, "schema.sql changed — update this test"
         script = script.replace(frag, "")
+    assert _CORRECTED_BLOCK in script, "schema.sql changed — update this test"
+    script = script.replace(_CORRECTED_BLOCK, _CORRECTED_ORIGINAL)
     return script
 
 
@@ -75,6 +87,8 @@ def test_prepatch_v3_file_is_altered_data_preserved(tmp_path):
     assert con.execute(
         "SELECT id, cached_input_tokens FROM ai_calls"
     ).fetchall() == [("c1", 0)]
+    cols = {r[1] for r in con.execute("PRAGMA table_info(council_sessions)")}
+    assert "corrected" in cols
     patches = con.execute(
         "SELECT table_name, column_name FROM schema_patches ORDER BY 1, 2"
     ).fetchall()
@@ -83,6 +97,7 @@ def test_prepatch_v3_file_is_altered_data_preserved(tmp_path):
         ("ai_calls", "cached_input_tokens"),
         ("council_calls", "cache_write_input_tokens"),
         ("council_calls", "cached_input_tokens"),
+        ("council_sessions", "corrected"),
     ]
     con.close()
 

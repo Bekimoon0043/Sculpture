@@ -58,6 +58,8 @@ _ADDITIVE_COLUMN_PATCHES: dict[tuple[str, str], str] = {
         "cached_input_tokens INTEGER NOT NULL DEFAULT 0",
     ("council_calls", "cache_write_input_tokens"):
         "cache_write_input_tokens INTEGER NOT NULL DEFAULT 0",
+    ("council_sessions", "corrected"):
+        "corrected INTEGER NOT NULL DEFAULT 0",
 }
 
 

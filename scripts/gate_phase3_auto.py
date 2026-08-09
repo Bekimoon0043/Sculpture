@@ -250,7 +250,7 @@ def main() -> int:
         print("pass --live to run one real session (real money, $5-capped).")
 
     # ------------------------------------------------------------------
-    _section(total, total, "VERDICT")
+    _section(total + 1, total + 1, "VERDICT")
     return _verdict(failures)
 
 
