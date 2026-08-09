@@ -75,13 +75,58 @@ class SandboxRunner(Protocol):
 
 def scratch_dir() -> Path:
     """Shared scratch mount (backend side). The geo-worker watches the same
-    host directory. Env-overridable for tests."""
+    host directory at the SAME in-container path (ADR-028: compose binds
+    ./data/geo_scratch to /scratch on BOTH services and sets
+    LUXURYFORM_GEO_SCRATCH=/scratch on both). The env var, when set, IS
+    the scratch directory; unset, fall back to <data>/geo_scratch."""
     from app.core.config import REPO_ROOT
 
-    return Path(os.environ.get(
-        "LUXURYFORM_GEO_SCRATCH",
-        os.environ.get("LUXURYFORM_DATA_DIR", str(REPO_ROOT / "data")),
-    )) / "geo_scratch"
+    explicit = os.environ.get("LUXURYFORM_GEO_SCRATCH")
+    if explicit:
+        return Path(explicit)
+    return Path(
+        os.environ.get("LUXURYFORM_DATA_DIR", str(REPO_ROOT / "data"))
+    ) / "geo_scratch"
+
+
+def _resolve_artifacts(
+    job_dir: Path, artifacts: dict[str, Any] | None
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Resolve worker-reported artifact names against the BACKEND's view of
+    the job dir and verify every file is actually visible.
+
+    ADR-028: the worker writes artifact BASENAMES into result.json (never
+    container-side absolute paths — the first live run crashed because
+    /scratch/... paths are meaningless inside the backend container). A
+    claimed-success result whose files the backend cannot READ is a mount
+    mismatch; it is returned as an honest failure, never an exception.
+    """
+    resolved: dict[str, Any] = {}
+    missing: list[str] = []
+    for key, value in (artifacts or {}).items():
+        if key.endswith("_sha256"):
+            resolved[key] = value
+            continue
+        name = str(value)
+        if Path(name).name != name:
+            return None, (
+                f"worker reported a non-basename artifact path {name!r} "
+                f"for {key!r} — refusing to resolve container-side paths "
+                "(ADR-028)"
+            )
+        candidate = job_dir / name
+        if not candidate.exists():
+            missing.append(f"{key} -> {candidate}")
+        resolved[key] = str(candidate)
+    if missing:
+        return None, (
+            "result.json claimed success but the backend cannot see "
+            + "; ".join(missing)
+            + " — the backend and geo-worker scratch mounts disagree "
+            "(ADR-028: both services must bind ./data/geo_scratch to "
+            "/scratch)"
+        )
+    return resolved, None
 
 
 class ScratchSandboxRunner:
@@ -113,6 +158,17 @@ class ScratchSandboxRunner:
         while time.monotonic() < deadline:
             if result_path.exists():
                 payload = json.loads(result_path.read_text(encoding="utf-8"))
+                if payload["ok"]:
+                    resolved, error = _resolve_artifacts(
+                        job_dir, payload.get("artifacts")
+                    )
+                    if error is not None:
+                        return SandboxResult(
+                            ok=False, error=error,
+                            brep_volume_mm3=payload.get("brep_volume_mm3"),
+                            params=payload.get("params"),
+                        )
+                    payload["artifacts"] = resolved
                 return SandboxResult(
                     ok=bool(payload["ok"]),
                     error=payload.get("error"),
@@ -129,6 +185,38 @@ class ScratchSandboxRunner:
                 "(docker compose ps geo-worker)"
             ),
         )
+
+
+def probe_scratch(timeout_s: float = 60.0, poll_s: float = 0.5) -> dict[str, Any]:
+    """Cross-container round-trip probe (ADR-028).
+
+    Queues a PROBE job (no code — the worker answers it inline with its
+    hostname/pid) on the shared scratch mount and waits for result.json.
+    Proves the backend can READ a file the geo-worker actually WROTE — the
+    exact handoff the first live run broke. Raises TimeoutError with an
+    actionable message if the worker never answers.
+    """
+    root = scratch_dir()
+    root.mkdir(parents=True, exist_ok=True)
+    job_dir = root / f"probe-{uuid.uuid4().hex[:12]}"
+    job_dir.mkdir()
+    try:
+        os.chmod(job_dir, 0o777)
+    except OSError:
+        pass
+    (job_dir / "job.json").write_text(
+        json.dumps({"probe": True}), encoding="utf-8"
+    )
+    deadline = time.monotonic() + timeout_s
+    result_path = job_dir / "result.json"
+    while time.monotonic() < deadline:
+        if result_path.exists():
+            return json.loads(result_path.read_text(encoding="utf-8"))
+        time.sleep(poll_s)
+    raise TimeoutError(
+        f"geo-worker did not answer the probe within {timeout_s:.0f}s — "
+        "is the container running? (docker compose ps geo-worker)"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -250,15 +338,29 @@ def fabricate_spec(
             continue
 
         # Collect artifacts out of the scratch job dir into the data dir
-        # (trusted copy — scratch is transient).
+        # (trusted copy — scratch is transient). A copy failure is an
+        # honest PERSISTED attempt (ADR-028), never an unhandled 500.
         artifacts = dict(result.artifacts or {})
         dest_dir = artifact_root / program_id
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        for key in ("step", "glb"):
-            src = Path(artifacts[key])
-            dest = dest_dir / f"artifact.{key}"
-            shutil.copyfile(src, dest)
-            artifacts[key] = str(dest)
+        try:
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            for key in ("step", "glb"):
+                src = Path(artifacts[key])
+                dest = dest_dir / f"artifact.{key}"
+                shutil.copyfile(src, dest)
+                artifacts[key] = str(dest)
+        except (OSError, KeyError) as exc:
+            row.status = "collection_failed"
+            row.error_digest = (
+                f"geometry built but artifact collection failed: {exc} "
+                "(ADR-028: the file the worker reported is not readable "
+                "from the backend — check the /scratch mounts)"
+            )
+            failure_history.append(row.error_digest)
+            _persist_program(orchestrator, row)
+            out.program_ids.append(program_id)
+            out.final_status = "collection_failed"
+            continue
         row.artifacts_json = json.dumps(artifacts, sort_keys=True)
 
         # 4. Phase 2 validation gate — trusted code, real numbers.

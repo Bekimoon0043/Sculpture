@@ -81,7 +81,11 @@ def run_job(job_dir: Path) -> int:
             "ok": True,
             "error": None,
             "artifacts": {
-                "step": str(step_path), "glb": str(glb_path),
+                # ADR-028: BASENAMES only — the backend resolves them
+                # against its own view of the job dir. Container-side
+                # absolute paths (/scratch/...) are meaningless across
+                # containers and once crashed artifact collection.
+                "step": step_path.name, "glb": glb_path.name,
                 "step_sha256": step_sha, "glb_sha256": glb_sha,
             },
             "brep_volume_mm3": float(solid.volume),

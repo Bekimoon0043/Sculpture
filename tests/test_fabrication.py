@@ -296,6 +296,97 @@ def test_repair_prompt_carries_full_failure_history(db, config, base_spec, tmp_p
     assert "must NOT be repeated" in p3
 
 
+# --- ADR-028: the cross-container handoff -----------------------------------
+
+
+def test_resolve_artifacts_basenames_and_missing_files(tmp_path):
+    """The worker reports BASENAMES; the backend resolves them against its
+    own view of the job dir and a missing file is an honest error, never
+    an exception (the first live run's 500)."""
+    from app.council.fabricate import _resolve_artifacts
+
+    job = tmp_path / "job"
+    job.mkdir()
+    (job / "artifact.step").write_text("ISO-10303-21;", encoding="utf-8")
+    resolved, error = _resolve_artifacts(job, {
+        "step": "artifact.step", "glb": "artifact.glb",
+        "step_sha256": "s", "glb_sha256": "g",
+    })
+    assert resolved is None and error is not None
+    assert "mounts disagree" in error and "artifact.glb" in error
+
+    (job / "artifact.glb").write_bytes(b"glTF")
+    resolved, error = _resolve_artifacts(job, {
+        "step": "artifact.step", "glb": "artifact.glb",
+        "step_sha256": "s",
+    })
+    assert error is None
+    assert resolved["step"] == str(job / "artifact.step")
+    assert resolved["step_sha256"] == "s"
+
+
+def test_resolve_artifacts_refuses_container_absolute_paths(tmp_path):
+    """A worker payload carrying /scratch/... (its own container view) is
+    rejected outright — resolving it would re-create the live-run crash."""
+    from app.council.fabricate import _resolve_artifacts
+
+    resolved, error = _resolve_artifacts(
+        tmp_path, {"step": "/scratch/job/artifact.step"})
+    assert resolved is None
+    assert "non-basename" in error and "ADR-028" in error
+
+
+def test_collection_failure_is_an_honest_persisted_attempt(db, config, base_spec, tmp_path):
+    """If artifact collection still fails (permissions, vanished file), the
+    attempt persists as collection_failed with the reason and the repair
+    loop continues — never an unhandled 500."""
+    sid = _run_council_session(db, config, base_spec)
+    spec_id = _first_spec_id(db, sid)
+    phantom = SandboxResult(
+        ok=True,
+        artifacts={"step": str(tmp_path / "gone.step"),
+                   "glb": str(tmp_path / "gone.glb"),
+                   "step_sha256": "s", "glb_sha256": "g"},
+        brep_volume_mm3=1.0, params={"material_id": "basalt_slab"},
+    )
+    d = FabDispatcher(config.pricing, base_spec, [GOOD, GOOD])
+    runner = ScriptedRunner([phantom, _ok_result(tmp_path, with_real_glb=False)])
+    orch = _fab_orchestrator(db, config, d)
+
+    out = fabricate_spec(orch, sid, spec_id, runner,
+                         artifact_root=tmp_path / "fab",
+                         validator=lambda *a: _scripted_report(True))
+    assert out.success and out.attempts == 2
+    with db.get_session() as s:
+        rows = (s.query(GeneratedProgramRow).filter_by(session_id=sid)
+                .order_by(GeneratedProgramRow.attempt_no).all())
+        assert [r.status for r in rows] == ["collection_failed", "passed"]
+        assert "artifact collection failed" in rows[0].error_digest
+    assert "artifact collection failed" in d.fab_prompts[1]
+
+
+def test_worker_answers_probe_inline_without_executing(tmp_path):
+    """The probe job (no program.py) is picked up and answered inline with
+    the worker's hostname/pid — the gate's real round-trip assertion."""
+    from app.geometry import worker
+
+    job = tmp_path / "probe-x1"
+    job.mkdir()
+    (job / "job.json").write_text('{"probe": true}', encoding="utf-8")
+    assert job in worker._pending_jobs(tmp_path)
+    worker.execute_job(job)
+    payload = json.loads((job / "result.json").read_text(encoding="utf-8"))
+    assert payload["ok"] and payload["probe"]
+    import socket
+    assert payload["worker_hostname"] == socket.gethostname()
+    assert payload["worker_pid"] > 0
+    # a non-probe dir without program.py is NOT a job
+    stray = tmp_path / "stray"
+    stray.mkdir()
+    (stray / "job.json").write_text('{"spec": {}}', encoding="utf-8")
+    assert stray not in worker._pending_jobs(tmp_path)
+
+
 # --- rates + rollup separation ----------------------------------------------
 
 

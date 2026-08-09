@@ -40,8 +40,17 @@ services:
     ports:
       - "8000:8000"
     env_file: .env
+    environment:
+      # ADR-028: the scratch handoff dir, SAME in-container path as the
+      # geo-worker (/scratch). Both services bind the SAME host directory
+      # ./data/geo_scratch to the SAME container path /scratch — artifact
+      # paths the worker writes are valid verbatim on the backend.
+      - LUXURYFORM_GEO_SCRATCH=/scratch
     volumes:
       - ./data:/app/data
+      # host ./data/geo_scratch  ->  container /scratch  (geo-worker below
+      # mounts the SAME host dir at the SAME path — do not let these drift)
+      - ./data/geo_scratch:/scratch
 
   # -----------------------------------------------------------------------
   # geo-worker (Phase 4, ADR-005 realized): the ONLY place AI-written code
@@ -67,9 +76,12 @@ services:
       - /tmp
     environment:
       - PYTHONDONTWRITEBYTECODE=1
+      # ADR-028: same host dir, same in-container path as the backend.
+      - LUXURYFORM_GEO_SCRATCH=/scratch
     cpus: 1.0
     mem_limit: 2g
     volumes:
+      # host ./data/geo_scratch  ->  container /scratch  (see backend above)
       - ./data/geo_scratch:/scratch
 
   frontend:

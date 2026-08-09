@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import socket
 import subprocess
 import sys
 import time
@@ -38,9 +40,22 @@ def _pending_jobs(scratch: Path) -> list[Path]:
     for d in sorted(scratch.iterdir()):
         if not d.is_dir():
             continue
-        if (d / "program.py").exists() and (d / "job.json").exists() \
-                and not (d / "result.json").exists() and not (d / ".claimed").exists():
+        if (d / "result.json").exists() or (d / ".claimed").exists():
+            continue
+        job_json = d / "job.json"
+        if not job_json.exists():
+            continue
+        if (d / "program.py").exists():
             jobs.append(d)
+            continue
+        # ADR-028: probe jobs carry no code — job.json {"probe": true} is
+        # answered inline so the gate can prove the backend can READ a
+        # file the worker actually WROTE (the cross-container handoff).
+        try:
+            if json.loads(job_json.read_text(encoding="utf-8")).get("probe"):
+                jobs.append(d)
+        except Exception:
+            continue  # malformed, no program — not ours; leave it
     return jobs
 
 
@@ -54,6 +69,20 @@ def execute_job(job_dir: Path) -> None:
             "ok": False, "error": f"malformed job.json: {exc}",
             "artifacts": None, "brep_volume_mm3": None, "params": None,
         }), encoding="utf-8")
+        return
+    # ADR-028 probe: answer inline (no subprocess, no code execution) with
+    # proof of WHO answered — hostname + pid let the gate assert the file
+    # was written by a DIFFERENT container than the one reading it.
+    if job.get("probe"):
+        (job_dir / "result.json").write_text(json.dumps({
+            "ok": True,
+            "probe": True,
+            "worker_hostname": socket.gethostname(),
+            "worker_pid": os.getpid(),
+            "error": None, "artifacts": None,
+            "brep_volume_mm3": None, "params": None,
+        }), encoding="utf-8")
+        log.info("probe %s answered inline", job_dir.name)
         return
     timeout_s = float(job.get("timeout_s", DEFAULT_HARD_TIMEOUT_S))
     t0 = time.perf_counter()

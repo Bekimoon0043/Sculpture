@@ -1289,3 +1289,46 @@ but only put backend/ on sys.path; inside the container (cwd /app) the
 repo root was missing. One-line fix + comment.
 
 Phase 4 remains IN PROGRESS until the operator re-runs the live gate.
+
+
+## ADR-028 — Scratch mount parity, basename artifacts, honest collection failure, real round-trip gate (2026-08-10)
+
+First SUCCESSFUL live fabrication (attempt 1 rc=1 genuine build failure,
+attempt 2 rc=0 built — the bounded repair loop worked end to end) crashed
+at artifact COLLECTION with an unhandled 500. Operator diagnosis:
+mount mismatch, not a build failure.
+
+**Root cause.** The backend mounted only ./data:/app/data and resolved
+scratch as /app/data/geo_scratch; the geo-worker mounted the same host dir
+at /scratch. result.json (readable via the shared host dir) carried
+WORKER-side absolute artifact paths (/scratch/<job>/artifact.step) —
+meaningless inside the backend container, so shutil.copyfile raised
+FileNotFoundError. Attempt 1 had artifacts=null, which is why only the
+successful attempt crashed.
+
+**Fixes (operator-directed, three parts).**
+
+1. **Mount parity, stated explicitly.** docker-compose.yml now binds
+   ./data/geo_scratch to /scratch on BOTH services and sets
+   LUXURYFORM_GEO_SCRATCH=/scratch on both; comments name the host path
+   per service. scratch_dir() treats the env var as the exact directory.
+2. **Basename artifacts + verified visibility.** job_runner writes artifact
+   BASENAMES into result.json (never container-side paths); the backend
+   resolves them against its own view of the job dir and VERIFIES every
+   file exists before reporting success. A claimed-success result whose
+   files are not visible returns an honest error naming the mount
+   mismatch; a non-basename path is refused outright. A copy failure in
+   fabricate_spec persists a collection_failed attempt row with the reason
+   and feeds the repair history — never an unhandled exception.
+3. **The gate now tests the thing that broke.** The worker answers probe
+   jobs (job.json {"probe": true}, no code) inline with its hostname+pid.
+   New gate section 4 queues a probe and asserts the answer came from a
+   DIFFERENT container — the backend provably READ a file the worker
+   WROTE. Hard check inside docker; SKIP with instructions on host dev.
+   Section 3 statically asserts mount parity so the compose file cannot
+   silently drift again.
+
+Regression locks: _resolve_artifacts (basenames/missing/absolute-refusal),
+collection_failed persistence + repair continuation, worker probe pickup +
+inline answer, plus a live smoke (real worker subprocess answered a
+probe_scratch round trip). 149 tests, both auto gates PASS.

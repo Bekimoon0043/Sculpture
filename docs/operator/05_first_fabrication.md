@@ -86,6 +86,17 @@ Same knobs as doc 04: `LUXURYFORM_PROVIDER_TIMEOUT_S` (default 300),
 failure during fabrication is a failed ATTEMPT (fed into repair), not a
 crash — the loop is ADR-023-compliant.
 
+## The cross-container handoff (2026-08-10 fix, ADR-028)
+
+Backend and geo-worker now bind the SAME host directory
+(`./data/geo_scratch`) at the SAME in-container path (`/scratch`), and the
+auto gate proves the handoff for real: section 4 queues a probe the
+worker answers, and the gate checks the answer came from a DIFFERENT
+container. If fabrication ever reports "mounts disagree", this is the
+section to re-check (`docker compose ps geo-worker`, then the two
+`/scratch` mounts in `docker-compose.yml`). A lost artifact is now an
+honest persisted `collection_failed` attempt — never a 500.
+
 ## What a repair round knows (2026-08-10 fix)
 
 Every repair prompt carries the FULL failure history of all prior

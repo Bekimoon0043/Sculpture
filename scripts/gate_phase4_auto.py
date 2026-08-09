@@ -18,14 +18,19 @@ proven operator-side (--live), never in this gate.
   3. SANDBOX ISOLATION (static) — docker-compose geo-worker service carries
      every ADR-005 property: non-root, no network, read-only fs, scratch
      mount, CPU/memory limits; the worker enforces the hard timeout.
-  4. FABRICATION LOOP ($0) — scripted session + fabrication: AST rejection
+     ADR-028: backend and geo-worker bind the SAME host scratch dir at the
+     SAME in-container path (/scratch) — statically asserted here.
+  4. CROSS-CONTAINER ROUND TRIP (ADR-028) — a real probe job the geo-worker
+     answers inline; the gate asserts the answer came from a DIFFERENT
+     container (hostname). Hard check inside docker; SKIP on host dev.
+  5. FABRICATION LOOP ($0) — scripted session + fabrication: AST rejection
      persisted WITH reason, repair succeeds, rates computed (first attempt
      vs repair round SEPARATELY), geometrist_code separated in the rollup,
      programs listed in the transcript detail.
-  5. LIVE (--live only) — real fabrication of the Arbiter's first-ranked
+  6. LIVE (--live only) — real fabrication of the Arbiter's first-ranked
      spec from a real session; prints attempts, per-attempt status/cost,
      measured success, and the validation report's real numbers.
-  6. VERDICT — PASS (exit 0) or FAIL with exact reasons (exit 1).
+  7. VERDICT — PASS (exit 0) or FAIL with exact reasons (exit 1).
 
 The OPERATOR half (browser eye-check) is docs/operator/gate_phase4_visual.md.
 """
@@ -73,7 +78,7 @@ def main() -> int:
 
     logging.getLogger("luxuryform").setLevel(logging.CRITICAL)
     live = "--live" in sys.argv
-    total = 6  # section 5 = live (or skip note), section 6 = verdict
+    total = 7  # section 6 = live (or skip note), section 7 = verdict
     failures: list[str] = []
 
     # ------------------------------------------------------------------
@@ -155,6 +160,28 @@ def main() -> int:
         "memory limit": "mem_limit" in svc,
         "separate image reference": "image" in svc,
     }
+    # ADR-028: mount parity — the first live run crashed because the two
+    # containers resolved /scratch differently. Assert BOTH services bind
+    # the SAME host dir to the SAME in-container path AND say so via env.
+    backend_svc = compose.get("services", {}).get("backend", {})
+
+    def _scratch_mount(service: dict) -> bool:
+        for v in service.get("volumes", []) or []:
+            parts = str(v).split(":")
+            if len(parts) >= 2 and parts[0].endswith("data/geo_scratch") \
+                    and parts[1] == "/scratch":
+                return True
+        return False
+
+    checks["backend binds ./data/geo_scratch:/scratch"] = \
+        _scratch_mount(backend_svc)
+    checks["geo-worker binds the SAME host dir at /scratch"] = \
+        _scratch_mount(svc)
+    checks["backend LUXURYFORM_GEO_SCRATCH=/scratch"] = (
+        "LUXURYFORM_GEO_SCRATCH=/scratch"
+        in (backend_svc.get("environment") or []))
+    checks["geo-worker LUXURYFORM_GEO_SCRATCH=/scratch"] = (
+        "LUXURYFORM_GEO_SCRATCH=/scratch" in (svc.get("environment") or []))
     for label, ok in checks.items():
         print(f"  {label}: {'ok' if ok else 'FAIL'}")
         if not ok:
@@ -166,7 +193,40 @@ def main() -> int:
         failures.append("worker hard-timeout enforcement not found")
 
     # ------------------------------------------------------------------
-    _section(4, total, "FABRICATION LOOP (scripted, $0)")
+    _section(4, total, "CROSS-CONTAINER ROUND TRIP (ADR-028)")
+    # The $0 scripted loop above/below never exercises the REAL handoff —
+    # this does: queue a probe job, require the geo-worker (a DIFFERENT
+    # container, proven by hostname) to answer it, proving the backend can
+    # READ a file the worker actually WROTE.
+    import os as _os
+    import socket as _socket
+
+    from app.council.fabricate import probe_scratch
+
+    if _os.environ.get("LUXURYFORM_GEO_SCRATCH") or Path("/scratch").exists():
+        try:
+            probe = probe_scratch(timeout_s=60)
+            worker_host = probe.get("worker_hostname", "?")
+            my_host = _socket.gethostname()
+            print(f"  probe answered by worker {worker_host} "
+                  f"(pid {probe.get('worker_pid')}); this backend is {my_host}")
+            if probe.get("ok") and probe.get("probe") \
+                    and worker_host != my_host:
+                print("  backend READ a file the worker WROTE: ok")
+            else:
+                failures.append(
+                    "cross-container probe answered but NOT by a different "
+                    "container (hostname match or bad payload)")
+        except TimeoutError as exc:
+            print(f"  probe FAILED: {exc}")
+            failures.append(f"cross-container probe: {exc}")
+    else:
+        print("  SKIP — no /scratch mount here (host dev run). Inside "
+              "docker this section is a HARD check: docker compose exec "
+              "backend python scripts/gate_phase4_auto.py")
+
+    # ------------------------------------------------------------------
+    _section(5, total, "FABRICATION LOOP (scripted, $0)")
     import tempfile
 
     from tests.test_design_spec_schema import valid_example_spec
@@ -247,7 +307,7 @@ def main() -> int:
 
     # ------------------------------------------------------------------
     if live:
-        _section(5, total, "LIVE FABRICATION (real API calls, real money)")
+        _section(6, total, "LIVE FABRICATION (real API calls, real money)")
         live_sid = sys.argv[sys.argv.index("--live") + 1] if len(
             sys.argv) > sys.argv.index("--live") + 1 else None
         if not live_sid:
@@ -275,7 +335,7 @@ def main() -> int:
                     failures.append(
                         f"live fabrication failed: {result.get('error')}")
     else:
-        _section(5, total, "LIVE FABRICATION — SKIPPED (fixture mode, $0)")
+        _section(6, total, "LIVE FABRICATION — SKIPPED (fixture mode, $0)")
         print("pass --live <session-id> to fabricate the Arbiter's "
               "first-ranked spec for real (bounded repair, budget-capped).")
 
