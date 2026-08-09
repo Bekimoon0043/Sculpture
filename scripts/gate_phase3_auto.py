@@ -72,7 +72,7 @@ def main() -> int:
 
     logging.getLogger("luxuryform").setLevel(logging.CRITICAL)
     live = "--live" in sys.argv
-    total = 6 if live else 5
+    total = 6  # section 5 = live (or skip note), section 6 = verdict
     failures: list[str] = []
 
     # ------------------------------------------------------------------
@@ -146,6 +146,25 @@ def main() -> int:
     if sum(r.schema_valid for r in specs) != 3:
         failures.append("expected 3 schema-valid fixture specs")
 
+    # The LIVE fixture (operator's first session 32e1c68f) is the permanent
+    # pricing regression: replay must reproduce the measured rollup exactly.
+    live_fx_path = REPO_ROOT / "tests" / "fixtures" / "council_session_live_32e1c68f.json"
+    if live_fx_path.exists():
+        live_fx = load_fixture(live_fx_path)
+        live_sid = replay_session(db, pricing, live_fx)
+        with db.get_session() as s:
+            live_sess = s.get(CouncilSessionRow, live_sid)
+        print(f"live fixture replayed: {live_sid[:8]}… "
+              f"recomputed ${live_sess.total_cost_usd} "
+              f"({len(live_fx['calls'])} calls)")
+        if abs(live_sess.total_cost_usd - 0.843842) > 1e-6:
+            failures.append(
+                f"live fixture cost regression: recomputed "
+                f"{live_sess.total_cost_usd} != measured 0.843842"
+            )
+    else:
+        failures.append("live regression fixture missing: " + live_fx_path.name)
+
     # ------------------------------------------------------------------
     _section(3, total, "TRANSCRIPT API (TestClient, in-process)")
     from fastapi import FastAPI
@@ -177,6 +196,14 @@ def main() -> int:
           f"{len(detail['specs'])} specs, "
           f"decision confidence "
           f"{detail['arbiter_decision']['confidence']}")
+    # synthetic labeling is load-bearing (the Hub reads it): demo must be
+    # synthetic, the live replay must NOT.
+    by_id = {s["id"]: s for s in lst["sessions"]}
+    if not by_id[demo_id]["synthetic"]:
+        failures.append("demo session lost its synthetic label")
+    live_ids = [i for i in by_id if i != demo_id]
+    if live_ids and by_id[live_ids[0]]["synthetic"]:
+        failures.append("live replay mislabeled synthetic")
     # unique-prefix resolution
     prefix = demo_id[:8]
     r3 = client.get(f"/api/council/sessions/{prefix}")
@@ -250,7 +277,7 @@ def main() -> int:
         print("pass --live to run one real session (real money, $5-capped).")
 
     # ------------------------------------------------------------------
-    _section(total + 1, total + 1, "VERDICT")
+    _section(total, total, "VERDICT")
     return _verdict(failures)
 
 

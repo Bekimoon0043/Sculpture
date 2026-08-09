@@ -1,4 +1,4 @@
--- schema.sql — LuxuryForm Studio v1 (Phase 3 schema, version 3)
+-- schema.sql — LuxuryForm Studio v1 (schema version 4: + generated_programs)
 -- SQLite, WAL mode. All timestamps are UTC ISO-8601 text.
 -- Phase 2 evolution (ADR-010): the designs table gained the cascade build
 -- columns (seed, spec_hash, build_ms, glb_path, step_path) and spec_id became
@@ -165,6 +165,28 @@ CREATE TABLE IF NOT EXISTS arbiter_decisions (
     rationale       TEXT NOT NULL,
     disagreement_register_json TEXT NOT NULL,-- material disagreements surfaced, never averaged
     binding         INTEGER NOT NULL DEFAULT 1  -- the Arbiter's decision is binding (always 1)
+);
+
+-- Phase 4 (schema v4, 2026-08-09): every program the GEOMETRIST writes,
+-- including every REJECTED one with its AST-gate reason (operator order:
+-- "a catalogue of what the model tried that it was not allowed to do").
+-- Any geometry traces back to the code and the spec that made it.
+CREATE TABLE IF NOT EXISTS generated_programs (
+    id               TEXT PRIMARY KEY,
+    created_at       TEXT NOT NULL,
+    session_id       TEXT NOT NULL REFERENCES council_sessions(id),
+    spec_id          TEXT NOT NULL REFERENCES design_specs(id),
+    attempt_no       INTEGER NOT NULL,       -- 1 = first try; 2..N = repair rounds
+    provider         TEXT NOT NULL,          -- dispatch truth, not model claim
+    model            TEXT NOT NULL,
+    program_text     TEXT NOT NULL,          -- '' when the provider call itself failed
+    program_hash     TEXT NOT NULL,          -- sha256 of program_text
+    status           TEXT NOT NULL,          -- call_failed | ast_rejected | exec_failed
+                                             -- | validation_failed | passed
+    rejection_reason TEXT,                   -- AST-gate reason (status=ast_rejected)
+    error_digest     TEXT,                   -- what the NEXT repair round was told
+    artifacts_json   TEXT,                   -- {step, glb, step_sha256, glb_sha256} | NULL
+    validation_json  TEXT                    -- Phase 2 ValidationReport JSON | NULL
 );
 
 CREATE TABLE IF NOT EXISTS designs (

@@ -68,14 +68,18 @@ PHASE_3_REPORT.md, not here.
 Not present in this repository, by design (later-phase code is not created
 early):
 
-- **Phase 4 — NEXT.** The GEOMETRIST writes parametric build123d code from
-  a Design Spec; the code executes only in the ADR-005 sandbox (separate
-  container, non-root, no network, read-only filesystem except one scratch
-  mount, CPU/memory limits, hard timeout); bounded automatic repair with a
-  retry limit; every generated program persisted with its spec for
-  traceability. Gate: the Phase 3 session brief produces real geometry with
-  no human-written code and passes the Phase 2 validation gate. Plan to be
-  reported to the operator before coding.
+- **Phase 4 — IN PROGRESS (built 2026-08-09, live gate pending).** The
+  GEOMETRIST writes parametric build123d code from a Design Spec; the code
+  executes only in the ADR-005 sandbox (geo-worker container: non-root, no
+  network, read-only fs except one scratch mount, CPU/memory limits, hard
+  timeout); an AST gate whitelists imports {registry, build123d, math}
+  before any run; bounded repair (3 attempts) with every failure class fed
+  back as the repair digest; every program — including REJECTED ones with
+  their rejection reasons — persisted against its spec; success rates
+  reported first-attempt vs per-repair-round; geometrist_code separated in
+  cost rollups. Fixture gate PASS ($0). Live gate: the operator's Phase 3
+  brief (session 32e1c68f) must produce real geometry passing the Phase 2
+  validation gate — pending.
 - **Phase 5** — validation gates (mesh, hydraulics, structure, fabrication)
   and the render → vision-critique → bounded-delta loop (ADR-007), including
   enforcement of `max_vision_iterations`.

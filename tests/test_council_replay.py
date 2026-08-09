@@ -189,3 +189,30 @@ def test_duplicate_spec_id_fails(db, config, fixture):
     bad["design_specs"][1] = copy.deepcopy(bad["design_specs"][0])
     with pytest.raises(FixtureError, match="duplicate spec_id"):
         replay_session(db, config.pricing, bad)
+
+LIVE_FIXTURE = "council_session_live_32e1c68f.json"
+
+
+def test_live_fixture_replays_to_the_measured_rollup(db, config, repo_root):
+    """The operator's first live session (2026-08-07) is the permanent
+    regression fixture: replay must reproduce the MEASURED rollup exactly
+    (tokens x pricing.yaml 2026-08-v3 == $0.843842), 17 calls, 6 specs.
+
+    Call decomposition (verified from the fixture): designer anthropic 5
+    (3 alternatives + 2 successful re-asks), openai 3; all other roles at
+    happy-path counts; ALL 17 calls status ok — the session wore
+    degraded=1 only because of the pre-ADR-025 critic-exclusion flag.
+    """
+    fixture = load_fixture(repo_root / "tests" / "fixtures" / LIVE_FIXTURE)
+    assert fixture["synthetic"] is False
+    session_id = replay_session(db, config.pricing, fixture)
+    with db.get_session() as s:
+        sess = s.get(CouncilSessionRow, session_id)
+        assert sess.total_cost_usd == pytest.approx(0.843842, abs=1e-6)
+        calls = s.query(CouncilCallRow).filter_by(session_id=session_id).all()
+        assert len(calls) == 17
+        assert all(c.status == "ok" for c in calls)
+        assert len(s.query(DesignSpecRow).filter_by(
+            session_id=session_id).all()) == 6
+        designer = [c for c in calls if c.role == "designer"]
+        assert len(designer) == 8  # 6 + 2 anthropic re-asks

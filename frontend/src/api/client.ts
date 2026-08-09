@@ -187,6 +187,20 @@ export interface CostRollup {
   pricing_version: string;
 }
 
+export interface GeneratedProgram {
+  id: string;
+  spec_id: string;
+  attempt_no: number;
+  provider: string;
+  model: string;
+  status: string;
+  rejection_reason: string | null;
+  error_digest: string | null;
+  program_hash: string;
+  artifacts_json: string | null;
+  validation_json: string | null;
+}
+
 export interface CouncilSessionDetail {
   session: CouncilSessionSummary & {
     started_at: string;
@@ -194,6 +208,7 @@ export interface CouncilSessionDetail {
   };
   calls: CouncilCall[];
   specs: CouncilSpec[];
+  programs?: GeneratedProgram[];
   engineering_reviews: CouncilPayloadRow[];
   defect_lists: CouncilPayloadRow[];
   arbiter_decision: ArbiterDecision | null;

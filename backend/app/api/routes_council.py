@@ -40,6 +40,7 @@ from app.db.models import (
     DefectListRow,
     DesignSpecRow,
     EngineeringReviewRow,
+    GeneratedProgramRow,
 )
 
 router = APIRouter(tags=["council"])
@@ -96,16 +97,13 @@ def list_council_sessions() -> dict:
     }
 
 
-@router.get("/council/sessions/{session_id}")
-def council_session_detail(session_id: str) -> dict:
-    db = get_default_db()
-    bundle = load_config_bundle()
-    caps = bundle.budget
+def _resolve_session(db, session_id: str) -> CouncilSessionRow | None:
+    """Unique-prefix resolution: the operator reads shortened ids
+    (e.g. "session 32e1c68f") — resolve them honestly (400 on ambiguous,
+    None on unknown)."""
     with db.get_session() as s:
         sess = s.get(CouncilSessionRow, session_id)
         if sess is None:
-            # Unique-prefix resolution: the operator reads shortened ids
-            # (e.g. "session 32e1c68f") — resolve them honestly.
             matches = s.execute(
                 select(CouncilSessionRow).where(
                     CouncilSessionRow.id.startswith(session_id)
@@ -113,15 +111,25 @@ def council_session_detail(session_id: str) -> dict:
             ).scalars().all()
             if len(matches) == 1:
                 sess = matches[0]
-                session_id = sess.id
             elif len(matches) > 1:
                 raise HTTPException(
                     status_code=400,
                     detail=f"session id prefix {session_id!r} is ambiguous "
                     f"({len(matches)} matches); use more characters",
                 )
+        return sess
+
+
+@router.get("/council/sessions/{session_id}")
+def council_session_detail(session_id: str) -> dict:
+    db = get_default_db()
+    bundle = load_config_bundle()
+    caps = bundle.budget
+    with db.get_session() as s:
+        sess = _resolve_session(db, session_id)
         if sess is None:
             raise HTTPException(status_code=404, detail="council session not found")
+        session_id = sess.id
         calls = s.execute(
             select(CouncilCallRow)
             .where(CouncilCallRow.session_id == session_id)
@@ -140,6 +148,11 @@ def council_session_detail(session_id: str) -> dict:
         decisions = s.execute(
             select(ArbiterDecisionRow)
             .where(ArbiterDecisionRow.session_id == session_id)
+        ).scalars().all()
+        programs = s.execute(
+            select(GeneratedProgramRow)
+            .where(GeneratedProgramRow.session_id == session_id)
+            .order_by(GeneratedProgramRow.attempt_no.asc())
         ).scalars().all()
 
     # Cost rollup — actual vs hypothetical all-full-input-rate (ADR-022).
@@ -209,6 +222,22 @@ def council_session_detail(session_id: str) -> dict:
                 "schema_valid": r.schema_valid,
             }
             for r in specs
+        ],
+        "programs": [
+            {
+                "id": p.id,
+                "spec_id": p.spec_id,
+                "attempt_no": p.attempt_no,
+                "provider": p.provider,
+                "model": p.model,
+                "status": p.status,
+                "rejection_reason": p.rejection_reason,
+                "error_digest": p.error_digest,
+                "program_hash": p.program_hash,
+                "artifacts_json": p.artifacts_json,
+                "validation_json": p.validation_json,
+            }
+            for p in programs
         ],
         "engineering_reviews": [
             {"id": r.id, "provider": r.provider, "side": r.side,
@@ -339,3 +368,98 @@ def run_council_session(req: RunSessionRequest) -> dict:
             detail=f"council session {session_id} failed: {exc}",
         ) from exc
     return {"session_id": session_id, "status": "completed"}
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — fabrication (GEOMETRIST code generation + sandbox)
+# ---------------------------------------------------------------------------
+
+
+class FabricateRequest(BaseModel):
+    spec_id: str | None = None  # default: the Arbiter's first-ranked choice
+    max_attempts: int = 3       # the bounded repair limit
+
+
+@router.post("/council/sessions/{session_id}/fabricate", status_code=201)
+def fabricate(session_id: str, req: FabricateRequest) -> dict:
+    """Fabricate one Design Spec: the GEOMETRIST writes parametric build123d
+    code, executed ONLY in the ADR-005 sandbox, with bounded repair.
+
+    Real API calls, real money (each attempt is one audited geometrist_code
+    call, visible separately in the rollup). Synchronous like the session
+    endpoint. Requires the geo-worker container running (docker compose up).
+    """
+    db = get_default_db()
+    sess = _resolve_session(db, session_id)
+    if sess is None:
+        raise HTTPException(status_code=404, detail="council session not found")
+    session_id = sess.id
+
+    spec_id = req.spec_id
+    if spec_id is None:
+        with db.get_session() as s:
+            decision = s.execute(
+                select(ArbiterDecisionRow)
+                .where(ArbiterDecisionRow.session_id == session_id)
+            ).scalars().first()
+        if decision is None:
+            raise HTTPException(
+                status_code=422,
+                detail="session has no Arbiter decision — nothing to fabricate",
+            )
+        chosen = json.loads(decision.chosen_spec_ids_json)
+        spec_id = chosen[0]  # ranked best-first
+
+    bundle = load_config_bundle()
+    settings = get_settings()
+
+    from app.ai.providers import build_providers
+    from app.council.fabricate import ScratchSandboxRunner, fabricate_spec
+
+    budget = BudgetEnforcer(
+        session_id,
+        bundle.budget.session_cap_usd,
+        bundle.budget.day_cap_usd,
+        db,
+    )
+    providers = build_providers(settings, bundle, db, budget)
+    orchestrator = CouncilOrchestrator(
+        db, bundle.pricing, LiveDispatcher(providers), bundle.council
+    )
+    try:
+        outcome = fabricate_spec(
+            orchestrator, session_id, spec_id,
+            ScratchSandboxRunner(),
+            max_attempts=req.max_attempts,
+        )
+    except BudgetHalt as exc:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"budget halt: {exc.reason} (spent ${exc.spent_usd:.4f} of "
+                f"${exc.cap_usd:.2f} cap)"
+            ),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "success": outcome.success,
+        "session_id": session_id,
+        "spec_id": spec_id,
+        "attempts": outcome.attempts,
+        "program_ids": outcome.program_ids,
+        "final_status": outcome.final_status,
+        "artifacts": outcome.artifacts,
+        "validation": outcome.validation,
+        "error": outcome.error,
+    }
+
+
+@router.get("/council/fabrication-rates")
+def fabrication_rates(session_id: str | None = None) -> dict:
+    """GEOMETRIST success rates: first attempt AND each repair round,
+    separately (operator order 2026-08-09), plus the AST rejection
+    catalogue that informs the Phase 6 vocabulary widening."""
+    from app.council.fabricate import success_rates
+
+    return success_rates(get_default_db(), session_id)

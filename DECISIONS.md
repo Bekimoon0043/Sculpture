@@ -1151,6 +1151,21 @@ anthropic-designer >= $0.3813 (3 calls, ~$0.127 each).
   operator before Phase 5 multiplies sessions. Per-call latency data will
   refine it (kimi slowness noted by the operator; anthropic and kimi are
   comparable per call, ~$0.08; openai ~$0.018).
+- **OPERATOR DECISION (2026-08-09): Option B REJECTED — keep 3 alternatives
+  x 2 providers.** Verbatim reasoning: "The designer is where this
+  platform's differentiator lives. The master order made dual-provider
+  designers decision-critical so two models produce genuinely different
+  design thinking and disagreement surfaces rather than averaging away.
+  Option B collapses that to one model's imagination with a review chair.
+  $0.38 a session is not worth narrowing the creative range on a platform
+  whose selling point is imagination plus correctness. Revisit only if
+  session volume makes cost actually bite." The dual-provider designer
+  table is FROZEN unless session volume changes the economics.
+- **OPERATOR DECISION (2026-08-09): researcher primary kimi -> openai
+  APPROVED** (Q4). kimi stays parallel — under ADR-023 its failures
+  degrade gracefully, so the unreliable provider sits in optional seats
+  only. Rest of the role table held until the post-ADR-024 cache
+  measurement. Applied in config/council.yaml 2026-08-09.
 
 ## ADR-025 — Session health flags: degraded vs corrected (2026-08-09)
 
@@ -1185,3 +1200,36 @@ script matching their real pre-patch database).
 "degraded = ran without parallel comparison"; the happy-path test even
 asserted `degraded == 1` "by design". Both corrected; PHASE_3_REPORT.md
 carries a strikethrough correction note.
+
+## ADR-026 — Phase 4 fabrication loop: contract, sandbox, repair (2026-08-09)
+
+Operator-approved plan (PHASE_4_PLAN.md) with three operator additions:
+separate first-attempt/per-round success rates; every rejected program
+persisted with its AST reason; geometrist_code as its own rollup role.
+
+1. **Program contract** `build(spec) -> (solid, params_dict, seed)`. The
+   runner owns export (deterministic STEP timestamp from the seed —
+   Amendment 1 carries forward); generated code never writes files.
+2. **Vocabulary**: one primitive, `registry.cascade_fountain(params,
+   seed)`, living in registry.py so the prompt surface is GENERATED from
+   the live registry (cannot drift; Phase 6 widens it by editing
+   registry.py). registry.py carries a security note: its public surface
+   is reachable by sandboxed AI code — keep it benign.
+3. **AST gate before the sandbox** (operator: "the right belt-and-braces"):
+   import whitelist {registry, build123d, math}; banned calls (open/eval/
+   exec/getattr/…/export_*); no dunder attribute access; must define
+   build(spec). Rejection reasons are human-readable, persisted, and fed
+   back as the repair digest.
+4. **Sandbox = ADR-005 realized as a docker-compose service** (geo-worker):
+   non-root, network_mode none, read-only fs + tmpfs, one scratch bind
+   mount, cpus 1.0, mem_limit 2g, hard timeout 120s enforced by the worker
+   watcher via subprocess timeout. The backend queues jobs on the scratch
+   mount and NEVER executes generated code — tests use a scripted runner
+   that executes nothing either.
+5. **Bounded repair**: 3 attempts; every failure class (provider call, AST
+   rejection, sandbox error, validation failure) becomes the next round's
+   error digest; exhaustion reported honestly with all rows persisted.
+   Provider failure during fabrication is a failed ATTEMPT (ADR-023
+   optional-call semantics), not a crash.
+6. **Provider**: geometrist primary (anthropic) writes code; parallel seat
+   unused in Phase 4.

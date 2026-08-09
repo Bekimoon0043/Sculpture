@@ -22,6 +22,9 @@ V3_TABLES = {
     "arbiter_decisions",
 }
 
+#: Phase 4 (schema v4): AI-written programs, including rejected ones.
+V4_TABLES = V3_TABLES | {"generated_programs"}
+
 
 def _tables(path) -> set[str]:
     conn = sqlite3.connect(str(path))
@@ -43,7 +46,7 @@ def test_fresh_db_has_phase3_tables_and_columns(tmp_path):
     db = Database(tmp_path / "fresh.db")
     db.init_db()
     tables = _tables(tmp_path / "fresh.db")
-    assert V3_TABLES <= tables
+    assert V4_TABLES <= tables
 
     assert {
         "id", "created_at", "brief_text", "status", "started_at", "ended_at",
@@ -69,7 +72,7 @@ def test_fresh_db_has_phase3_tables_and_columns(tmp_path):
     recorded = {r[0] for r in conn.execute("SELECT version FROM schema_migrations")}
     conn.close()
     assert SCHEMA_VERSION in recorded
-    assert SCHEMA_VERSION == 3
+    assert SCHEMA_VERSION == 4  # v4: + generated_programs (Phase 4)
 
 
 def test_phase2_db_is_renamed_to_phase2_backup_never_deleted(tmp_path):
@@ -115,7 +118,7 @@ def test_v3_db_reinit_is_idempotent_no_rename(tmp_path):
     conn = sqlite3.connect(str(path))
     versions = {r[0] for r in conn.execute("SELECT version FROM schema_migrations")}
     conn.close()
-    assert versions == {3}, "schema_migrations records a version once (PK)"
+    assert versions == {SCHEMA_VERSION}, "schema_migrations records a version once (PK)"
 
 
 def test_phase1_db_still_renamed_to_phase1_backup(tmp_path):

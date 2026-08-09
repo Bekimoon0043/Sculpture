@@ -185,6 +185,29 @@ class ArbiterDecisionRow(Base):
     binding: Mapped[int] = mapped_column(Integer, default=1)
 
 
+class GeneratedProgramRow(Base):
+    """Phase 4: one GEOMETRIST-written program per row — including every
+    REJECTED attempt with its AST-gate reason (operator order 2026-08-09:
+    the rejection catalogue informs the Phase 6 vocabulary widening)."""
+
+    __tablename__ = "generated_programs"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    created_at: Mapped[str] = mapped_column(Text)
+    session_id: Mapped[str] = mapped_column(Text)
+    spec_id: Mapped[str] = mapped_column(Text)
+    attempt_no: Mapped[int] = mapped_column(Integer)
+    provider: Mapped[str] = mapped_column(Text)
+    model: Mapped[str] = mapped_column(Text)
+    program_text: Mapped[str] = mapped_column(Text)
+    program_hash: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_digest: Mapped[str | None] = mapped_column(Text, nullable=True)
+    artifacts_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    validation_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class DesignRow(Base):
     __tablename__ = "designs"
 

@@ -1,0 +1,369 @@
+"""Fabrication stage (Phase 4) — the GEOMETRIST writes code; the loop runs.
+
+Flow per attempt (bounded repair, default 3):
+  1. GEOMETRIST code call (audited + priced through the Phase 3 machinery,
+     role "geometrist_code" — separated in every rollup, per the operator's
+     2026-08-09 order: "I want to see what a repair loop costs").
+  2. AST gate. Rejection -> persist the program WITH its rejection reason
+     (operator order: the catalogue of what the model tried that it was not
+     allowed to do informs the Phase 6 vocabulary widening) -> repair.
+  3. Sandbox execution (ADR-005 realized: separate container, non-root, no
+     network, read-only fs except scratch, CPU/mem limits, hard timeout).
+     AI-written code executes NOWHERE else.
+  4. Phase 2 validation gate on the exported GLB (trusted code, backend
+     side) — real numbers, same checks as the Phase 2 gate.
+  5. Persist the program row (every attempt, every status) — any geometry
+     traces back to the code and the spec that made it.
+
+Success-rate reporting (operator order): first-attempt success and
+per-repair-round success are computed SEPARATELY by success_rates() — if
+first-attempt success is low, the registry surface in the prompt needs
+enriching before Phase 6 adds more primitives.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import os
+import shutil
+import time
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Protocol
+
+from app.council import prompts
+from app.db.models import CouncilSessionRow, DesignSpecRow, GeneratedProgramRow
+from app.geometry.ast_gate import check_program
+
+log = logging.getLogger("luxuryform.council.fabricate")
+
+#: Repair bound (operator-approved plan: "retry limit", reported actuals).
+DEFAULT_MAX_ATTEMPTS = 3
+
+#: Sandbox hard timeout per execution (ADR-005). The worker enforces it.
+DEFAULT_TIMEOUT_S = 120
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+# ---------------------------------------------------------------------------
+# Sandbox runner abstraction — production talks to the scratch mount the
+# geo-worker container watches; tests inject a scripted runner that NEVER
+# executes anything.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SandboxResult:
+    ok: bool
+    error: str | None = None
+    artifacts: dict[str, Any] | None = None  # step/glb paths + sha256
+    brep_volume_mm3: float | None = None
+    params: dict[str, Any] | None = None
+
+
+class SandboxRunner(Protocol):
+    def run(self, program_text: str, spec: dict[str, Any],
+            timeout_s: float) -> SandboxResult: ...
+
+
+def scratch_dir() -> Path:
+    """Shared scratch mount (backend side). The geo-worker watches the same
+    host directory. Env-overridable for tests."""
+    from app.core.config import REPO_ROOT
+
+    return Path(os.environ.get(
+        "LUXURYFORM_GEO_SCRATCH",
+        os.environ.get("LUXURYFORM_DATA_DIR", str(REPO_ROOT / "data")),
+    )) / "geo_scratch"
+
+
+class ScratchSandboxRunner:
+    """Production runner: queue a job on the scratch mount, wait for the
+    geo-worker container's result.json. Executes NOTHING itself."""
+
+    def __init__(self, root: Path | None = None, poll_s: float = 0.5) -> None:
+        self._root = root or scratch_dir()
+        self._poll_s = poll_s
+
+    def run(self, program_text: str, spec: dict[str, Any],
+            timeout_s: float) -> SandboxResult:
+        job_id = uuid.uuid4().hex[:16]
+        job_dir = self._root / job_id
+        job_dir.mkdir(parents=True, exist_ok=False)
+        # The geo-worker runs as uid 1000 (ADR-005 non-root) and must WRITE
+        # result.json into this backend-created directory on the bind mount.
+        try:
+            os.chmod(job_dir, 0o777)
+        except OSError:
+            pass  # Windows Desktop bind mounts: perms are synthetic anyway
+        (job_dir / "program.py").write_text(program_text, encoding="utf-8")
+        (job_dir / "job.json").write_text(
+            json.dumps({"spec": spec, "timeout_s": timeout_s}), encoding="utf-8"
+        )
+        # The worker's hard timeout plus margin for polling/queueing.
+        deadline = time.monotonic() + timeout_s + 60.0
+        result_path = job_dir / "result.json"
+        while time.monotonic() < deadline:
+            if result_path.exists():
+                payload = json.loads(result_path.read_text(encoding="utf-8"))
+                return SandboxResult(
+                    ok=bool(payload["ok"]),
+                    error=payload.get("error"),
+                    artifacts=payload.get("artifacts"),
+                    brep_volume_mm3=payload.get("brep_volume_mm3"),
+                    params=payload.get("params"),
+                )
+            time.sleep(self._poll_s)
+        return SandboxResult(
+            ok=False,
+            error=(
+                f"sandbox produced no result within {timeout_s + 60:.0f}s — "
+                "is the geo-worker container running? "
+                "(docker compose ps geo-worker)"
+            ),
+        )
+
+
+# ---------------------------------------------------------------------------
+# The stage
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class FabricationOutcome:
+    success: bool
+    session_id: str
+    spec_id: str
+    attempts: int
+    program_ids: list[str] = field(default_factory=list)
+    final_status: str = ""
+    artifacts: dict[str, Any] | None = None
+    validation: dict[str, Any] | None = None
+    error: str | None = None
+
+
+def fabricate_spec(
+    orchestrator,
+    session_id: str,
+    spec_id: str,
+    runner: SandboxRunner,
+    max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+    timeout_s: float = DEFAULT_TIMEOUT_S,
+    artifact_root: Path | None = None,
+    validator=None,
+) -> FabricationOutcome:
+    """Run the bounded code-generate -> gate -> sandbox -> validate loop.
+
+    ``validator`` defaults to the real Phase 2 validate_mesh path; tests
+    inject a scripted report for the failure path (a passing path is tested
+    against REAL validation with a trimesh-built GLB)."""
+    from app.core.config import REPO_ROOT, load_config_bundle
+
+    with orchestrator._db.get_session() as s:
+        spec_row = s.get(DesignSpecRow, spec_id)
+        if spec_row is None or spec_row.session_id != session_id:
+            raise ValueError(f"spec {spec_id} not found in session {session_id}")
+        spec = json.loads(spec_row.spec_json)
+
+    provider = orchestrator._pair("geometrist")[0]  # code writer = primary
+    spec_json = json.dumps(spec, sort_keys=True)
+    out = FabricationOutcome(False, session_id, spec_id, attempts=0)
+    error_digest: str | None = None
+    artifact_root = artifact_root or (
+        Path(os.environ.get("LUXURYFORM_DATA_DIR", str(REPO_ROOT / "data")))
+        / "fabrications" / session_id
+    )
+
+    for attempt in range(1, max_attempts + 1):
+        out.attempts = attempt
+        prompt = prompts.fabrication_prompt(spec_json, error_digest)
+        # optional=True (ADR-023): a provider failure is a failed ATTEMPT,
+        # not a crashed fabrication — the error becomes the repair digest.
+        outcome = orchestrator._call(
+            session_id, "geometrist_code", "primary", provider, prompt,
+            optional=True,
+        )
+        program_id = str(uuid.uuid4())
+        row = GeneratedProgramRow(
+            id=program_id,
+            created_at=_utc_now_iso(),
+            session_id=session_id,
+            spec_id=spec_id,
+            attempt_no=attempt,
+            provider=outcome.provider or provider,
+            model=outcome.model,
+            program_text="",
+            program_hash="",
+            status="call_failed",
+            rejection_reason=None,
+            error_digest=None,
+            artifacts_json=None,
+            validation_json=None,
+        )
+
+        if outcome.status != "ok":
+            row.error_digest = outcome.error
+            error_digest = f"the provider call failed: {outcome.error}"
+            _persist_program(orchestrator, row)
+            out.program_ids.append(program_id)
+            out.final_status = "call_failed"
+            continue
+
+        program_text = prompts.extract_program(outcome.text)
+        row.program_text = program_text
+        row.program_hash = hashlib.sha256(program_text.encode()).hexdigest()
+
+        # 2. AST gate — rejection reason persisted verbatim (catalogue).
+        reason = check_program(program_text)
+        if reason is not None:
+            row.status = "ast_rejected"
+            row.rejection_reason = reason
+            row.error_digest = f"AST gate rejection: {reason}"
+            error_digest = row.error_digest
+            _persist_program(orchestrator, row)
+            out.program_ids.append(program_id)
+            out.final_status = "ast_rejected"
+            log.info("attempt %d AST-rejected: %s", attempt, reason)
+            continue
+
+        # 3. Sandbox execution.
+        result = runner.run(program_text, spec, timeout_s)
+        if not result.ok:
+            row.status = "exec_failed"
+            row.error_digest = f"sandbox execution failed:\n{result.error}"
+            error_digest = row.error_digest
+            _persist_program(orchestrator, row)
+            out.program_ids.append(program_id)
+            out.final_status = "exec_failed"
+            continue
+
+        # Collect artifacts out of the scratch job dir into the data dir
+        # (trusted copy — scratch is transient).
+        artifacts = dict(result.artifacts or {})
+        dest_dir = artifact_root / program_id
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        for key in ("step", "glb"):
+            src = Path(artifacts[key])
+            dest = dest_dir / f"artifact.{key}"
+            shutil.copyfile(src, dest)
+            artifacts[key] = str(dest)
+        row.artifacts_json = json.dumps(artifacts, sort_keys=True)
+
+        # 4. Phase 2 validation gate — trusted code, real numbers.
+        if validator is not None:
+            report = validator(artifacts["glb"], result.params or {},
+                               result.brep_volume_mm3)
+        else:
+            from app.geometry.validate import validate_mesh
+
+            bundle = load_config_bundle()
+            material_id = (result.params or {}).get(
+                "material_id", "basalt_slab"
+            )
+            material = bundle.materials.materials[material_id]
+            report = validate_mesh(
+                artifacts["glb"], material, material_id=material_id,
+                reference_volume_mm3=result.brep_volume_mm3,
+            )
+        row.validation_json = report.model_dump_json()
+
+        if not report.passed:
+            failed = [f"{r['check']}: {r['value']}" for r in report.check_rows()
+                      if not r["passed"]]
+            row.status = "validation_failed"
+            row.error_digest = (
+                "geometry built but FAILED validation (real numbers):\n"
+                + "\n".join(failed)
+            )
+            error_digest = row.error_digest
+            _persist_program(orchestrator, row)
+            out.program_ids.append(program_id)
+            out.final_status = "validation_failed"
+            continue
+
+        # 5. PASS
+        row.status = "passed"
+        row.error_digest = None
+        _persist_program(orchestrator, row)
+        out.program_ids.append(program_id)
+        out.success = True
+        out.final_status = "passed"
+        out.artifacts = artifacts
+        out.validation = json.loads(row.validation_json)
+        return out
+
+    out.error = f"no passing program after {max_attempts} attempts"
+    return out
+
+
+def _persist_program(orchestrator, row: GeneratedProgramRow) -> None:
+    with orchestrator._db.get_session() as s:
+        s.add(row)
+
+
+# ---------------------------------------------------------------------------
+# Success rates (operator order 2026-08-09: first attempt AND each repair
+# round, SEPARATELY)
+# ---------------------------------------------------------------------------
+
+
+def success_rates(db, session_id: str | None = None) -> dict[str, Any]:
+    """Per-attempt pass rates over generated_programs rows.
+
+    A "fabrication unit" is one (session_id, spec_id) pair. Rates:
+      first_attempt: units passed at attempt 1 / all units
+      round_k: units passed at attempt k / units that REACHED attempt k
+    Also returns the rejection catalogue counts by AST-gate reason.
+    """
+    with db.get_session() as s:
+        q = s.query(GeneratedProgramRow)
+        if session_id is not None:
+            q = q.filter_by(session_id=session_id)
+        rows = q.order_by(GeneratedProgramRow.attempt_no).all()
+
+    units: dict[tuple[str, str], list[GeneratedProgramRow]] = {}
+    for r in rows:
+        units.setdefault((r.session_id, r.spec_id), []).append(r)
+
+    reached: dict[int, int] = {}
+    passed_at: dict[int, int] = {}
+    rejections: dict[str, int] = {}
+    for unit_rows in units.values():
+        passed = False
+        for r in unit_rows:
+            if passed:
+                break
+            reached[r.attempt_no] = reached.get(r.attempt_no, 0) + 1
+            if r.status == "ast_rejected" and r.rejection_reason:
+                key = r.rejection_reason.split(":", 1)[-1].strip()[:80]
+                rejections[key] = rejections.get(key, 0) + 1
+            if r.status == "passed":
+                passed_at[r.attempt_no] = passed_at.get(r.attempt_no, 0) + 1
+                passed = True
+
+    total = len(units)
+    rates: dict[str, Any] = {
+        "fabrication_units": total,
+        "first_attempt_pass_rate": (
+            round(passed_at.get(1, 0) / total, 4) if total else None
+        ),
+        "per_round": {
+            f"round_{k}": {
+                "reached": reached[k],
+                "passed": passed_at.get(k, 0),
+                "pass_rate_of_reached": round(passed_at.get(k, 0) / reached[k], 4),
+            }
+            for k in sorted(reached)
+        },
+        "ast_rejection_catalogue": dict(
+            sorted(rejections.items(), key=lambda kv: -kv[1])
+        ),
+    }
+    return rates

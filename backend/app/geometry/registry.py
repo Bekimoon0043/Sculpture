@@ -310,3 +310,33 @@ def validate_params(
     if violations:
         raise ConstraintViolation(violations)
     return params
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 fabrication primitive — the ONLY geometry call a generated program
+# may make. Kept in registry.py so the sandbox-visible `registry` module is
+# the single vocabulary source; Phase 6 adds more primitives HERE.
+#
+# SECURITY NOTE for future editors: everything importable from this module
+# is reachable by AI-written code executing in the sandbox. Keep this
+# module's public surface benign — no file, network, or process access.
+# ---------------------------------------------------------------------------
+
+
+def cascade_fountain(params: dict[str, Any], seed: int = 0):
+    """THE Phase 4 primitive: dict of cascade parameters -> watertight solid.
+
+    Validates ``params`` against the registry (ranges + hard constraints,
+    real numbers in every violation) and builds the fused cascade solid.
+    Returns ``(solid, validated_params)`` where ``solid`` is a build123d
+    Shape and ``validated_params`` is the validated CascadeParams model —
+    the runner persists ``validated_params.canonical_dict()`` for lineage.
+
+    Raises ConstraintViolation listing EVERY violated constraint with the
+    real computed numbers.
+    """
+    from app.geometry.kernel import GeometryBuild  # lazy: registry stays
+    # importable without the geometry stack installed
+
+    validated = validate_params(params)
+    return GeometryBuild(seed, validated).build(), validated

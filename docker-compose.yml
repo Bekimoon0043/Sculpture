@@ -10,6 +10,7 @@
 # Viewport UI:  http://localhost:5173
 services:
   backend:
+    image: luxuryform-backend
     build:
       context: .
       # Plan B (ADR-017/018): if deb.debian.org AND all Debian mirrors are
@@ -41,6 +42,35 @@ services:
     env_file: .env
     volumes:
       - ./data:/app/data
+
+  # -----------------------------------------------------------------------
+  # geo-worker (Phase 4, ADR-005 realized): the ONLY place AI-written code
+  # ever executes.
+  #   * separate container — this service
+  #   * non-root — user 1000:1000
+  #   * no network — network_mode: none
+  #   * read-only filesystem except ONE scratch mount (+ tmpfs /tmp)
+  #   * CPU + memory limits — cpus / mem_limit below
+  #   * hard timeout — enforced per job by the watcher (default 120s)
+  # It shares the backend image (same build123d/trimesh) and watches the
+  # scratch bind mount for queued jobs. If the sandbox is ever breached the
+  # blast radius is: no network, no host fs except one scratch dir, no root.
+  geo-worker:
+    image: luxuryform-backend
+    depends_on:
+      - backend
+    command: ["python", "-m", "app.geometry.worker", "/scratch"]
+    user: "1000:1000"
+    network_mode: "none"
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+    cpus: 1.0
+    mem_limit: 2g
+    volumes:
+      - ./data/geo_scratch:/scratch
 
   frontend:
     # node_modules is baked into the image at BUILD time (frontend/Dockerfile,

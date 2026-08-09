@@ -7,8 +7,15 @@
 
 roles:
   researcher:
-    primary: kimi
-    parallel: openai
+    # Reassigned 2026-08-09 (operator-approved, from measured live data):
+    # kimi was the slowest and dearest per unit of work (~$0.084/call vs
+    # openai ~$0.018, session 32e1c68f) and its timeouts were the Phase 3
+    # incident. openai takes primary; kimi stays parallel — under ADR-023 a
+    # kimi failure now degrades gracefully, so the unreliable provider sits
+    # in optional seats only. Rest of the table held until the post-ADR-024
+    # cache measurement.
+    primary: openai
+    parallel: kimi
   designer:
     primary: anthropic
     parallel: openai

@@ -29,7 +29,7 @@ DEFAULT_DB_PATH = "./data/luxuryform.db"
 #: schema_migrations bookkeeping). v3 = Phase 3 (normalized Council tables:
 #: council_calls, engineering_reviews, defect_lists, arbiter_decisions;
 #: council_sessions/design_specs re-shaped for the real Council).
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4  # v4 = Phase 4: + generated_programs (additive; IF NOT EXISTS)
 
 #: Column whose presence proves a `designs` table is at least Phase 2 shape.
 _PHASE2_DESIGNS_MARKER_COLUMN = "spec_hash"

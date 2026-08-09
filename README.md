@@ -1,4 +1,4 @@
-# LuxuryForm Studio v1 — Phase 4 of 7 next
+# LuxuryForm Studio v1 — Phase 4 of 7 IN PROGRESS (gate pending)
 
 **What this is:** an internal design platform for LuxuryCon (Addis Ababa). It
 turns a client brief for a sculpture or fountain into a design that is
@@ -8,7 +8,9 @@ and spend-capped, plus a real CAD engine.
 
 **Current phase status:** This platform has 7 phases. Phases 1, 2 and 3
 are built and CLOSED (operator gates PASS, 2026-08-01 / 2026-08-04 /
-2026-08-07). **Phase 4 of 7 is next** (AI-written geometry in a sandbox).
+2026-08-07). **Phase 4 of 7 is IN PROGRESS** (AI-written geometry in the
+ADR-005 sandbox: AST gate, bounded repair, per-attempt lineage; built
+2026-08-09, fixture gate PASS, live gate pending operator).
 Phase 3 delivered the full AI Council: schema v3 persistence, the $0
 fixture replay pipeline, the costing rates schema, the orchestrator,
 cache-aware provider pricing (ADR-022) with cache-break prompts

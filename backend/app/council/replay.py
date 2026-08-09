@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -281,7 +282,9 @@ def replay_session(db: Database, pricing: PricingConfig, fixture: dict) -> str:
             )
         s.add(
             ArbiterDecisionRow(
-                id=decision["id"],
+                # capture_council_fixture.py before 2026-08-09 omitted the
+                # row id; it is bookkeeping, not content — generate one.
+                id=decision.get("id", str(uuid.uuid4())),
                 created_at=sess["ended_at"],
                 session_id=session_id,
                 chosen_spec_ids_json=json.dumps(chosen),

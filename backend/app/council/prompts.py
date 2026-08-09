@@ -156,3 +156,109 @@ def candidates_summary(specs: list[dict]) -> str:
             f"elements={len(s.get('massing', {}).get('elements', []))}"
         )
     return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — GEOMETRIST code generation (the fabrication stage)
+# ---------------------------------------------------------------------------
+
+def registry_surface() -> str:
+    """The fabrication API documentation embedded in every code-gen prompt.
+
+    Generated from the LIVE registry so the prompt can never drift from the
+    code (Phase 6 widens the vocabulary by editing registry.py — this text
+    follows automatically).
+    """
+    from app.geometry.registry import CASCADE_PARAMETERS
+
+    lines = [
+        "FABRICATION API (module `registry` — the ONLY geometry vocabulary "
+        "you may use):",
+        "",
+        "  solid, validated = registry.cascade_fountain(params: dict, "
+        "seed: int = 0)",
+        "    Builds the tiered-cascade fountain primitive: round base basin,",
+        "    central column with plumbing bore, N stacked dishes — ONE",
+        "    watertight fused solid. Raises ConstraintViolation listing",
+        "    EVERY violated range/constraint with real numbers.",
+        "",
+        "PARAMETERS (all keys optional except as constrained; omit to use "
+        "the default):",
+    ]
+    for name, spec in CASCADE_PARAMETERS.items():
+        rng = ""
+        if spec.get("min") is not None or spec.get("max") is not None:
+            rng = f" [{spec['min']}..{spec['max']}]"
+        lines.append(
+            f"  {name} ({spec['type']}, {spec['unit']}, default "
+            f"{spec['default']}{rng}) — {spec['notes']}"
+        )
+    lines += [
+        "",
+        "HARD CONSTRAINTS (validated with real numbers; violations raise):",
+        "  1. basin_diameter_mm >= widest_dish + 2*basin_wall_mm + "
+        "min_clearance_mm",
+        "     (widest_dish = tier_top_diameter_mm + (tiers-1)"
+        "*tier_diameter_step_mm)",
+        "  2. basin_wall_mm >= the material's min_wall_mm",
+        "  3. lip_fillet_mm < dish_depth_mm / 2",
+        "  4. column_diameter_mm >= bore_diameter_mm + 2*basin_wall_mm",
+        "  5. lip_fillet_mm < basin_wall_mm",
+        "  6. tier_spacing_mm >= dish_depth_mm",
+    ]
+    return "\n".join(lines)
+
+
+_PROGRAM_CONTRACT = """PROGRAM CONTRACT (the sandbox runner enforces it exactly):
+  * Define ONE top-level function: def build(spec):  — spec is the Design
+    Spec dict below; return (solid, params_dict, seed).
+  * You may import ONLY: registry, build123d, math.
+  * You may NOT: open files, use eval/exec/getattr/__import__, access any
+    attribute starting with '_', or export files yourself (the runner owns
+    export — STEP and GLB are produced for you).
+  * Derive the cascade parameters from the Design Spec's stated dimensions
+    and material. State REAL numbers within the registry ranges — the
+    primitive validates and tells you every violation with real numbers.
+  * seed: use spec["meta"]["seed"].
+"""
+
+
+def fabrication_prompt(spec_json: str, error_digest: str | None = None) -> str:
+    """GEOMETRIST code-generation prompt. Static prefix first (ADR-024):
+    API surface + contract are identical across attempts and sessions; the
+    spec and repair digest ride after the cache break."""
+    prompt = (
+        "You are the GEOMETRIST of the LuxuryForm design council, writing "
+        "fabrication code. Translate the Design Spec below into a Python "
+        "program that builds the geometry using ONLY the fabrication API. "
+        "Respond with ONLY the Python program — no markdown fences, no "
+        "prose. The first line must be code or a comment.\n\n"
+        f"{registry_surface()}\n\n{_PROGRAM_CONTRACT}"
+        f"{CACHE_BREAK}"
+        f"DESIGN SPEC (JSON):\n{spec_json}"
+    )
+    if error_digest:
+        prompt += (
+            "\n\nYour PREVIOUS attempt FAILED. Fix it. The failure was:"
+            f"\n{error_digest}\n"
+            "Correct the cause; do not work around the rules above."
+        )
+    return prompt
+
+
+def extract_program(text: str) -> str:
+    """Strip markdown fences / leading prose from a model reply.
+
+    The instruction says code-only, but models fence anyway — accept
+    ```python ... ``` blocks and bare code alike.
+    """
+    t = text.strip()
+    if "```" in t:
+        parts = t.split("```")
+        # first fenced block (drop the language tag line if present)
+        block = parts[1]
+        if "\n" in block:
+            first, rest = block.split("\n", 1)
+            block = rest if first.strip().isalpha() else block
+        return block.strip()
+    return t

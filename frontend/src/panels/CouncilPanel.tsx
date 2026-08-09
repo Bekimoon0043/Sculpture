@@ -217,6 +217,38 @@ export default function CouncilPanel() {
             ))}
           </div>
 
+          {selected.programs && selected.programs.length > 0 && (
+            <div className="panel">
+              <h2>Fabrication ({selected.programs.length} program attempts)</h2>
+              {selected.programs.map((p) => (
+                <details key={p.id} className="call-card">
+                  <summary>
+                    <strong>attempt {p.attempt_no}</strong> · {p.provider} ·{" "}
+                    <span
+                      className={`badge badge-${p.status === "passed" ? "pass" : "fail"}`}
+                    >
+                      {p.status}
+                    </span>{" "}
+                    · spec {p.spec_id.slice(0, 8)}… · hash{" "}
+                    {p.program_hash.slice(0, 12)}…
+                  </summary>
+                  {p.rejection_reason && (
+                    <p className="hint">AST rejection: {p.rejection_reason}</p>
+                  )}
+                  {p.error_digest && (
+                    <pre className="payload">{p.error_digest}</pre>
+                  )}
+                  {p.artifacts_json && (
+                    <p className="hint">artifacts: {p.artifacts_json}</p>
+                  )}
+                  {p.validation_json && (
+                    <pre className="payload">{p.validation_json}</pre>
+                  )}
+                </details>
+              ))}
+            </div>
+          )}
+
           <div className="panel">
             <h2>Transcript ({selected.calls.length} calls)</h2>
             {selected.calls.map((c) => (

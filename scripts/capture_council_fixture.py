@@ -127,6 +127,7 @@ def main() -> int:
             for r in defects
         ],
         "arbiter_decision": {
+            "id": decisions[0].id,
             "chosen_spec_ids": json.loads(decisions[0].chosen_spec_ids_json),
             "confidence": decisions[0].confidence,
             "rationale": decisions[0].rationale,
