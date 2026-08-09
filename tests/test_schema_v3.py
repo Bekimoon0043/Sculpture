@@ -48,6 +48,7 @@ def test_fresh_db_has_phase3_tables_and_columns(tmp_path):
     assert {
         "id", "created_at", "brief_text", "status", "started_at", "ended_at",
         "total_cost_usd", "pricing_version", "arbiter_confidence", "degraded",
+        "corrected",
     } <= _columns(tmp_path / "fresh.db", "council_sessions")
     assert {
         "id", "session_id", "ts", "role", "side", "provider", "model",

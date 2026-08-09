@@ -5,7 +5,7 @@ canned response with scripted token counts; costs are computed through the
 REAL pricing.yaml (config fixture), never hand-typed. The tests prove the
 orchestration contract end to end:
 
-- happy path: 15 calls (critic degraded to kimi-only under the dynamic rule
+- happy path: 15 calls (critic runs kimi-only under the dynamic rule
   with the static designer pair), 6 valid specs, binding arbiter decision;
 - designer re-ask on invalid JSON, candidate exclusion after 3 failures;
 - critic dynamic rule resolution (never a producer provider);
@@ -146,9 +146,11 @@ def test_happy_path_completed_session(db, config, base_spec):
     with db.get_session() as s:
         sess = s.get(CouncilSessionRow, sid)
         assert sess.status == "completed"
-        # static designer pair (anthropic+openai) leaves only kimi eligible
-        # for the critic under the dynamic rule -> degraded by design.
-        assert sess.degraded == 1
+        # ADR-025: the critic running kimi-only under the never-a-producer
+        # rule is the rule working, NOT degradation — the badge stays clean
+        # on a healthy session.
+        assert sess.degraded == 0
+        assert sess.corrected == 0
         assert sess.arbiter_confidence == pytest.approx(0.72)
 
         calls = s.query(CouncilCallRow).filter_by(session_id=sid).all()
@@ -236,6 +238,45 @@ def test_designer_persistent_failure_excludes_candidate(db, config, base_spec):
             session_id=sid, role="designer").all()
         assert len(designer_calls) == 6 + orch.MAX_ATTEMPTS - 1  # +2 extra re-asks
         assert s.get(CouncilSessionRow, sid).status == "completed"
+
+
+def test_successful_reask_sets_corrected_not_degraded(db, config, base_spec):
+    """ADR-025: a designer re-ask that succeeds marks corrected=1, degraded=0.
+
+    Session 32e1c68f (first live run) flagged degraded with ZERO error rows —
+    the old semantics flagged the critic's by-design producer exclusion, so
+    every healthy session wore the badge. Re-asks are self-correction.
+    """
+    class ArbiterAware(ScriptedDispatcher):
+        def dispatch(self, **kw):
+            if kw["role"] == "arbiter" and kw["side"] == "primary" and not self.arbiter_script:
+                with db.get_session() as s:
+                    ids = [r.id for r in s.query(DesignSpecRow).all()]
+                return DispatchOutcome(
+                    provider=kw["provider"], model=MODELS[kw["provider"]],
+                    text=_arbiter_decision_json(ids), tokens_in=2000, tokens_out=900,
+                    latency_ms=100.0,
+                    cost_usd=config.pricing.cost_usd(kw["provider"], MODELS[kw["provider"]], 2000, 900),
+                    pricing_version=config.pricing.pricing_version)
+            return super().dispatch(**kw)
+
+    d = ArbiterAware(config.pricing, base_spec)
+    # anthropic alt 1: first reply is garbage, re-ask succeeds.
+    d.designer_script[("anthropic", 1)] = [
+        "this is not JSON at all",
+        json.dumps(_spec_for("anthropic", 1, 101, base_spec)),
+    ]
+    orch_ = _make_orch(db, config, d)
+    sid = orch_.run_session("A re-ask test brief")
+
+    with db.get_session() as s:
+        sess = s.get(CouncilSessionRow, sid)
+        assert sess.status == "completed"
+        assert sess.corrected == 1
+        assert sess.degraded == 0
+        calls = s.query(CouncilCallRow).filter_by(session_id=sid, role="designer").all()
+        assert len(calls) == 7  # 6 normal + 1 re-ask
+        assert all(c.status == "ok" for c in calls)
 
 
 def test_critic_dynamic_rule_excludes_producers(db, config, base_spec):

@@ -234,6 +234,10 @@ td.num {
   color: #d08a8a;
   border-color: #6b3a3a;
 }
+.badge-warn {
+  color: #c9a86a;
+  border-color: #6b5a35;
+}
 .call-card {
   border: 1px solid #232a32;
   border-radius: 6px;

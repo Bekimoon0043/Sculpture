@@ -1,5 +1,8 @@
 [build-system]
-requires = ["setuptools>=68"]
+# Pinned (2026-08-09): the Dockerfile pre-installs this exact version in a
+# cached layer and builds with --no-build-isolation, so the editable
+# install needs no network (operator's builds died re-fetching setuptools).
+requires = ["setuptools==80.9.0"]
 build-backend = "setuptools.build_meta"
 
 [project]

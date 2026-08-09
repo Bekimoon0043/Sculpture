@@ -202,9 +202,9 @@ class CouncilOrchestrator:
 
     # -- role stages --------------------------------------------------------
 
-    def _run_designers(self, session_id: str, brief: str, research: str) -> tuple[list[dict], bool]:
+    def _run_designers(self, session_id: str, brief: str, research: str) -> tuple[list[dict], bool, bool]:
         """3 alternatives x 2 providers; schema-validate; bounded re-ask.
-        Returns (valid candidate specs, any_provider_failure).
+        Returns (valid candidate specs, any_provider_failure, any_reask).
 
         A failed designer CALL (provider outage, ADR-023) does not re-ask and
         does not abort: it skips that alternative — the <3-valid check in
@@ -214,6 +214,7 @@ class CouncilOrchestrator:
         valid_specs: list[dict] = []
         seen_spec_ids: set[str] = set()
         any_failure = False
+        any_reask = False
         for alternative_no in (1, 2, 3):
             for side, provider in (("primary", primary), ("parallel", parallel)):
                 base_prompt = prompts.designer_prompt(
@@ -238,6 +239,8 @@ class CouncilOrchestrator:
                         candidate = _extract_json(outcome.text)
                         jsonschema.validate(instance=candidate, schema=self._schema)
                         spec = candidate
+                        if attempt > 1:
+                            any_reask = True  # self-correction, not degradation
                         break
                     except (ValueError, json.JSONDecodeError) as exc:
                         errors = [f"reply is not a JSON object: {exc}"]
@@ -277,11 +280,18 @@ class CouncilOrchestrator:
                             schema_valid=1,
                         )
                     )
-        return valid_specs, any_failure
+        return valid_specs, any_failure, any_reask
 
     def _resolve_critic_providers(self, valid_specs: list[dict]) -> tuple[list[str], bool]:
         """Dynamic rule: never a provider that produced a candidate spec.
-        Returns (providers_to_run, degraded)."""
+        Returns (providers_to_run, reduced_coverage).
+
+        ADR-025: reduced coverage here is the never-a-producer rule working
+        as designed, NOT degradation — with the static designer pair
+        (anthropic+openai) the critic primary is always a producer, so the
+        critic always runs single-provider. Flagging that as degraded made
+        the badge meaningless (every healthy session flagged it)."""
+
         producers = {sp["meta"].get("provider") for sp in valid_specs}
         primary, parallel = self._pair("critic")
         ordered = [p for p in (primary, parallel) if p] + [
@@ -292,8 +302,9 @@ class CouncilOrchestrator:
         return run, len(run) < 2
 
     def _run_arbiter(self, session_id: str, brief: str, valid_specs: list[dict],
-                     review_text: str, defects_text: str) -> dict:
-        """Bounded re-ask until a valid binding decision or fail loudly."""
+                     review_text: str, defects_text: str) -> tuple[dict, bool]:
+        """Bounded re-ask until a valid binding decision or fail loudly.
+        Returns (decision, reasked) — reasked marks self-correction (ADR-025)."""
         primary, parallel = self._pair("arbiter")
         summary = prompts.candidates_summary(valid_specs)
         valid_ids = {sp["meta"]["spec_id"] for sp in valid_specs}
@@ -306,6 +317,7 @@ class CouncilOrchestrator:
             decision, errors = self._validate_decision(outcome.text, valid_ids)
             if decision is not None:
                 break
+        reasked = attempt > 1
         if decision is None:
             raise OrchestratorError(
                 f"Arbiter produced no valid binding decision after "
@@ -319,7 +331,7 @@ class CouncilOrchestrator:
                 base + "\n\nYou are the PARALLEL arbiter: concur or state "
                 "your disagreement explicitly in the same JSON shape.",
             )
-        return decision
+        return decision, reasked
 
     def _validate_decision(self, text: str, valid_ids: set[str]) -> tuple[dict | None, list[str]]:
         try:
@@ -371,7 +383,8 @@ class CouncilOrchestrator:
             )
             s.flush()  # parent first — see module docstring
 
-        degraded = 0
+        degraded = 0    # a provider FAILURE left a seat empty/reduced (ADR-025)
+        corrected = 0   # a bounded re-ask succeeded — self-correction, not degradation
         optional_failures: list[str] = []
 
         def _optional(role: str, side: str, provider: str, prompt: str):
@@ -402,11 +415,13 @@ class CouncilOrchestrator:
 
             # DESIGNER x 3 alternatives x 2 providers (failures just shrink
             # the valid-candidate pool; <3 valid aborts below)
-            valid_specs, designer_failures = self._run_designers(
+            valid_specs, designer_failures, designer_reask = self._run_designers(
                 session_id, brief, research
             )
             if designer_failures:
                 degraded = 1
+            if designer_reask:
+                corrected = 1
             if len(valid_specs) < 3:
                 raise OrchestratorError(
                     f"only {len(valid_specs)} valid Design Spec candidates; "
@@ -437,9 +452,12 @@ class CouncilOrchestrator:
                                           parallel, "parallel", out.text)
 
             # CRITIC (dynamic rule)
-            critic_providers, critic_degraded = self._resolve_critic_providers(valid_specs)
-            if critic_degraded:
-                degraded = 1
+            critic_providers, critic_reduced = self._resolve_critic_providers(valid_specs)
+            if critic_reduced:
+                # ADR-025: the never-a-producer rule excludes the critic
+                # primary by design — informational, NOT degradation.
+                log.info("critic running single-provider (producer exclusion): %s",
+                         critic_providers)
             if not critic_providers:
                 raise OrchestratorError(
                     "no eligible critic provider (every provider produced a candidate)"
@@ -465,8 +483,10 @@ class CouncilOrchestrator:
 
             # ARBITER (binding — the one stage whose failure DOES abort:
             # without a binding decision there is no session outcome)
-            decision = self._run_arbiter(session_id, brief, valid_specs,
-                                         review_text, defects_text)
+            decision, arbiter_reask = self._run_arbiter(session_id, brief, valid_specs,
+                                                        review_text, defects_text)
+            if arbiter_reask:
+                corrected = 1
             chosen = decision["chosen_spec_ids"]
             hashes = {}
             with self._db.get_session() as s:
@@ -495,15 +515,15 @@ class CouncilOrchestrator:
                 )
 
             self._finalize(session_id, "completed", degraded,
-                           float(decision["confidence"]))
+                           float(decision["confidence"]), corrected)
             return session_id
         except BudgetHalt:
             # Amendment 2: the enforcer stopped a dispatch. Mark honestly,
             # keep every persisted call, re-raise.
-            self._finalize(session_id, "halted_budget", degraded, None)
+            self._finalize(session_id, "halted_budget", degraded, None, corrected)
             raise
         except Exception:
-            self._finalize(session_id, "failed", degraded, None)
+            self._finalize(session_id, "failed", degraded, None, corrected)
             raise
 
     def _persist_payload(self, session_id: str, row_cls, provider: str,
@@ -527,7 +547,7 @@ class CouncilOrchestrator:
             )
 
     def _finalize(self, session_id: str, status: str, degraded: int,
-                  confidence: float | None) -> None:
+                  confidence: float | None, corrected: int) -> None:
         with self._db.get_session() as s:
             sess = s.get(CouncilSessionRow, session_id)
             total = (
@@ -539,5 +559,6 @@ class CouncilOrchestrator:
             sess.total_cost_usd = round(sum(c for (c,) in total), 6)
             sess.status = status
             sess.degraded = degraded
+            sess.corrected = corrected
             sess.arbiter_confidence = confidence
             sess.ended_at = _utc_now_iso()

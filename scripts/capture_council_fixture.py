@@ -84,6 +84,7 @@ def main() -> int:
             "started_at": sess.started_at,
             "ended_at": sess.ended_at,
             "degraded": sess.degraded,
+            "corrected": getattr(sess, "corrected", 0),
         },
         "calls": [
             {

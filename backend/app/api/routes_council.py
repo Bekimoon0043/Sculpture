@@ -88,6 +88,7 @@ def list_council_sessions() -> dict:
                 "pricing_version": r.pricing_version,
                 "arbiter_confidence": r.arbiter_confidence,
                 "degraded": r.degraded,
+                "corrected": r.corrected,
                 "synthetic": r.id in synthetic_ids,
             }
             for r in rows
@@ -172,6 +173,7 @@ def council_session_detail(session_id: str) -> dict:
             "pricing_version": sess.pricing_version,
             "arbiter_confidence": sess.arbiter_confidence,
             "degraded": sess.degraded,
+            "corrected": sess.corrected,
             "synthetic": sess.id in _synthetic_ids(),
         },
         "calls": [

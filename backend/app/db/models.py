@@ -122,6 +122,9 @@ class CouncilSessionRow(Base):
     pricing_version: Mapped[str] = mapped_column(Text)
     arbiter_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     degraded: Mapped[int] = mapped_column(Integer, default=0)
+    # ADR-025: corrected = a bounded re-ask succeeded (self-correction);
+    # degraded above = a provider FAILURE left a seat empty/reduced.
+    corrected: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class CouncilCallRow(Base):

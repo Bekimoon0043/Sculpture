@@ -118,7 +118,10 @@ export default function CouncilPanel() {
                   {new Date(s.created_at).toLocaleString()}
                   {s.synthetic && <span className="badge"> synthetic</span>}
                   {s.degraded === 1 && (
-                    <span className="badge badge-fail"> degraded</span>
+                    <span className="badge badge-fail" title="A provider failure left a role seat empty or reduced"> degraded</span>
+                  )}
+                  {s.corrected === 1 && (
+                    <span className="badge badge-warn" title="A bounded re-ask succeeded — the Council corrected itself"> corrected</span>
                   )}
                   <br />
                   <span className="hint">{s.brief_text}</span>

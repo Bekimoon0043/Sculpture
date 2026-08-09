@@ -21,6 +21,9 @@ def pyproject_pins() -> dict[str, str]:
     data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     reqs = list(data["project"]["dependencies"])
     reqs += data["project"].get("optional-dependencies", {}).get("dev", [])
+    # The build backend is pinned too (Dockerfile pre-installs it for
+    # --no-build-isolation) — it must match like any other pin.
+    reqs += data["build-system"]["requires"]
     pins = {}
     for r in reqs:
         m = PIN_RE.search(r)
