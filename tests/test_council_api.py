@@ -141,11 +141,20 @@ def test_live_run_without_keys_fails_honestly(client, monkeypatch):
             json={"brief_text": "A basalt monolith for the lobby."},
         )
         assert r.status_code == 500
-        assert "not configured" in r.json()["detail"]
+        # every call fails "not configured" -> 0 valid candidates -> honest abort
+        assert "valid Design Spec candidates" in r.json()["detail"]
 
         sessions = client.get("/api/council/sessions").json()["sessions"]
         assert len(sessions) == 1
         assert sessions[0]["status"] == "failed"
+
+        # every failed call is still audited with the real reason (Rule 8)
+        detail = client.get(
+            f"/api/council/sessions/{sessions[0]['id']}"
+        ).json()
+        error_calls = [c for c in detail["calls"] if c["status"] == "error"]
+        assert error_calls
+        assert all("not configured" in (c["error"] or "") for c in error_calls)
 
         r = client.post("/api/council/sessions", json={"brief_text": "   "})
         assert r.status_code == 422

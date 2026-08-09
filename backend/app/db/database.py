@@ -38,6 +38,29 @@ _PHASE2_DESIGNS_MARKER_COLUMN = "spec_hash"
 _PHASE3_MARKER_TABLE = "arbiter_decisions"
 
 
+class SchemaDriftError(RuntimeError):
+    """The database file does not match the code's schema and the mismatch
+    is NOT auto-patchable. Raised at startup — never mid-session after
+    provider calls have been billed."""
+
+
+#: Additive columns introduced after a schema version shipped. schema.sql
+#: CREATE TABLE statements never touch an EXISTING database file, so these
+#: are applied via ALTER TABLE at startup, idempotently, and recorded in the
+#: schema_patches table. (ADR-023: the operator's v3 file predates the
+#: ADR-022 cache columns and crashed mid-session.)
+_ADDITIVE_COLUMN_PATCHES: dict[tuple[str, str], str] = {
+    ("ai_calls", "cached_input_tokens"):
+        "cached_input_tokens INTEGER NOT NULL DEFAULT 0",
+    ("ai_calls", "cache_write_input_tokens"):
+        "cache_write_input_tokens INTEGER NOT NULL DEFAULT 0",
+    ("council_calls", "cached_input_tokens"):
+        "cached_input_tokens INTEGER NOT NULL DEFAULT 0",
+    ("council_calls", "cache_write_input_tokens"):
+        "cache_write_input_tokens INTEGER NOT NULL DEFAULT 0",
+}
+
+
 class Database:
     """Owns the SQLAlchemy engine for one SQLite database file."""
 
@@ -88,6 +111,74 @@ class Database:
                     "applied_at": datetime.now(timezone.utc).isoformat(),
                     "note": note,
                 },
+            )
+            self._apply_additive_patches(conn)
+        self._verify_no_drift()
+
+    @staticmethod
+    def _apply_additive_patches(conn) -> None:
+        """ALTER TABLE any known post-version columns into an existing file.
+
+        Idempotent: PRAGMA table_info decides, schema_patches records. Runs
+        BEFORE the app serves anything, so a schema mismatch can never
+        surface as a mid-session crash after billed provider calls.
+        """
+        conn.exec_driver_sql(
+            "CREATE TABLE IF NOT EXISTS schema_patches ("
+            "table_name TEXT NOT NULL, column_name TEXT NOT NULL, "
+            "applied_at TEXT NOT NULL, "
+            "PRIMARY KEY (table_name, column_name))"
+        )
+        for (table, column), ddl in sorted(_ADDITIVE_COLUMN_PATCHES.items()):
+            existing = {
+                row[1]
+                for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")
+            }
+            if not existing:  # table itself absent -> schema.sql creates it
+                continue
+            if column in existing:
+                continue
+            conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {ddl}")
+            conn.exec_driver_sql(
+                "INSERT OR IGNORE INTO schema_patches "
+                "(table_name, column_name, applied_at) VALUES (?, ?, ?)",
+                (table, column, datetime.now(timezone.utc).isoformat()),
+            )
+            log.warning(
+                "schema patch applied: %s.%s added via ALTER TABLE "
+                "(recorded in schema_patches)", table, column,
+            )
+
+    def _verify_no_drift(self) -> None:
+        """Fail loudly if a mapped column is missing and NOT auto-patchable.
+
+        The operator-facing remedy is printed verbatim: back up the file,
+        delete it, restart — never a silent guess.
+        """
+        from app.db.models import Base  # local import: models imports nothing here
+
+        missing: list[str] = []
+        with self.engine.connect() as conn:
+            for table in Base.metadata.sorted_tables:
+                existing = {
+                    row[1]
+                    for row in conn.exec_driver_sql(
+                        f"PRAGMA table_info({table.name})"
+                    )
+                }
+                if not existing:
+                    continue  # absent tables are created by schema.sql
+                for column in table.columns:
+                    if column.name not in existing:
+                        missing.append(f"{table.name}.{column.name}")
+        if missing:
+            raise SchemaDriftError(
+                "database schema does not match the code; missing columns: "
+                + ", ".join(missing)
+                + ". These are NOT auto-patchable. Remedy: stop the stack, "
+                "copy the database file somewhere safe (it keeps all your "
+                "history), delete the original, and start again — a fresh "
+                "current-schema database is created automatically."
             )
 
     def _migrate_old_file_if_needed(self) -> str:

@@ -1030,3 +1030,61 @@ occur (10x cheaper hit input on kimi; 0.1x on anthropic reads). The
 pre-dispatch ESTIMATE still bills all input at the miss rate (conservative
 cap check). The $1.15 session estimate will be re-measured against the
 first live session (step 4) with the split in force.
+
+---
+
+## ADR-023 — Startup schema patches + audited retries + degraded sessions (2026-08-07)
+
+**Context.** The first live Council session (operator run, 2026-08-07)
+failed with no money spent, exposing two defects and one doc bug:
+
+1. **Schema migration missing.** The operator's luxuryform.db was created
+   under the EARLIER v3 (before the ADR-022 cache columns) and persisted in
+   a Docker volume. Editing schema.sql never alters an existing database —
+   the claim that folding columns into v3 "before any v3 deployment" avoided
+   migration was WRONG: an earlier v3 file already existed in the wild. The
+   session crashed mid-run: "table ai_calls has no column named
+   cached_input_tokens".
+2. **One timeout killed the session.** kimi (researcher) timed out at
+   220,923 ms — that number itself revealed the openai SDK's hidden internal
+   retry loop (3 attempts x 60 s + backoff), invisible to ai_calls. The
+   operator's connection is slow and unreliable; a 15-call sequential
+   session where any single timeout aborts everything is not viable.
+3. Doc 04 used cmd curl syntax that breaks in PowerShell.
+
+**Decision.**
+
+1. **Additive column patches at startup** (database.py): a declarative
+   `_ADDITIVE_COLUMN_PATCHES` map; on init_db, missing mapped columns are
+   added via ALTER TABLE (idempotent, recorded in a new schema_patches
+   table). A `_verify_no_drift()` pass then compares every ORM-mapped
+   column against the live file and raises SchemaDriftError with the
+   operator remedy (back up, delete, restart) if a mismatch is NOT
+   auto-patchable. Drift surfaces at STARTUP, never mid-session after
+   billed calls.
+2. **Audited retries** (call_log.py): transient failures (timeout /
+   connection class names — covers both SDKs and httpx) are retried up to
+   `LUXURYFORM_PROVIDER_MAX_ATTEMPTS` (default 3) with exponential backoff
+   (`LUXURYFORM_PROVIDER_BACKOFF_BASE_S`, default 10 s → 10, 30). The error
+   row records the full retry history. Non-transient errors are never
+   retried. **SDK-internal retries are disabled (max_retries=0)** so no
+   attempt is ever hidden from the audit log. Per-attempt timeout is
+   `LUXURYFORM_PROVIDER_TIMEOUT_S` (default 300 s — kimi-k3 generating
+   8192 tokens on a slow line legitimately exceeds 60 s).
+3. **Degraded sessions** (orchestrator.py): a failed NON-CRITICAL call
+   (researcher either side, geometrist, engineer, critic, any designer
+   alternative) is caught, persisted as an error council_calls row, and the
+   session continues with `degraded=1` and honest placeholder text in
+   downstream prompts ("(researcher unavailable — provider failures; ...)").
+   Designer call failures shrink the candidate pool; <3 valid specs still
+   aborts. **The Arbiter is never optional** — without a binding decision
+   there is no session outcome. **BudgetHalt is never degraded** — it
+   always halts.
+4. Doc 04 carries cmd.exe AND PowerShell (Invoke-RestMethod) variants.
+
+**Verification.** tests/test_schema_patches.py (3: ALTER patch with data
+preserved + recorded; idempotent; loud drift), tests/test_retry_and_
+degradation.py (7: retry-then-succeed, exhaustion with audit, no retry on
+4xx, env-configurable attempts, researcher outage → degraded completion,
+engineer parallel outage → degraded with primary kept, BudgetHalt on an
+optional call still halts). 117 passed, 7 skipped.
