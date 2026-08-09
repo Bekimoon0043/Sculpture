@@ -1,27 +1,20 @@
 # PHASE_3_PLAN.md — The AI Council (2026-08-04)
 
-**STATUS (updated 2026-08-07):** plan APPROVED by the operator 2026-08-04.
-Build steps (§9): **step 1 DONE** (schema v3 + fixture replay pipeline +
-costing rates schema — commit 457e6e0); **step 2 DONE** (Council
-orchestrator, offline-proven with scripted dispatcher — commit 7539788);
-**step 3 DONE** (transcript API + Council UI panel with cost rollup and
-cache-savings display; demo session = synthetic fixture, $0); **step 4
-MACHINERY DONE** (POST /api/council/sessions live-run endpoint with
-budget-capped LiveDispatcher, capture_council_fixture.py, operator
-walkthrough docs/operator/04_first_live_council.md) — the live run itself
-is OPERATOR-SIDE (the sandbox holds no API keys). First live attempt
-2026-08-07 FAILED with $0 spend and exposed two defects (stale-schema file,
-single-timeout abort) — both fixed in ADR-023 (startup schema patches +
-drift guard; audited retries; failed non-critical calls degrade rather
-than abort). RETRY the live session per the walkthrough and send back the
-cost_rollup; step 5 pending. ADR-009 pre-code fetches executed 2026-08-07 (ADR-021);
-account-level checks (models.list ×3, live kimi text shape) returned by the
-operator 2026-08-07 — LIMITATIONS §7 RETIRED. Cache-aware pricing landed
-2026-08-07 (ADR-022): kimi/anthropic cache token classes split and priced
-at first-party rates, `pricing_version` bumped to 2026-08-v3, offline
-transports updated to the live-verified usage shapes. First live
-session spend (~$1–2.50) PRE-APPROVED by the operator; measured cost will
-be reported against the §7 estimate (≈$1.15, likely lower with cache hits).
+**STATUS (updated 2026-08-07 — PHASE 3 CLOSED):** plan APPROVED by the
+operator 2026-08-04. All five build steps (§9) DONE: **step 1** (schema v3
++ fixture replay + costing rates schema — 457e6e0); **step 2** (Council
+orchestrator, offline-proven — 7539788); **step 3** (transcript API +
+Council UI with cost rollup and cache-savings; demo session = synthetic
+fixture, $0 — 928232b); **step 4** (live-run machinery: POST
+/api/council/sessions with budget-capped LiveDispatcher, capture script,
+operator walkthrough — 16c82f0); **step 5** (gate_phase3_auto.py VERDICT
+PASS + gate_phase3_visual.md). FIRST LIVE SESSION COMPLETED 2026-08-07 by
+the operator: session 32e1c68f, 17 calls, measured $0.843842 against the
+$1.15 estimate — the cost model held. Resilience fixes (ADR-023: startup
+schema patches + drift guard, audited retries, degraded sessions) and
+cache-break prompts (ADR-024) landed during closure. Regression fixture
+for the live session awaits operator-side capture
+(scripts/capture_council_fixture.py). See PHASE_3_REPORT.md.
 
 Scope per the master build order: all six Council agents, multi-provider,
 Design Spec JSON schema, Arbiter decision record, full transcript UI.

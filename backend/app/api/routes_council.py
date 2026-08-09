@@ -103,6 +103,23 @@ def council_session_detail(session_id: str) -> dict:
     with db.get_session() as s:
         sess = s.get(CouncilSessionRow, session_id)
         if sess is None:
+            # Unique-prefix resolution: the operator reads shortened ids
+            # (e.g. "session 32e1c68f") — resolve them honestly.
+            matches = s.execute(
+                select(CouncilSessionRow).where(
+                    CouncilSessionRow.id.startswith(session_id)
+                )
+            ).scalars().all()
+            if len(matches) == 1:
+                sess = matches[0]
+                session_id = sess.id
+            elif len(matches) > 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"session id prefix {session_id!r} is ambiguous "
+                    f"({len(matches)} matches); use more characters",
+                )
+        if sess is None:
             raise HTTPException(status_code=404, detail="council session not found")
         calls = s.execute(
             select(CouncilCallRow)

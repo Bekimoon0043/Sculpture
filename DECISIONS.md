@@ -1088,3 +1088,66 @@ degradation.py (7: retry-then-succeed, exhaustion with audit, no retry on
 4xx, env-configurable attempts, researcher outage → degraded completion,
 engineer parallel outage → degraded with primary kept, BudgetHalt on an
 optional call still halts). 117 passed, 7 skipped.
+
+---
+
+## ADR-024 — Cache-break prompts + anthropic cache_control (2026-08-07)
+
+**Context.** The first live session (32e1c68f) measured cache savings of
+$0.000690 — effectively zero, against an expectation that six agents
+sharing one brief would hit cache. Diagnosis, verified against first-party
+docs (platform.claude.com/docs/en/build-with-claude/prompt-caching, fetched
+2026-08-07):
+
+1. **anthropic caches NOTHING without an explicit cache_control marker** —
+   we never sent one. Cache writes bill 1.25x, reads 0.1x, 5-minute TTL,
+   prefix must be byte-identical, minimum cacheable prefix ~1024 tokens.
+2. **kimi/openai cache prefixes automatically**, but our prompts were
+   role-specific from the FIRST word — no two calls shared a long prefix.
+   The observed $0.00069 corresponds to ~255 cached kimi tokens (brief-level
+   overlap only).
+
+**Decision.** Council prompts are restructured STATIC-PREFIX-FIRST with a
+cache-break sentinel (`CACHE_BREAK`, an inert HTML comment, defined in
+app/ai/provider.py):
+
+- designer: instructions + JSON_ONLY + schema (~2.9k tokens — over the
+  minimum) + brief + research form the shared prefix; only "ALTERNATIVE N"
+  sits after the break. Per provider, call 1 writes the cache, calls 2-3
+  read it at 0.1x.
+- geometrist/engineer/critic/arbiter share one _session_context prefix
+  (brief + candidates digest) before the break; role instructions and
+  per-call extras (geometrist notes, engineering review, defect list)
+  after. This block is likely UNDER anthropic's 1024-token minimum — it may
+  not engage; the designer prefix is the one that matters (designer = 58%
+  of session spend).
+- anthropic_provider splits at the sentinel and sends the prefix as a text
+  block with cache_control={"type": "ephemeral"}; no sentinel -> unchanged
+  behavior. kimi/openai send the same text (their caching is automatic;
+  the reordering is what helps them).
+
+**Measurement.** Cache token fields persist per call (ADR-022), so the next
+live session's rollup shows cache_savings_usd and per-call
+cached_input_tokens — engagement is measured, not assumed.
+
+## Designer-spend options (data: session 32e1c68f, 2026-08-07)
+
+Designer = $0.4879 of $0.8438 (58%). Bounds from the rollups: openai's
+TOTAL across all its roles was $0.1066, so openai-designer <= $0.1066 and
+anthropic-designer >= $0.3813 (3 calls, ~$0.127 each).
+
+- **Option A — 2 alternatives x 2 providers:** designer ~= $0.325,
+  saves ~$0.163/session. Keeps dual-provider generation. Config-only
+  change if the orchestrator's alternative count becomes configurable.
+- **Option B — 3 alternatives, openai alone; cross-review shifts:**
+  designer ~= $0.107, saves ~$0.38/session (~45%). Requires: engineer
+  primary swapped to anthropic (strongest reviewer is then never the
+  producer), critic already lands on kimi under the dynamic rule, arbiter
+  unchanged. Small orchestrator change (skip parallel when parallel ==
+  primary). Risk: correlated generation failure modes from one provider —
+  partially offset by independent engineer + critic review before the
+  binding Arbiter decision.
+- **Recommendation:** Option B with the engineer swap, decided by the
+  operator before Phase 5 multiplies sessions. Per-call latency data will
+  refine it (kimi slowness noted by the operator; anthropic and kimi are
+  comparable per call, ~$0.08; openai ~$0.018).

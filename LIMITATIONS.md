@@ -54,30 +54,28 @@ be identified — but they are still stale until you update them.
 
 ## 5. Phases 3–7 are not fully built yet
 
-**CLOSED phases (no longer limitations):** Phase 1 (gate PASS 2026-08-01)
-and Phase 2 (gate PASS 2026-08-04 — cascade primitive, STEP/GLB export,
-determinism PROVEN cross-machine, viewport framing; see PHASE_2_REPORT.md).
-Phase 2's scope limits are documented in §8 below, not here.
+**CLOSED phases (no longer limitations):** Phase 1 (gate PASS 2026-08-01),
+Phase 2 (gate PASS 2026-08-04 — cascade primitive, STEP/GLB export,
+determinism PROVEN cross-machine, viewport framing; see PHASE_2_REPORT.md),
+and Phase 3 (gate PASS 2026-08-07 — the AI Council: schema v3, $0 fixture
+replay, the orchestrator with strict-JSON validation and re-ask, audited
+retries and degraded-session resilience (ADR-023), cache-aware pricing
+(ADR-022), cache-break prompts (ADR-024), transcript UI, live machinery,
+split gate; first live session measured $0.843842 against a $1.15 estimate;
+see PHASE_3_REPORT.md). Phase 3's scope limits are documented in
+PHASE_3_REPORT.md, not here.
 
 Not present in this repository, by design (later-phase code is not created
 early):
 
-- **Phase 3 — IN PROGRESS.** Built (steps 1–3 of 5): schema v3
-  (council_sessions / council_calls / design_specs / engineering_reviews /
-  defect_lists / arbiter_decisions), the $0 fixture replay pipeline, the
-  costing rates schema (`config/costing.yaml` template, operator fills the
-  nulls), the Council orchestrator (offline-proven against a scripted
-  dispatcher; live run is step 4), and cache-aware pricing (ADR-022:
-  kimi/anthropic cache token classes priced separately at first-party
-  rates), and the transcript UI (step 3: session list, per-call role cards,
-  Arbiter decision card, cost rollup vs caps with cache-savings display;
-  demo session replays the synthetic fixture at $0), and the live-run
-  machinery (step 4: POST /api/council/sessions, budget-capped, with
-  audited retries and degraded-session resilience — ADR-023; the first
-  live session itself is run by the operator — the sandbox holds no keys).
-  NOT built yet: split gate (step 5).
-- **Phase 4** — the sandbox for AI-written geometry code (isolation level
-  already fixed in ADR-005), Blender workers.
+- **Phase 4 — NEXT.** The GEOMETRIST writes parametric build123d code from
+  a Design Spec; the code executes only in the ADR-005 sandbox (separate
+  container, non-root, no network, read-only filesystem except one scratch
+  mount, CPU/memory limits, hard timeout); bounded automatic repair with a
+  retry limit; every generated program persisted with its spec for
+  traceability. Gate: the Phase 3 session brief produces real geometry with
+  no human-written code and passes the Phase 2 validation gate. Plan to be
+  reported to the operator before coding.
 - **Phase 5** — validation gates (mesh, hydraulics, structure, fabrication)
   and the render → vision-critique → bounded-delta loop (ADR-007), including
   enforcement of `max_vision_iterations`.

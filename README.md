@@ -1,4 +1,4 @@
-# LuxuryForm Studio v1 — Phase 3 of 7 in progress
+# LuxuryForm Studio v1 — Phase 4 of 7 next
 
 **What this is:** an internal design platform for LuxuryCon (Addis Ababa). It
 turns a client brief for a sculpture or fountain into a design that is
@@ -6,12 +6,14 @@ defensible in numbers — real wall thickness, real weight, real water flow —
 using a council of AI models (Claude, GPT, Kimi) whose every call is logged
 and spend-capped, plus a real CAD engine.
 
-**Current phase status:** This platform has 7 phases. **Phase 3 of 7 is in
-progress** (build steps 1–3 of 5 done). Phases 1 and 2 are built and CLOSED
-(operator gates PASS, 2026-08-01 / 2026-08-04). Phase 3 so far: schema v3
-persistence, the $0 fixture replay pipeline, the costing rates schema, the
-Council orchestrator (offline-proven), cache-aware provider pricing
-(ADR-022), and the transcript UI with cost panel (step 3). What works
+**Current phase status:** This platform has 7 phases. Phases 1, 2 and 3
+are built and CLOSED (operator gates PASS, 2026-08-01 / 2026-08-04 /
+2026-08-07). **Phase 4 of 7 is next** (AI-written geometry in a sandbox).
+Phase 3 delivered the full AI Council: schema v3 persistence, the $0
+fixture replay pipeline, the costing rates schema, the orchestrator,
+cache-aware provider pricing (ADR-022) with cache-break prompts
+(ADR-024), the transcript UI with cost panel, and the live-run machinery.
+First live session measured $0.843842 against a $1.15 estimate. What works
 today:
 everything from Phase 1 (provider layer, spend caps, audit logging, gates)
 PLUS the geometry kernel — one fully parametric tiered-cascade fountain
@@ -19,9 +21,11 @@ built as a single watertight CAD solid, hard design constraints with real
 numbers in every error, trimesh validation, deterministic STEP export (same
 spec + same seed = byte-identical file, proven cross-machine by printed
 sha256 hashes), GLB export, and a three.js browser viewport at
-http://localhost:5173. The council orchestrator, AI-written geometry
-sandbox, rendering and the remaining primitives arrive in the rest of
-Phases 3–7 (see `LIMITATIONS.md`).
+http://localhost:5173, PLUS the full AI Council (Phase 3): six agents
+across three providers produce and cross-review Design Specs, a binding
+Arbiter decision, full transcript UI with per-call costs. The AI-written
+geometry sandbox, rendering and the remaining primitives arrive in
+Phases 4–7 (see `LIMITATIONS.md`).
 
 ## One-command start (with Docker)
 

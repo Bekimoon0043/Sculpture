@@ -12,7 +12,31 @@ from pathlib import Path
 
 import anthropic
 
-from app.ai.provider import AIProvider, RawResult, provider_timeout_s
+from app.ai.provider import (
+    AIProvider,
+    CACHE_BREAK,
+    RawResult,
+    provider_timeout_s,
+)
+
+
+def _cacheable_content(prompt: str):
+    """Split a prompt at CACHE_BREAK into a cached prefix block + the rest.
+
+    ADR-024 (first-party docs fetched 2026-08-07): anthropic only caches
+    prefixes a request explicitly marks with cache_control=ephemeral; the
+    prefix must be byte-identical across calls and over the model minimum
+    (~1024 tokens). No sentinel -> the plain string passes through
+    unchanged.
+    """
+    if CACHE_BREAK not in prompt:
+        return prompt
+    prefix, rest = prompt.split(CACHE_BREAK, 1)
+    return [
+        {"type": "text", "text": prefix,
+         "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": rest},
+    ]
 
 
 def _cache_fields(usage) -> tuple[int, int]:
@@ -67,7 +91,7 @@ class AnthropicProvider(AIProvider):
         kwargs: dict = dict(
             model=model,
             max_tokens=max_tokens,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": _cacheable_content(prompt)}],
         )
         if temperature is not None:  # None = omit the parameter entirely
             kwargs["temperature"] = temperature
