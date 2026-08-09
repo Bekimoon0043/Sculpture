@@ -11,7 +11,8 @@ numbers, never a bare "invalid".
 Hard constraints (all violations are collected and reported together):
   1. basin_diameter_mm >= widest_dish + 2*basin_wall_mm + min_clearance_mm
      where widest_dish = tier_top_diameter_mm + (tiers-1)*tier_diameter_step_mm
-  2. basin_wall_mm >= the selected material's min_wall_mm (materials.yaml)
+  2. basin_wall_mm inside the selected material's wall envelope
+     [min_wall_mm..max_wall_mm] (materials.yaml, ADR-027)
   3. lip_fillet_mm < dish_depth_mm / 2
   4. column_diameter_mm >= bore_diameter_mm + 2*basin_wall_mm
      (construction safety: the column must keep a full wall around the
@@ -67,9 +68,10 @@ CASCADE_PARAMETERS: dict[str, dict[str, Any]] = {
         "unit": "mm",
         "default": 90,
         "min": 40,
-        "max": 300,
+        "max": 600,
         "type": "float",
-        "notes": "dish bowl outer depth",
+        "notes": "dish bowl outer depth (ADR-027: ceiling 600 for "
+        "monumental stonework; hard constraint 6 keeps spacing >= depth)",
     },
     "tier_spacing_mm": {
         "unit": "mm",
@@ -115,9 +117,10 @@ CASCADE_PARAMETERS: dict[str, dict[str, Any]] = {
         "unit": "mm",
         "default": 20,
         "min": 3,
-        "max": 100,
+        "max": 300,
         "type": "float",
-        "notes": "basin/dish wall; >= material min wall (hard constraint 2)",
+        "notes": "basin/dish wall; must sit inside the material's wall "
+        "envelope [min_wall_mm..max_wall_mm] (hard constraint 2, ADR-027)",
     },
     "bore_diameter_mm": {
         "unit": "mm",
@@ -259,7 +262,7 @@ def validate_params(
             f"2x{params.basin_wall_mm:g} + clearance {params.min_clearance_mm:g})"
         )
 
-    # --- hard constraint 2: wall >= material minimum -------------------------
+    # --- hard constraint 2: wall inside the material's envelope ------------
     material = materials.get(params.material_id)
     if material is None:
         violations.append(
@@ -271,6 +274,13 @@ def validate_params(
             f"basin_wall_mm={params.basin_wall_mm:g} < material minimum "
             f"{material.min_wall_mm:g} mm for {params.material_id} "
             f"({material.name})"
+        )
+    elif params.basin_wall_mm > material.max_wall_mm:
+        violations.append(
+            f"basin_wall_mm={params.basin_wall_mm:g} > material maximum "
+            f"{material.max_wall_mm:g} mm for {params.material_id} "
+            f"({material.name}) — per-material fabrication envelope "
+            "(materials.yaml, ADR-027)"
         )
 
     # --- hard constraint 3: lip fillet must fit the dish depth ---------------

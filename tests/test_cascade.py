@@ -179,6 +179,66 @@ def test_concrete_material_forces_thicker_wall():
         validate_params({"material_id": "cast_concrete_c35_45"})  # default wall 20 < 75
 
 
+def test_material_wall_envelope_ceiling_adr027():
+    """ADR-027: per-material max wall (materials.yaml) is enforced with
+    real numbers; monumental basalt walls that the live Phase 4 run needed
+    are now INSIDE the envelope."""
+    # the live-run value that the old demo ceiling (100) rejected
+    # (column widened so constraint 4 — bore + 2*wall — stays satisfied)
+    params = validate_params(
+        {"basin_wall_mm": 180, "lip_fillet_mm": 8, "column_diameter_mm": 450}
+    )
+    assert params.basin_wall_mm == 180
+    # basalt ceiling is 250 — beyond it raises with the real numbers
+    with pytest.raises(ConstraintViolation) as excinfo:
+        validate_params(
+            {"basin_wall_mm": 260, "column_diameter_mm": 600}
+        )
+    msgs = excinfo.value.violations
+    assert any(
+        "basin_wall_mm=260" in m and "material maximum 250" in m
+        and "basalt_slab" in m for m in msgs
+    ), msgs
+    # 316L sheet caps at 20 — 25 mm plate is not sheet work
+    with pytest.raises(ConstraintViolation) as excinfo:
+        validate_params(
+            {"material_id": "stainless_316l_sheet", "basin_wall_mm": 25}
+        )
+    assert any(
+        "material maximum 20" in m and "stainless_316l_sheet" in m
+        for m in excinfo.value.violations
+    )
+    # bronze cast caps at 40
+    with pytest.raises(ConstraintViolation) as excinfo:
+        validate_params({"material_id": "bronze_cast", "basin_wall_mm": 45})
+    assert any(
+        "material maximum 40" in m for m in excinfo.value.violations
+    )
+
+
+def test_monumental_dish_depth_adr027():
+    """ADR-027 widened dish_depth_mm to 600 for monumental stonework;
+    hard constraint 6 (spacing >= depth) still binds."""
+    params = validate_params({"dish_depth_mm": 420, "tier_spacing_mm": 500})
+    assert params.dish_depth_mm == 420
+    with pytest.raises(ConstraintViolation):
+        validate_params({"dish_depth_mm": 420, "tier_spacing_mm": 300})
+
+
+def test_registry_surface_states_ranges_and_envelopes():
+    """The geometrist prompt must state per-parameter [min..max] AND the
+    per-material wall envelopes (live-run issue 4: prove the surface
+    carries the bounds, generated from live config)."""
+    from app.council.prompts import registry_surface
+
+    surface = registry_surface()
+    assert "basin_wall_mm (float, mm, default 20 [3..300])" in surface
+    assert "dish_depth_mm (float, mm, default 90 [40..600])" in surface
+    assert "MATERIAL WALL ENVELOPES" in surface
+    assert "basalt_slab (Basalt slab): 20..250 mm" in surface
+    assert "stainless_316l_sheet (316L stainless steel sheet): 3..20 mm" in surface
+
+
 # ---------------------------------------------------------------------------
 # Geometry construction — watertight at tier extremes (needs build123d+trimesh)
 # ---------------------------------------------------------------------------

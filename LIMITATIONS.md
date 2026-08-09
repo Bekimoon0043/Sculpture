@@ -126,9 +126,10 @@ in git history (section numbers are never reused).
   registered primitive. No sculpture lofting, no custom profiles (Phase 4+).
 - **Mesh preview, not photoreal.** The viewport shows the tessellated GLB
   with simple lighting. Renders (Blender/Cycles) are Phase 5.
-- **No ray-based wall-thickness check yet.** The minimum-wall guarantee comes
-  from the HARD CONSTRAINTS in `registry.py` (wall >= material minimum,
-  enforced before any build), not from a measured ray-cast thickness
+- **No ray-based wall-thickness check yet.** The wall guarantee comes
+  from the HARD CONSTRAINTS in `registry.py` (wall inside the selected
+  material's min/max envelope from materials.yaml, ADR-027, enforced
+  before any build), not from a measured ray-cast thickness
   analysis of the mesh. That check arrives with the validation-gate phase.
 - **STEP determinism is proven for the canonical STEP export only.** GLB
   bytes, render outputs and any file with embedded metadata are NOT part of

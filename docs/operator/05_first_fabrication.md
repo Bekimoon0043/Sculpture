@@ -86,6 +86,15 @@ Same knobs as doc 04: `LUXURYFORM_PROVIDER_TIMEOUT_S` (default 300),
 failure during fabrication is a failed ATTEMPT (fed into repair), not a
 crash — the loop is ADR-023-compliant.
 
+## What a repair round knows (2026-08-10 fix)
+
+Every repair prompt carries the FULL failure history of all prior
+attempts, oldest first, and tells the model that a previously-failed value
+must NOT be repeated. Wall thickness is validated against the selected
+material's envelope in `config/materials.yaml` (`min_wall_mm` ..
+`max_wall_mm` — ADR-027, workshop envelopes you can tune); the prompt the
+geometrist sees lists those envelopes next to the parameter ranges.
+
 ## What to send back
 
 The fabrication response JSON (paste it). That is the gate evidence:

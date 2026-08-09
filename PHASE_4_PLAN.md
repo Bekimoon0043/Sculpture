@@ -67,9 +67,11 @@ code; the parallel seat is unused in Phase 4 (one program at a time; the
 repair loop iterates on the same provider).
 
 **Bounded repair:** `max_attempts=3` (route parameter). Any failure —
-provider call, AST rejection, sandbox error, validation failure — becomes
-the error digest for the next round. Exhaustion is reported honestly
-(`success=false`, all rows persisted).
+provider call, AST rejection, sandbox error, validation failure — is
+appended to the failure history; every repair prompt carries the FULL
+history (oldest first) with an explicit no-repeat instruction (ADR-027,
+fixed after the first live run repeated attempt 1's value on attempt 3).
+Exhaustion is reported honestly (`success=false`, all rows persisted).
 
 ## Costing
 

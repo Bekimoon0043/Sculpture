@@ -200,12 +200,24 @@ def registry_surface() -> str:
         "min_clearance_mm",
         "     (widest_dish = tier_top_diameter_mm + (tiers-1)"
         "*tier_diameter_step_mm)",
-        "  2. basin_wall_mm >= the material's min_wall_mm",
+        "  2. basin_wall_mm inside the material's WALL ENVELOPE below",
         "  3. lip_fillet_mm < dish_depth_mm / 2",
         "  4. column_diameter_mm >= bore_diameter_mm + 2*basin_wall_mm",
         "  5. lip_fillet_mm < basin_wall_mm",
         "  6. tier_spacing_mm >= dish_depth_mm",
+        "",
+        "MATERIAL WALL ENVELOPES (basin_wall_mm must stay inside the "
+        "selected material's envelope — materials.yaml, ADR-027):",
     ]
+    from app.core.config import load_config_bundle
+
+    for mat_id, mat in sorted(
+        load_config_bundle().materials.materials.items()
+    ):
+        lines.append(
+            f"  {mat_id} ({mat.name}): {mat.min_wall_mm:g}.."
+            f"{mat.max_wall_mm:g} mm"
+        )
     return "\n".join(lines)
 
 
@@ -223,10 +235,18 @@ _PROGRAM_CONTRACT = """PROGRAM CONTRACT (the sandbox runner enforces it exactly)
 """
 
 
-def fabrication_prompt(spec_json: str, error_digest: str | None = None) -> str:
+def fabrication_prompt(
+    spec_json: str, failure_history: list[str] | None = None
+) -> str:
     """GEOMETRIST code-generation prompt. Static prefix first (ADR-024):
     API surface + contract are identical across attempts and sessions; the
-    spec and repair digest ride after the cache break."""
+    spec and repair history ride after the cache break.
+
+    ``failure_history`` carries EVERY prior attempt's failure digest,
+    oldest first (live-run defect 2026-08-10: with only the LAST digest the
+    model repeated attempt 1's rejected value on attempt 3). The prompt
+    states explicitly that a previously-failed value must not be repeated.
+    """
     prompt = (
         "You are the GEOMETRIST of the LuxuryForm design council, writing "
         "fabrication code. Translate the Design Spec below into a Python "
@@ -237,11 +257,19 @@ def fabrication_prompt(spec_json: str, error_digest: str | None = None) -> str:
         f"{CACHE_BREAK}"
         f"DESIGN SPEC (JSON):\n{spec_json}"
     )
-    if error_digest:
+    if failure_history:
         prompt += (
-            "\n\nYour PREVIOUS attempt FAILED. Fix it. The failure was:"
-            f"\n{error_digest}\n"
-            "Correct the cause; do not work around the rules above."
+            "\n\nYour PREVIOUS attempt(s) FAILED. FULL failure history, "
+            "oldest first:"
+        )
+        for i, digest in enumerate(failure_history, 1):
+            prompt += f"\n--- ATTEMPT {i} FAILED ---\n{digest}"
+        prompt += (
+            "\n\nA previously-failed value must NOT be repeated: every "
+            "parameter value named in the failures above has already been "
+            "tried and rejected, so do not resubmit any of them. Correct "
+            "the root cause of the LATEST failure while staying clear of "
+            "every earlier failure; do not work around the rules above."
         )
     return prompt
 

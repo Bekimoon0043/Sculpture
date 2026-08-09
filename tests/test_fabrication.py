@@ -264,6 +264,38 @@ def test_bounded_repair_gives_up_honestly(db, config, base_spec, tmp_path):
         assert all("import of 'os'" in r.rejection_reason for r in rows)
 
 
+def test_repair_prompt_carries_full_failure_history(db, config, base_spec, tmp_path):
+    """Operator directive 2026-08-10: attempt 3 must see BOTH prior
+    failures, not just the last one (live defect: attempt 3 repeated
+    attempt 1's rejected value), plus an explicit no-repeat instruction."""
+    sid = _run_council_session(db, config, base_spec)
+    spec_id = _first_spec_id(db, sid)
+    d = FabDispatcher(config.pricing, base_spec,
+                      [BAD_IMPORT_PROGRAM, GOOD, GOOD])
+    runner = ScriptedRunner([
+        SandboxResult(ok=False, error="ConstraintViolation: wall=180"),
+        _ok_result(tmp_path, with_real_glb=False),
+    ])
+    orch = _fab_orchestrator(db, config, d)
+
+    out = fabricate_spec(orch, sid, spec_id, runner,
+                         artifact_root=tmp_path / "fab",
+                         validator=lambda *a: _scripted_report(True))
+    assert out.success and out.attempts == 3
+
+    p2, p3 = d.fab_prompts[1], d.fab_prompts[2]
+    # attempt 2 saw attempt 1's failure only
+    assert "ATTEMPT 1 FAILED" in p2 and "import of 'os'" in p2
+    assert "ATTEMPT 2 FAILED" not in p2
+    # attempt 3 saw BOTH prior failures, oldest first, verbatim
+    assert "ATTEMPT 1 FAILED" in p3 and "ATTEMPT 2 FAILED" in p3
+    assert p3.index("ATTEMPT 1 FAILED") < p3.index("ATTEMPT 2 FAILED")
+    assert "import of 'os'" in p3
+    assert "ConstraintViolation: wall=180" in p3
+    # explicit no-repeat instruction
+    assert "must NOT be repeated" in p3
+
+
 # --- rates + rollup separation ----------------------------------------------
 
 

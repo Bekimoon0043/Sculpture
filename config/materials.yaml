@@ -1,28 +1,52 @@
 # materials.yaml — LuxuryForm Studio v1 starter material library
 # Real, fabrication-grade starter set for LuxuryCon's typical palette.
 # Units are explicit in every field name (Rule 6: unitless numbers are a bug).
+#
+# min_wall_mm / max_wall_mm form the per-material WALL ENVELOPE (ADR-027):
+# the range of basin/dish wall thickness LuxuryCon's workshop will actually
+# fabricate in that material. These are WORKSHOP envelopes — set by the
+# fabricator (the operator), tunable here, NOT citations of an external
+# standard. The registry enforces them as hard constraint 2 with real
+# numbers in every violation. Basis for each ceiling is noted inline.
 materials:
   stainless_316l_sheet:
     name: "316L stainless steel sheet"
     category: metal
     density_kg_per_m3: 8000
     min_wall_mm: 3
+    # Sheet envelope: 3 mm weldable floor; 20 mm ceiling — beyond that you
+    # are machining plate, not forming sheet, and the stock sheet size no
+    # longer applies.
+    max_wall_mm: 20
     stock_size_mm: {length: 3000, width: 1500}
   basalt_slab:
     name: "Basalt slab"
     category: stone
     density_kg_per_m3: 2700
     min_wall_mm: 20
+    # Carved-stone envelope: monumental basalt basins want 60-250 mm walls.
+    # 250 mm ceiling is mass-driven: a 250 mm wall ring on the largest
+    # registry basin (6 m dia x 0.9 m high) is ~pi*(3^2-2.75^2)*0.9*2700
+    # ~ 11.0 t — at the edge of handling; the 2.6 m brief's 180 mm
+    # wall is ~1.7 t, routine for a stone workshop with a crane.
+    max_wall_mm: 250
     stock_size_mm: {length: 2400, width: 1200}
   cast_concrete_c35_45:
     name: "C35/45 cast concrete"
     category: concrete
     density_kg_per_m3: 2400
     min_wall_mm: 75
+    # Cast envelope: 75 mm floor (cover + aggregate size), 300 mm ceiling —
+    # thicker sections are mass pours needing thermal control, not shell
+    # casting.
+    max_wall_mm: 300
     stock_size_mm: null   # cast in place — no stock sheet/slab size
   bronze_cast:
     name: "Cast bronze"
     category: metal
     density_kg_per_m3: 8800
     min_wall_mm: 6
+    # Cast envelope: 6 mm floor (pour fluidity), 40 mm ceiling — thicker
+    # sections risk shrinkage porosity and are usually cored instead.
+    max_wall_mm: 40
     stock_size_mm: null   # cast — no stock sheet/slab size

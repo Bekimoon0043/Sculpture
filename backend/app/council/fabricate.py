@@ -175,7 +175,10 @@ def fabricate_spec(
     provider = orchestrator._pair("geometrist")[0]  # code writer = primary
     spec_json = json.dumps(spec, sort_keys=True)
     out = FabricationOutcome(False, session_id, spec_id, attempts=0)
-    error_digest: str | None = None
+    # FULL failure history (operator directive 2026-08-10): every attempt's
+    # digest goes back into the next prompt, oldest first, so a value that
+    # already failed can never be silently retried on a later attempt.
+    failure_history: list[str] = []
     artifact_root = artifact_root or (
         Path(os.environ.get("LUXURYFORM_DATA_DIR", str(REPO_ROOT / "data")))
         / "fabrications" / session_id
@@ -183,7 +186,7 @@ def fabricate_spec(
 
     for attempt in range(1, max_attempts + 1):
         out.attempts = attempt
-        prompt = prompts.fabrication_prompt(spec_json, error_digest)
+        prompt = prompts.fabrication_prompt(spec_json, failure_history)
         # optional=True (ADR-023): a provider failure is a failed ATTEMPT,
         # not a crashed fabrication — the error becomes the repair digest.
         outcome = orchestrator._call(
@@ -210,7 +213,9 @@ def fabricate_spec(
 
         if outcome.status != "ok":
             row.error_digest = outcome.error
-            error_digest = f"the provider call failed: {outcome.error}"
+            failure_history.append(
+                f"the provider call failed: {outcome.error}"
+            )
             _persist_program(orchestrator, row)
             out.program_ids.append(program_id)
             out.final_status = "call_failed"
@@ -226,7 +231,7 @@ def fabricate_spec(
             row.status = "ast_rejected"
             row.rejection_reason = reason
             row.error_digest = f"AST gate rejection: {reason}"
-            error_digest = row.error_digest
+            failure_history.append(row.error_digest)
             _persist_program(orchestrator, row)
             out.program_ids.append(program_id)
             out.final_status = "ast_rejected"
@@ -238,7 +243,7 @@ def fabricate_spec(
         if not result.ok:
             row.status = "exec_failed"
             row.error_digest = f"sandbox execution failed:\n{result.error}"
-            error_digest = row.error_digest
+            failure_history.append(row.error_digest)
             _persist_program(orchestrator, row)
             out.program_ids.append(program_id)
             out.final_status = "exec_failed"
@@ -282,7 +287,7 @@ def fabricate_spec(
                 "geometry built but FAILED validation (real numbers):\n"
                 + "\n".join(failed)
             )
-            error_digest = row.error_digest
+            failure_history.append(row.error_digest)
             _persist_program(orchestrator, row)
             out.program_ids.append(program_id)
             out.final_status = "validation_failed"

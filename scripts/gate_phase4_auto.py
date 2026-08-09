@@ -37,6 +37,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "backend"))
+# The gate imports from the tests package (tests.test_design_spec_schema);
+# in the container the cwd is /app, so the REPO ROOT itself must be on the
+# path for `import tests...` to resolve (live-run defect, 2026-08-10).
+sys.path.insert(0, str(REPO_ROOT))
 
 GATE_DB_PATH = REPO_ROOT / "data" / "gate_run_phase4.db"
 

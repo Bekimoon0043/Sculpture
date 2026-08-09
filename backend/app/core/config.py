@@ -391,6 +391,9 @@ class Material(BaseModel):
     category: str
     density_kg_per_m3: float = Field(gt=0)
     min_wall_mm: float = Field(gt=0)
+    # ADR-027: per-material fabrication envelope ceiling (workshop-set,
+    # tunable in materials.yaml — not an external standard citation).
+    max_wall_mm: float = Field(gt=0)
     stock_size_mm: StockSizeMm | None = None  # None = cast, no stock sheet
 
 

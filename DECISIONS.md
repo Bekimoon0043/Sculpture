@@ -1233,3 +1233,59 @@ persisted with its AST reason; geometrist_code as its own rollup role.
    optional-call semantics), not a crash.
 6. **Provider**: geometrist primary (anthropic) writes code; parallel seat
    unused in Phase 4.
+
+
+## ADR-027 — Material-derived fabrication envelopes + full-history repair (2026-08-10)
+
+First LIVE Phase 4 fabrication (operator-run, monumental basalt brief,
+2.6 m basin) failed 3/3 and exposed two real defects plus one gate bug.
+This ADR records the fixes and their basis.
+
+**Defect A — registry ranges were demo envelopes, not engineering
+reality.** The cascade ranges were set for the Phase 2 demo: basin_wall_mm
+capped at 100, dish_depth_mm at 300. The Council designed a buildable
+monumental basalt fountain (180 mm wall, 420 mm dish) and the vocabulary
+could not express it — first-attempt pass rate 0.0 with an empty AST
+catalogue, i.e. the model wrote legal code and the RANGES rejected it.
+
+Fix: ranges now derive from the MATERIAL, per operator directive ("derive
+the ranges from engineering reality per material, not from demo defaults").
+
+1. **Per-material wall envelopes in materials.yaml** — every material gains
+   `max_wall_mm` beside `min_wall_mm`; hard constraint 2 now enforces BOTH
+   directions with real numbers:
+   - stainless_316l_sheet: 3..20 mm (sheet forming/welding envelope; beyond
+     20 mm is plate machining, and the stock-sheet size stops applying)
+   - basalt_slab: 20..250 mm (monumental carved stone; 250 ceiling is
+     mass-driven — a 250 mm wall ring on the largest registry basin, 6 m
+     dia x 0.9 m, is ~11.0 t, at the edge of handling; the live brief's
+     180 mm wall on 2.6 m x 0.45 m is ~1.7 t, routine crane work)
+   - cast_concrete_c35_45: 75..300 mm (beyond 300 mm is a mass pour
+     needing thermal control, not shell casting)
+   - bronze_cast: 6..40 mm (thicker sections risk shrinkage porosity;
+     real work is cored, not solid)
+   BASIS HONESTY (ADR-009): these are WORKSHOP envelopes set by the
+   fabricator — the operator — and are tunable in materials.yaml. They are
+   NOT citations of an external standard and no standard was fetched to
+   set them. The mass arithmetic above is computed, not recalled.
+2. **Platform envelope widened**: registry basin_wall_mm static range
+   3..300 (max over all materials), dish_depth_mm 40..600 (hard
+   constraint 6, spacing >= depth, still binds).
+3. **Prompt surface carries the envelopes**: registry_surface() now lists
+   every material's wall envelope, generated from live materials.yaml —
+   the geometrist sees both the per-parameter [min..max] and the
+   per-material envelope before writing values.
+
+**Defect B — repair loop carried only the LAST failure digest.** Live run:
+attempt 1 failed wall=180, attempt 2 failed dish=420, attempt 3 repeated
+attempt 1's wall=180 exactly — 3 attempts gave 2. Fix (operator
+directive): fabricate_spec accumulates the FULL failure history, oldest
+first; every repair prompt carries every prior attempt's digest and states
+explicitly that a previously-failed value must NOT be repeated. Locked by
+test_repair_prompt_carries_full_failure_history.
+
+**Defect C — gate crash.** gate_phase4_auto.py imported the tests package
+but only put backend/ on sys.path; inside the container (cwd /app) the
+repo root was missing. One-line fix + comment.
+
+Phase 4 remains IN PROGRESS until the operator re-runs the live gate.
