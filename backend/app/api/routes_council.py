@@ -133,6 +133,8 @@ def council_session_detail(session_id: str) -> dict:
         by_provider[c.provider] = round(
             by_provider.get(c.provider, 0.0) + c.cost_usd, 6
         )
+        if c.status != "ok":
+            continue  # failed calls cost $0 and their model may be blank
         entry = bundle.pricing.price_for(c.provider, c.model)
         full_rate_cost = (
             (c.tokens_in + c.cached_input_tokens + c.cache_write_input_tokens)

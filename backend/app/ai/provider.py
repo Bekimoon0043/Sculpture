@@ -9,10 +9,37 @@ logging. There is no code path that talks to a provider unlogged.
 
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+
+def provider_timeout_s() -> float:
+    """Per-attempt HTTP timeout for provider SDK clients.
+
+    Env LUXURYFORM_PROVIDER_TIMEOUT_S, default 300 s. kimi-k3 generating
+    8192 tokens on a slow line legitimately exceeds 60 s; the operator's
+    first live session died to a timeout on a slow connection (ADR-023).
+    """
+    return float(os.environ.get("LUXURYFORM_PROVIDER_TIMEOUT_S", "300"))
+
+
+def provider_max_attempts() -> int:
+    """Attempts per provider call (call_log retries TRANSIENT failures).
+
+    Env LUXURYFORM_PROVIDER_MAX_ATTEMPTS, default 3.
+    """
+    return int(os.environ.get("LUXURYFORM_PROVIDER_MAX_ATTEMPTS", "3"))
+
+
+def provider_backoff_base_s() -> float:
+    """Base backoff between attempts: base, base*3, ... (default 10 s).
+
+    Env LUXURYFORM_PROVIDER_BACKOFF_BASE_S. Tests set it to 0.
+    """
+    return float(os.environ.get("LUXURYFORM_PROVIDER_BACKOFF_BASE_S", "10"))
 
 if TYPE_CHECKING:
     from app.core.budget import BudgetEnforcer

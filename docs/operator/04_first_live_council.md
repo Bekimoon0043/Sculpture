@@ -20,8 +20,17 @@ docker compose up --build -d
 
 Pick a real but small brief, then:
 
+**cmd.exe** (Command Prompt):
+
 ```cmd
 curl -X POST http://localhost:8000/api/council/sessions -H "Content-Type: application/json" -d "{\"brief_text\": \"A three-tier basalt fountain for a hotel courtyard in Addis Ababa, 2.6 m basin.\"}"
+```
+
+**PowerShell** (where `curl` is an alias for Invoke-WebRequest and the cmd
+quoting breaks — use Invoke-RestMethod):
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/council/sessions -ContentType "application/json" -Body '{"brief_text": "A three-tier basalt fountain for a hotel courtyard in Addis Ababa, 2.6 m basin."}'
 ```
 
 The request stays open for the whole session — **several minutes is
@@ -35,10 +44,25 @@ get:
 If it returns HTTP 402 instead, the budget cap stopped the session — the
 partial transcript is still saved; send me the `detail` text.
 
+**Slow connection?** Timeouts and connection drops are retried
+automatically (3 attempts per call, waits of 10 s then 30 s), and a failed
+non-critical agent now DEGRADES the session instead of killing it — a
+completed-but-degraded session says so in the UI. To tune: set
+`LUXURYFORM_PROVIDER_TIMEOUT_S` / `LUXURYFORM_PROVIDER_MAX_ATTEMPTS` /
+`LUXURYFORM_PROVIDER_BACKOFF_BASE_S` in `.env` (see `.env.example`).
+
 ## 3. Read the measured cost
+
+**cmd.exe:**
 
 ```cmd
 curl http://localhost:8000/api/council/sessions/PASTE-SESSION-ID-HERE
+```
+
+**PowerShell:**
+
+```powershell
+Invoke-RestMethod -Uri http://localhost:8000/api/council/sessions/PASTE-SESSION-ID-HERE | ConvertTo-Json -Depth 10
 ```
 
 Look at `cost_rollup`: `total_cost_usd`, `by_role`, `by_provider`,

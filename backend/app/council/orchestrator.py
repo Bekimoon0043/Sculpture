@@ -149,12 +149,32 @@ class CouncilOrchestrator:
         return ra.primary, ra.parallel
 
     def _call(self, session_id: str, role: str, side: str, provider: str,
-              prompt: str) -> DispatchOutcome:
-        """Dispatch one call and persist its council_calls row (Rule 8)."""
-        outcome = self._dispatcher.dispatch(
-            role=role, side=side, provider=provider, prompt=prompt,
-            session_id=session_id, max_tokens=MAX_TOKENS,
-        )
+              prompt: str, optional: bool = False) -> DispatchOutcome:
+        """Dispatch one call and persist its council_calls row (Rule 8).
+
+        ``optional=True`` (ADR-023): a failed NON-CRITICAL call degrades the
+        session instead of aborting it — the dispatch exception is caught,
+        persisted as an error council_calls row (the failure is never
+        invisible), and returned with status="error". BudgetHalt is NEVER
+        optional: it always propagates.
+        """
+        try:
+            outcome = self._dispatcher.dispatch(
+                role=role, side=side, provider=provider, prompt=prompt,
+                session_id=session_id, max_tokens=MAX_TOKENS,
+            )
+        except BudgetHalt:
+            raise
+        except Exception as exc:
+            if not optional:
+                raise
+            outcome = DispatchOutcome(
+                provider=provider, model="", text="",
+                tokens_in=0, tokens_out=0, latency_ms=0.0, cost_usd=0.0,
+                pricing_version=self._pricing.pricing_version,
+                status="error",
+                error=f"{type(exc).__name__}: {exc}",
+            )
         with self._db.get_session() as s:
             s.add(
                 CouncilCallRow(
@@ -182,12 +202,18 @@ class CouncilOrchestrator:
 
     # -- role stages --------------------------------------------------------
 
-    def _run_designers(self, session_id: str, brief: str, research: str) -> list[dict]:
+    def _run_designers(self, session_id: str, brief: str, research: str) -> tuple[list[dict], bool]:
         """3 alternatives x 2 providers; schema-validate; bounded re-ask.
-        Returns the list of VALID candidate specs (full dicts)."""
+        Returns (valid candidate specs, any_provider_failure).
+
+        A failed designer CALL (provider outage, ADR-023) does not re-ask and
+        does not abort: it skips that alternative — the <3-valid check in
+        run_session aborts honestly if the pool shrinks too far, and the
+        session is flagged degraded."""
         primary, parallel = self._pair("designer")
         valid_specs: list[dict] = []
         seen_spec_ids: set[str] = set()
+        any_failure = False
         for alternative_no in (1, 2, 3):
             for side, provider in (("primary", primary), ("parallel", parallel)):
                 base_prompt = prompts.designer_prompt(
@@ -199,7 +225,15 @@ class CouncilOrchestrator:
                     prompt = base_prompt + (
                         prompts.designer_reask_suffix(errors) if errors else ""
                     )
-                    outcome = self._call(session_id, "designer", side, provider, prompt)
+                    outcome = self._call(session_id, "designer", side, provider,
+                                         prompt, optional=True)
+                    if outcome.status != "ok":
+                        any_failure = True
+                        log.warning(
+                            "designer %s alt %d call failed: %s",
+                            provider, alternative_no, outcome.error,
+                        )
+                        break  # provider outage — no re-ask, skip alternative
                     try:
                         candidate = _extract_json(outcome.text)
                         jsonschema.validate(instance=candidate, schema=self._schema)
@@ -211,7 +245,10 @@ class CouncilOrchestrator:
                         errors = [f"schema violation: {exc.message}"]
                 if spec is None:
                     # Record the failed candidate honestly (schema_valid=0);
-                    # it never reaches the Arbiter.
+                    # it never reaches the Arbiter. (Call failures already
+                    # logged above; this line is for validation failures.)
+                    if not errors:
+                        continue
                     log.warning(
                         "designer %s alt %d failed validation after %d attempts",
                         provider, alternative_no, MAX_ATTEMPTS,
@@ -240,7 +277,7 @@ class CouncilOrchestrator:
                             schema_valid=1,
                         )
                     )
-        return valid_specs
+        return valid_specs, any_failure
 
     def _resolve_critic_providers(self, valid_specs: list[dict]) -> tuple[list[str], bool]:
         """Dynamic rule: never a provider that produced a candidate spec.
@@ -335,19 +372,41 @@ class CouncilOrchestrator:
             s.flush()  # parent first — see module docstring
 
         degraded = 0
-        try:
-            # RESEARCHER
-            primary, parallel = self._pair("researcher")
-            research = self._call(
-                session_id, "researcher", "primary", primary,
-                prompts.researcher_prompt(brief),
-            ).text
-            if parallel:
-                self._call(session_id, "researcher", "parallel", parallel,
-                           prompts.researcher_prompt(brief))
+        optional_failures: list[str] = []
 
-            # DESIGNER x 3 alternatives x 2 providers
-            valid_specs = self._run_designers(session_id, brief, research)
+        def _optional(role: str, side: str, provider: str, prompt: str):
+            """Optional call: failure degrades the session, never aborts."""
+            out = self._call(session_id, role, side, provider, prompt,
+                             optional=True)
+            if out.status != "ok":
+                optional_failures.append(f"{role}/{side}/{provider}")
+            return out
+
+        try:
+            # RESEARCHER — both sides optional: if both fail, designers work
+            # from the brief alone and the session is flagged degraded.
+            primary, parallel = self._pair("researcher")
+            research_prompt = prompts.researcher_prompt(brief)
+            research_out = _optional("researcher", "primary", primary,
+                                     research_prompt)
+            research = research_out.text
+            if parallel:
+                par_out = _optional("researcher", "parallel", parallel,
+                                    research_prompt)
+                if research_out.status != "ok":
+                    research = par_out.text  # fall back to the parallel side
+            if not research:
+                degraded = 1
+                research = ("(researcher unavailable — provider failures; "
+                            "designers work from the brief alone)")
+
+            # DESIGNER x 3 alternatives x 2 providers (failures just shrink
+            # the valid-candidate pool; <3 valid aborts below)
+            valid_specs, designer_failures = self._run_designers(
+                session_id, brief, research
+            )
+            if designer_failures:
+                degraded = 1
             if len(valid_specs) < 3:
                 raise OrchestratorError(
                     f"only {len(valid_specs)} valid Design Spec candidates; "
@@ -357,42 +416,57 @@ class CouncilOrchestrator:
 
             # GEOMETRIST
             primary, parallel = self._pair("geometrist")
-            geo = self._call(session_id, "geometrist", "primary", primary,
-                             prompts.geometrist_prompt(brief, summary)).text
+            geo_out = _optional("geometrist", "primary", primary,
+                                prompts.geometrist_prompt(brief, summary))
+            geo = geo_out.text or "(geometrist unavailable — provider failure)"
             if parallel:
-                self._call(session_id, "geometrist", "parallel", parallel,
-                           prompts.geometrist_prompt(brief, summary))
+                _optional("geometrist", "parallel", parallel,
+                          prompts.geometrist_prompt(brief, summary))
 
             # ENGINEER
             primary, parallel = self._pair("engineer")
             eng_prompt = prompts.engineer_prompt(brief, summary, geo)
-            review_primary = self._call(session_id, "engineer", "primary", primary, eng_prompt)
-            self._persist_payload(session_id, EngineeringReviewRow, primary, "primary",
-                                  review_primary.text)
+            review_primary = _optional("engineer", "primary", primary, eng_prompt)
+            if review_primary.status == "ok":
+                self._persist_payload(session_id, EngineeringReviewRow, primary,
+                                      "primary", review_primary.text)
             if parallel:
-                out = self._call(session_id, "engineer", "parallel", parallel, eng_prompt)
-                self._persist_payload(session_id, EngineeringReviewRow, parallel, "parallel",
-                                      out.text)
+                out = _optional("engineer", "parallel", parallel, eng_prompt)
+                if out.status == "ok":
+                    self._persist_payload(session_id, EngineeringReviewRow,
+                                          parallel, "parallel", out.text)
 
             # CRITIC (dynamic rule)
             critic_providers, critic_degraded = self._resolve_critic_providers(valid_specs)
-            degraded = 1 if critic_degraded else 0
+            if critic_degraded:
+                degraded = 1
             if not critic_providers:
                 raise OrchestratorError(
                     "no eligible critic provider (every provider produced a candidate)"
                 )
-            crit_prompt = prompts.critic_prompt(brief, summary, review_primary.text)
+            review_text = (review_primary.text
+                           or "(engineer review unavailable — provider failure)")
+            crit_prompt = prompts.critic_prompt(brief, summary, review_text)
             defects_text = ""
             for i, provider in enumerate(critic_providers):
                 side = "primary" if i == 0 else "parallel"
-                out = self._call(session_id, "critic", side, provider, crit_prompt)
-                self._persist_payload(session_id, DefectListRow, provider, side, out.text)
-                if i == 0:
-                    defects_text = out.text
+                out = _optional("critic", side, provider, crit_prompt)
+                if out.status == "ok":
+                    self._persist_payload(session_id, DefectListRow, provider,
+                                          side, out.text)
+                    if not defects_text:
+                        defects_text = out.text
+            if not defects_text:
+                defects_text = "(critic unavailable — provider failures)"
 
-            # ARBITER (binding)
+
+            if optional_failures:
+                degraded = 1
+
+            # ARBITER (binding — the one stage whose failure DOES abort:
+            # without a binding decision there is no session outcome)
             decision = self._run_arbiter(session_id, brief, valid_specs,
-                                         review_primary.text, defects_text)
+                                         review_text, defects_text)
             chosen = decision["chosen_spec_ids"]
             hashes = {}
             with self._db.get_session() as s:

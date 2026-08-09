@@ -5,7 +5,9 @@
 1. computes a pre-call cost estimate from pricing.yaml,
 2. runs ``BudgetEnforcer.pre_dispatch_check`` (Amendment 2 — raises BudgetHalt
    before any network traffic if a cap would be breached),
-3. executes the real API call (SDK clients are built with a 60 s timeout),
+3. executes the real API call, retrying TRANSIENT failures (timeouts,
+   connection errors) with exponential backoff — every attempt audited,
+   SDK-internal retries disabled so no attempt is hidden (ADR-023),
 4. computes the actual cost from the returned token counts x pricing.yaml,
 5. records the actual spend and INSERTs the full ai_calls row — full prompt,
    full response, tokens, latency, cost, pricing version (Rule 8 audit),
@@ -53,6 +55,15 @@ def estimate_cost_usd(
         + max_tokens * entry.usd_per_1m_output_tokens
     ) / 1_000_000
     return round(est, 6)
+
+
+def _is_transient(exc: Exception) -> bool:
+    """Timeout / connection failures are transient and worth retrying; 4xx,
+    validation and shape errors are not. Class-name matching covers both
+    SDKs (openai.* / anthropic.* Timeout+Connection errors) and httpx.
+    """
+    name = type(exc).__name__.lower()
+    return "timeout" in name or "connection" in name or "connect" in name
 
 
 def _utc_now_iso() -> str:
@@ -107,19 +118,48 @@ def execute(
 
     _ensure_session(provider, session_id)
 
-    # Step 3: the real dispatch (SDK client carries the 60 s timeout).
+    # Step 3: the real dispatch, with audited retries on TRANSIENT failures
+    # (ADR-023): timeouts and connection errors are retried up to
+    # LUXURYFORM_PROVIDER_MAX_ATTEMPTS times with exponential backoff —
+    # the operator's line is slow and a single timeout must not kill a
+    # 15-call session. Non-transient errors (4xx, shape errors) are never
+    # retried. SDK-internal retries are disabled (max_retries=0) so every
+    # attempt is visible here.
+    from app.ai.provider import (  # local import: config-free env helpers
+        provider_backoff_base_s,
+        provider_max_attempts,
+    )
+
+    max_attempts = provider_max_attempts()
+    backoff_base = provider_backoff_base_s()
     started = time.perf_counter()
     ts = _utc_now_iso()
-    try:
-        if kind == "text":
-            raw: "RawResult" = provider._raw_complete(
-                prompt, model, max_tokens, temperature
-            )
-        else:
-            assert image_path is not None
-            raw = provider._raw_vision(prompt, Path(image_path), model, max_tokens)
-    except Exception as exc:  # step 6: log the error row, then raise honestly
-        latency_ms = round((time.perf_counter() - started) * 1000, 3)
+    raw: "RawResult | None" = None
+    retry_notes: list[str] = []
+    final_exc: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            if kind == "text":
+                raw = provider._raw_complete(prompt, model, max_tokens, temperature)
+            else:
+                assert image_path is not None
+                raw = provider._raw_vision(prompt, Path(image_path), model, max_tokens)
+            final_exc = None
+            break
+        except Exception as exc:
+            final_exc = exc
+            if attempt < max_attempts and _is_transient(exc):
+                note = f"attempt {attempt}/{max_attempts} transient: {exc}"
+                retry_notes.append(note)
+                time.sleep(backoff_base * (3 ** (attempt - 1)))
+                continue
+            break  # non-transient, or attempts exhausted
+    latency_ms = round((time.perf_counter() - started) * 1000, 3)
+
+    if final_exc is not None:  # step 6: log the error row, raise honestly
+        error_text = str(final_exc)
+        if retry_notes:
+            error_text += " | retry history: " + " ; ".join(retry_notes)
         _insert_call(
             provider,
             session_id=session_id,
@@ -133,11 +173,10 @@ def execute(
             latency_ms=latency_ms,
             cost_usd=0.0,
             status="error",
-            error=str(exc),
+            error=error_text,
         )
-        raise ProviderError(provider.name, str(exc)) from exc
-
-    latency_ms = round((time.perf_counter() - started) * 1000, 3)
+        raise ProviderError(provider.name, error_text) from final_exc
+    assert raw is not None
 
     # Steps 4-5: real cost from real tokens, then persist the full row.
     # If a cache-class price is missing the call ALREADY succeeded (money was

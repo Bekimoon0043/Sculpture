@@ -28,7 +28,7 @@ from pathlib import Path
 
 import openai
 
-from app.ai.provider import AIProvider, RawResult
+from app.ai.provider import AIProvider, RawResult, provider_timeout_s
 
 
 def _split_cached(usage) -> tuple[int, int]:
@@ -74,7 +74,13 @@ class KimiProvider(AIProvider):
         # client= is dependency injection for the offline test transport;
         # production always builds the real SDK client below.
         self._client = client or (
-            openai.OpenAI(api_key=api_key, base_url=self.base_url, timeout=60.0)
+            openai.OpenAI(api_key=api_key, base_url=self.base_url, timeout=provider_timeout_s(),
+                # max_retries=0: the SDK's internal retry loop is invisible
+                # to ai_calls and multiplied attempts silently (the
+                # operator's 220 s "timeout" was 3 hidden internal attempts).
+                # call_log owns retries, with every attempt audited.
+                max_retries=0,
+            )
             if api_key
             else None
         )

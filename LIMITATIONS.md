@@ -72,7 +72,8 @@ early):
   rates), and the transcript UI (step 3: session list, per-call role cards,
   Arbiter decision card, cost rollup vs caps with cache-savings display;
   demo session replays the synthetic fixture at $0), and the live-run
-  machinery (step 4: POST /api/council/sessions, budget-capped; the first
+  machinery (step 4: POST /api/council/sessions, budget-capped, with
+  audited retries and degraded-session resilience — ADR-023; the first
   live session itself is run by the operator — the sandbox holds no keys).
   NOT built yet: split gate (step 5).
 - **Phase 4** — the sandbox for AI-written geometry code (isolation level

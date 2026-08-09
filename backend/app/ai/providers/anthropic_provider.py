@@ -12,7 +12,7 @@ from pathlib import Path
 
 import anthropic
 
-from app.ai.provider import AIProvider, RawResult
+from app.ai.provider import AIProvider, RawResult, provider_timeout_s
 
 
 def _cache_fields(usage) -> tuple[int, int]:
@@ -44,7 +44,13 @@ class AnthropicProvider(AIProvider):
         # client= is dependency injection for the offline test transport;
         # production always builds the real SDK client below.
         self._client = client or (
-            anthropic.Anthropic(api_key=api_key, timeout=60.0) if api_key else None
+            anthropic.Anthropic(api_key=api_key, timeout=provider_timeout_s(),
+                # max_retries=0: the SDK's internal retry loop is invisible
+                # to ai_calls and multiplied attempts silently (the
+                # operator's 220 s "timeout" was 3 hidden internal attempts).
+                # call_log owns retries, with every attempt audited.
+                max_retries=0,
+            ) if api_key else None
         )
 
     def health(self) -> dict:

@@ -9,8 +9,12 @@ cache-savings display; demo session = synthetic fixture, $0); **step 4
 MACHINERY DONE** (POST /api/council/sessions live-run endpoint with
 budget-capped LiveDispatcher, capture_council_fixture.py, operator
 walkthrough docs/operator/04_first_live_council.md) — the live run itself
-is OPERATOR-SIDE (the sandbox holds no API keys): run it per the
-walkthrough and send back the cost_rollup; step 5 pending. ADR-009 pre-code fetches executed 2026-08-07 (ADR-021);
+is OPERATOR-SIDE (the sandbox holds no API keys). First live attempt
+2026-08-07 FAILED with $0 spend and exposed two defects (stale-schema file,
+single-timeout abort) — both fixed in ADR-023 (startup schema patches +
+drift guard; audited retries; failed non-critical calls degrade rather
+than abort). RETRY the live session per the walkthrough and send back the
+cost_rollup; step 5 pending. ADR-009 pre-code fetches executed 2026-08-07 (ADR-021);
 account-level checks (models.list ×3, live kimi text shape) returned by the
 operator 2026-08-07 — LIMITATIONS §7 RETIRED. Cache-aware pricing landed
 2026-08-07 (ADR-022): kimi/anthropic cache token classes split and priced
