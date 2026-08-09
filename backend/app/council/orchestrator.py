@@ -80,11 +80,13 @@ class DispatchOutcome:
     provider: str
     model: str
     text: str
-    tokens_in: int
+    tokens_in: int             # uncached input, normalised (ADR-022)
     tokens_out: int
     latency_ms: float
     cost_usd: float
     pricing_version: str
+    cached_input_tokens: int = 0
+    cache_write_input_tokens: int = 0
     status: str = "ok"           # ok | error
     error: str | None = None
 
@@ -167,6 +169,8 @@ class CouncilOrchestrator:
                     response=outcome.text,
                     tokens_in=outcome.tokens_in,
                     tokens_out=outcome.tokens_out,
+                    cached_input_tokens=outcome.cached_input_tokens,
+                    cache_write_input_tokens=outcome.cache_write_input_tokens,
                     latency_ms=outcome.latency_ms,
                     cost_usd=outcome.cost_usd,
                     pricing_version=outcome.pricing_version,
@@ -302,11 +306,16 @@ class CouncilOrchestrator:
 
     # -- the session --------------------------------------------------------
 
-    def run_session(self, brief: str) -> str:
-        """Run one full Council session. Returns the council session id."""
+    def run_session(self, brief: str, session_id: str | None = None) -> str:
+        """Run one full Council session. Returns the council session id.
+
+        ``session_id`` lets the caller (the live API route) pre-generate the
+        id so the BudgetEnforcer watches the SAME session rows the calls are
+        written to — session-cap accounting is blind otherwise.
+        """
         if not brief.strip():
             raise OrchestratorError("empty brief")
-        session_id = str(uuid.uuid4())
+        session_id = session_id or str(uuid.uuid4())
         now = _utc_now_iso()
         with self._db.get_session() as s:
             s.add(

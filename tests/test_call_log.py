@@ -46,7 +46,7 @@ def test_full_logging_round_trip(db, config, openai_transport):
     assert resp.tokens_out == 3
     # gpt-4o: $2.50 / $10.00 per 1M tokens -> (12*2.5 + 3*10)/1e6
     assert resp.cost_usd == 0.00006
-    assert resp.pricing_version == "2026-08-v2"
+    assert resp.pricing_version == "2026-08-v3"
     assert resp.latency_ms >= 0
 
     # The SDK was called with the real parameters.

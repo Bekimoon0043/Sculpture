@@ -112,3 +112,113 @@ export async function getLatestValidation(): Promise<LatestValidationResponse | 
 export function latestGlbUrl(cacheBuster: number): string {
   return `/api/geometry/cascade/latest.glb?ts=${cacheBuster}`;
 }
+
+// ---------------------------------------------------------------------------
+// Council transcript API (Phase 3, build step 3)
+// ---------------------------------------------------------------------------
+
+export interface CouncilSessionSummary {
+  id: string;
+  created_at: string;
+  brief_text: string;
+  status: string;
+  total_cost_usd: number;
+  pricing_version: string;
+  arbiter_confidence: number | null;
+  degraded: number;
+  synthetic: boolean;
+}
+
+export interface CouncilCall {
+  id: string;
+  ts: string;
+  role: string;
+  side: string;
+  provider: string;
+  model: string;
+  prompt: string;
+  response: string;
+  tokens_in: number;
+  tokens_out: number;
+  cached_input_tokens: number;
+  cache_write_input_tokens: number;
+  latency_ms: number;
+  cost_usd: number;
+  pricing_version: string;
+  status: string;
+  error: string | null;
+}
+
+export interface CouncilSpec {
+  id: string;
+  provider: string;
+  alternative_no: number;
+  spec_json: string;
+  spec_hash: string;
+  seed: number;
+  schema_valid: number;
+}
+
+export interface CouncilPayloadRow {
+  id: string;
+  provider: string;
+  side: string;
+  payload_json: string;
+}
+
+export interface ArbiterDecision {
+  id: string;
+  chosen_spec_ids_json: string;
+  confidence: number;
+  rationale: string;
+  disagreement_register_json: string;
+  binding: number;
+}
+
+export interface CostRollup {
+  total_cost_usd: number;
+  by_role: Record<string, number>;
+  by_provider: Record<string, number>;
+  cache_savings_usd: number;
+  session_cap_usd: number;
+  day_cap_usd: number;
+  call_count: number;
+  pricing_version: string;
+}
+
+export interface CouncilSessionDetail {
+  session: CouncilSessionSummary & {
+    started_at: string;
+    ended_at: string | null;
+  };
+  calls: CouncilCall[];
+  specs: CouncilSpec[];
+  engineering_reviews: CouncilPayloadRow[];
+  defect_lists: CouncilPayloadRow[];
+  arbiter_decision: ArbiterDecision | null;
+  cost_rollup: CostRollup;
+}
+
+export async function getCouncilSessions(): Promise<{
+  count: number;
+  sessions: CouncilSessionSummary[];
+}> {
+  return parseOrThrow(await fetch("/api/council/sessions"));
+}
+
+export async function getCouncilSession(
+  id: string
+): Promise<CouncilSessionDetail> {
+  return parseOrThrow(await fetch(`/api/council/sessions/${id}`));
+}
+
+export async function loadDemoSession(): Promise<{
+  session_id: string;
+  created: boolean;
+  synthetic: boolean;
+  note: string;
+}> {
+  return parseOrThrow(
+    await fetch("/api/council/demo-session", { method: "POST" })
+  );
+}

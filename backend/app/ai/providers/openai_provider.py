@@ -3,6 +3,14 @@
 Vision attaches the image as an image_url data-URI block. Token counts come
 from response.usage (prompt_tokens / completion_tokens) — real numbers from
 the API.
+
+Cache-split note (ADR-022): gpt-4o DOES report prompt_tokens_details.
+cached_tokens, but its cached-input price ($1.25/MTok) is corroborated only
+by third-party trackers — NOT first-party/account-verified as of 2026-08-07
+(gpt-4o no longer appears on platform.openai.com/docs/pricing). So this
+provider deliberately does NOT split: all input bills at the verified full
+input rate (conservative — real cost can only be lower). Revisit when the
+cached rate is first-party verified; pricing.yaml documents the same.
 """
 
 from __future__ import annotations

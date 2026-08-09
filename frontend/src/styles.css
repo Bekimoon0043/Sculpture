@@ -162,3 +162,130 @@ td.num {
   padding: 40px;
   font-size: 16px;
 }
+
+/* --- Council panel (Phase 3 step 3) --- */
+.view-nav {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #0e1218;
+  border-bottom: 1px solid #2a3138;
+}
+.view-nav button {
+  background: #12161c;
+  color: #dde3ea;
+  border: 1px solid #2a3138;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.view-nav button.active {
+  border-color: #b08d57;
+  cursor: default;
+}
+.council-wrap {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.council {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 980px;
+}
+.session-list {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+}
+.session-item {
+  width: 100%;
+  text-align: left;
+  background: #0b0e12;
+  color: #dde3ea;
+  border: 1px solid #2a3138;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.session-item:hover {
+  border-color: #b08d57;
+}
+.badge {
+  display: inline-block;
+  border: 1px solid #2a3138;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  color: #8b96a3;
+}
+.badge-pass {
+  color: #7fb285;
+  border-color: #3c5a41;
+}
+.badge-fail {
+  color: #d08a8a;
+  border-color: #6b3a3a;
+}
+.call-card {
+  border: 1px solid #232a32;
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.call-card summary {
+  cursor: pointer;
+}
+.call-side {
+  color: #8b96a3;
+}
+.call-error {
+  color: #d08a8a;
+  font-size: 12px;
+}
+.call-card h4 {
+  margin: 8px 0 4px;
+  font-size: 12px;
+  color: #8b96a3;
+}
+pre.payload {
+  background: #0b0e12;
+  border: 1px solid #232a32;
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.cost-bar-wrap {
+  background: #0b0e12;
+  border: 1px solid #2a3138;
+  border-radius: 4px;
+  height: 10px;
+  overflow: hidden;
+}
+.cost-bar {
+  background: #b08d57;
+  height: 100%;
+}
+.cost-list {
+  list-style: none;
+  padding: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.council h3 {
+  font-size: 13px;
+  color: #8b96a3;
+  margin: 10px 0 4px;
+}

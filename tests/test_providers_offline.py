@@ -2,10 +2,10 @@
 
 Stated plainly: the injected SDK clients (InjectedAnthropicTransport /
 InjectedOpenAITransport from conftest.py) are MOCKS that pretend to be a
-provider. They are hand-constructed, not recorded, and mirror the SDK
-response shape as ASSUMED, not as verified (see LIMITATIONS.md — this
-assumption is retired only by the live gate run). What these tests prove is
-the real production code path AROUND the SDK call:
+provider. They are hand-constructed, not recorded, but their shapes are
+LIVE-VERIFIED against the operator's account (live_verify_providers.py run
+2026-08-07 — DECISIONS.md ADR-021/ADR-022; LIMITATIONS.md §7 retired). What
+these tests prove is the real production code path AROUND the SDK call:
 estimate -> BudgetEnforcer.pre_dispatch_check -> dispatch -> real token/cost
 math from pricing.yaml -> ai_calls persistence. Production always builds real
 SDK clients and requires real API calls; nothing here bypasses that.
@@ -21,7 +21,7 @@ from app.ai.providers.openai_provider import OpenAIProvider
 from app.core.budget import BudgetEnforcer
 
 # (provider class, injected input tokens, injected output tokens, expected cost)
-# Costs are hand-computed from config/pricing.yaml (2026-08-v2):
+# Costs are hand-computed from config/pricing.yaml (2026-08-v3):
 #   anthropic claude-sonnet-4-5 $3.00/$15.00 per 1M: (12*3 + 3*15)/1e6 = 0.000081
 #   openai    gpt-4o           $2.50/$10.00 per 1M: (12*2.5 + 3*10)/1e6 = 0.00006
 #   kimi      kimi-k3 $3.00/$15.00 per 1M (live docs 2026-08-01):
@@ -88,7 +88,7 @@ def test_complete_offline_correct_response_and_cost(
     assert resp.tokens_in == tin
     assert resp.tokens_out == tout
     assert resp.cost_usd == expected_cost
-    assert resp.pricing_version == "2026-08-v2"
+    assert resp.pricing_version == "2026-08-v3"
     assert resp.latency_ms >= 0
     assert len(client.calls) == 1
     # Kimi live docs (chat.md + kimi-k3-quickstart.md, fetched 2026-08-01):

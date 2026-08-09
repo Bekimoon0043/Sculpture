@@ -2,13 +2,22 @@
 
 **STATUS (updated 2026-08-07):** plan APPROVED by the operator 2026-08-04.
 Build steps (§9): **step 1 DONE** (schema v3 + fixture replay pipeline +
-costing rates schema — commit 457e6e0); step 2 (orchestrator) IN PROGRESS;
-steps 3–5 pending. ADR-009 pre-code fetches executed 2026-08-07 (ADR-021);
-pricing re-verified, `pricing_version` bumped to 2026-08-v2. Account-level
-checks (models.list ×3, live kimi text shape) scripted for the operator
-(scripts/live_verify_providers.py) — sandbox holds no keys. First live
+costing rates schema — commit 457e6e0); **step 2 DONE** (Council
+orchestrator, offline-proven with scripted dispatcher — commit 7539788);
+**step 3 DONE** (transcript API + Council UI panel with cost rollup and
+cache-savings display; demo session = synthetic fixture, $0); **step 4
+MACHINERY DONE** (POST /api/council/sessions live-run endpoint with
+budget-capped LiveDispatcher, capture_council_fixture.py, operator
+walkthrough docs/operator/04_first_live_council.md) — the live run itself
+is OPERATOR-SIDE (the sandbox holds no API keys): run it per the
+walkthrough and send back the cost_rollup; step 5 pending. ADR-009 pre-code fetches executed 2026-08-07 (ADR-021);
+account-level checks (models.list ×3, live kimi text shape) returned by the
+operator 2026-08-07 — LIMITATIONS §7 RETIRED. Cache-aware pricing landed
+2026-08-07 (ADR-022): kimi/anthropic cache token classes split and priced
+at first-party rates, `pricing_version` bumped to 2026-08-v3, offline
+transports updated to the live-verified usage shapes. First live
 session spend (~$1–2.50) PRE-APPROVED by the operator; measured cost will
-be reported against the §7 estimate (≈$1.15).
+be reported against the §7 estimate (≈$1.15, likely lower with cache hits).
 
 Scope per the master build order: all six Council agents, multi-provider,
 Design Spec JSON schema, Arbiter decision record, full transcript UI.

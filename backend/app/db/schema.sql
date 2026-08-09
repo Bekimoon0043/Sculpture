@@ -3,6 +3,9 @@
 -- Phase 2 evolution (ADR-010): the designs table gained the cascade build
 -- columns (seed, spec_hash, build_ms, glb_path, step_path) and spec_id became
 -- nullable (a Phase 2 cascade build has no council Design Spec yet).
+-- ADR-022 (2026-08-07): ai_calls and council_calls gained
+-- cached_input_tokens / cache_write_input_tokens — providers normalise
+-- tokens_in to the UNCACHED count so cache classes price separately.
 -- Phase 3 evolution (PHASE_3_PLAN.md §3, operator-approved 2026-08-04):
 -- council_sessions/design_specs re-shaped for the real Council (v2 versions
 -- were NEVER populated — replacement is lossless), and the normalized
@@ -42,8 +45,10 @@ CREATE TABLE IF NOT EXISTS ai_calls (
     purpose         TEXT NOT NULL,           -- e.g. gate_phase1_text, researcher, designer
     prompt          TEXT NOT NULL,           -- full prompt, always (Rule 8)
     response        TEXT NOT NULL,           -- full response, always (Rule 8); '' on error
-    tokens_in       INTEGER NOT NULL,
+    tokens_in       INTEGER NOT NULL,          -- UNCACHED input tokens (normalised, ADR-022)
     tokens_out      INTEGER NOT NULL,
+    cached_input_tokens INTEGER NOT NULL DEFAULT 0,  -- cache-READ class (ADR-022)
+    cache_write_input_tokens INTEGER NOT NULL DEFAULT 0, -- cache-WRITE class (anthropic only)
     latency_ms      REAL NOT NULL,
     cost_usd        REAL NOT NULL,
     pricing_version TEXT NOT NULL,           -- which pricing.yaml version computed cost_usd
@@ -109,8 +114,10 @@ CREATE TABLE IF NOT EXISTS council_calls (
     model           TEXT NOT NULL,
     prompt          TEXT NOT NULL,           -- full prompt, always (Rule 8)
     response        TEXT NOT NULL,           -- full response, always (Rule 8); '' on error
-    tokens_in       INTEGER NOT NULL,
+    tokens_in       INTEGER NOT NULL,          -- UNCACHED input tokens (normalised, ADR-022)
     tokens_out      INTEGER NOT NULL,
+    cached_input_tokens INTEGER NOT NULL DEFAULT 0,  -- cache-READ class (ADR-022)
+    cache_write_input_tokens INTEGER NOT NULL DEFAULT 0, -- cache-WRITE class (anthropic only)
     latency_ms      REAL NOT NULL,
     cost_usd        REAL NOT NULL,
     pricing_version TEXT NOT NULL,

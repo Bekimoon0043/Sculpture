@@ -140,9 +140,37 @@ def execute(
     latency_ms = round((time.perf_counter() - started) * 1000, 3)
 
     # Steps 4-5: real cost from real tokens, then persist the full row.
-    cost_usd = provider._pricing.cost_usd(
-        provider.name, model, raw.tokens_in, raw.tokens_out
-    )
+    # If a cache-class price is missing the call ALREADY succeeded (money was
+    # spent) — persist the audit row with the pricing failure recorded, then
+    # raise honestly. A billed call must never vanish from the log (Rule 8).
+    try:
+        cost_usd = provider._pricing.cost_usd(
+            provider.name,
+            model,
+            raw.tokens_in,
+            raw.tokens_out,
+            cached_input_tokens=raw.cached_input_tokens,
+            cache_write_input_tokens=raw.cache_write_input_tokens,
+        )
+    except PricingLookupError as exc:
+        _insert_call(
+            provider,
+            session_id=session_id,
+            ts=ts,
+            model=model,
+            purpose=purpose,
+            prompt=prompt,
+            response=raw.text,
+            tokens_in=raw.tokens_in,
+            tokens_out=raw.tokens_out,
+            cached_input_tokens=raw.cached_input_tokens,
+            cache_write_input_tokens=raw.cache_write_input_tokens,
+            latency_ms=latency_ms,
+            cost_usd=0.0,
+            status="error",
+            error=f"pricing failure after successful call: {exc}",
+        )
+        raise ProviderError(provider.name, str(exc)) from exc
     _insert_call(
         provider,
         session_id=session_id,
@@ -153,6 +181,8 @@ def execute(
         response=raw.text,
         tokens_in=raw.tokens_in,
         tokens_out=raw.tokens_out,
+        cached_input_tokens=raw.cached_input_tokens,
+        cache_write_input_tokens=raw.cache_write_input_tokens,
         latency_ms=latency_ms,
         cost_usd=cost_usd,
         status="ok",
@@ -167,6 +197,8 @@ def execute(
         text=raw.text,
         tokens_in=raw.tokens_in,
         tokens_out=raw.tokens_out,
+        cached_input_tokens=raw.cached_input_tokens,
+        cache_write_input_tokens=raw.cache_write_input_tokens,
         latency_ms=latency_ms,
         cost_usd=cost_usd,
         pricing_version=provider._pricing.pricing_version,
@@ -188,6 +220,8 @@ def _insert_call(
     cost_usd: float,
     status: str,
     error: str | None,
+    cached_input_tokens: int = 0,
+    cache_write_input_tokens: int = 0,
 ) -> str:
     call_id = str(uuid.uuid4())
     with provider._db.get_session() as s:
@@ -203,6 +237,8 @@ def _insert_call(
                 response=response,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
+                cached_input_tokens=cached_input_tokens,
+                cache_write_input_tokens=cache_write_input_tokens,
                 latency_ms=latency_ms,
                 cost_usd=cost_usd,
                 pricing_version=provider._pricing.pricing_version,

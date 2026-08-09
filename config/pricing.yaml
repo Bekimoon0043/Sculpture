@@ -18,12 +18,26 @@
 #     (operator runs it; sandbox has no keys).
 #   - kimi: FIRST-PARTY https://platform.kimi.ai/docs/pricing/chat-k3.md
 #     fetched 2026-08-07 — kimi-k3 $0.30 cache-hit / $3.00 cache-miss input,
-#     $15.00 output, context 1,048,576 — UNCHANGED. We bill input at the
-#     CACHE-MISS rate ($3.00, conservative) since caching is automatic and
-#     unpredictable.
+#     $15.00 output, context 1,048,576 — UNCHANGED.
+#
+# ADR-022 (2026-08-07, operator live-verify run): providers now SPLIT input
+# into uncached / cache-read / cache-write classes and each class prices
+# separately (usage shapes live-verified against the operator's account —
+# kimi usage.cached_tokens; anthropic usage.cache_read_input_tokens /
+# cache_creation_input_tokens). Cache-class prices below are FIRST-PARTY,
+# fetched 2026-08-07:
+#   - anthropic (platform.claude.com/docs/en/about-claude/pricing): Sonnet 4.5
+#     cache READ $0.30/MTok, 5-minute cache WRITE $3.75/MTok (1h write $6 —
+#     the SDK default TTL is 5m; we never request 1h).
+#   - kimi (platform.kimi.ai/docs/pricing/chat-k3.md): cache HIT $0.30/MTok.
+#   - openai gpt-4o: cached-input $1.25 appears only in third-party trackers,
+#     NOT first-party-verified (gpt-4o is absent from the current first-party
+#     table) — so openai_provider deliberately does NOT split input; it bills
+#     everything at the full $2.50 (conservative; real cost can only be
+#     lower). Revisit when the cached rate is first-party-verified.
 # Every AI call logged in the database records the pricing_version that
 # computed its cost, so stale prices can never silently rewrite history.
-pricing_version: "2026-08-v2"
+pricing_version: "2026-08-v3"
 
 providers:
   anthropic:
@@ -32,6 +46,9 @@ providers:
     claude-sonnet-4-5:
       usd_per_1m_input_tokens: 3.00
       usd_per_1m_output_tokens: 15.00
+      # First-party cache classes (same page, fetched 2026-08-07):
+      usd_per_1m_cached_input_tokens: 0.30        # cache read (0.1x base)
+      usd_per_1m_cache_write_input_tokens: 3.75   # 5-minute cache write (1.25x)
       effective_date: "2025-09-29"
   openai:
     # GPT-4o $2.50/$10 — not on the first-party table fetched 2026-08-07
@@ -46,10 +63,12 @@ providers:
     # 2026-08-07 (ADR-009/ADR-021). Table row: kimi-k3, per 1M tokens —
     # input (cache hit) $0.30, input (cache miss) $3.00, output $15.00,
     # context 1,048,576 tokens — UNCHANGED since the 2026-08-01 fetch.
-    # We bill input at the CACHE-MISS rate ($3.00, conservative) since caching
-    # is automatic and unpredictable. Vision is the same kimi-k3 model
-    # (native image input) — same prices.
+    # usage.cached_tokens (live-verified 2026-08-07) is the cache-hit SUBSET
+    # of prompt_tokens; the provider splits it and bills each class at its
+    # own rate. Vision is the same kimi-k3 model (native image input) —
+    # same prices.
     kimi-k3:
-      usd_per_1m_input_tokens: 3.00
+      usd_per_1m_input_tokens: 3.00               # cache-MISS input
       usd_per_1m_output_tokens: 15.00
+      usd_per_1m_cached_input_tokens: 0.30        # cache-HIT input
       effective_date: "2026-08-01"

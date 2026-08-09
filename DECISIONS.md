@@ -978,3 +978,55 @@ account-specific checks are scripted for the operator to run
 **models.list() per provider** — requires the operator's keys; scripted
 (`scripts/live_verify_providers.py`, exact commands in
 `docs/operator/03_provider_verification.md`). NOT claimed done.
+
+---
+
+## ADR-022 — Cache-token classes are priced separately (2026-08-07)
+
+**Context.** The operator's live_verify_providers.py run (2026-08-07) showed
+usage fields the offline mocks did not model: kimi returns
+`usage.cached_tokens` (cache-hit subset of `prompt_tokens`), anthropic
+returns `cache_creation_input_tokens` / `cache_read_input_tokens`. Cache-hit
+input bills far below the miss rate — kimi-k3 $0.30 vs $3.00 per MTok (10x);
+anthropic Sonnet 4.5 read $0.30, 5m write $3.75 vs $3.00 base. Billing all
+input at the miss rate overstates every session cost; with six Council
+agents sharing one brief, cache hits are likely.
+
+**Decision.** Input is split into three classes end-to-end:
+
+1. **Providers normalise at the boundary** (`RawResult`): `tokens_in` is
+   always the UNCACHED input count. kimi subtracts `usage.cached_tokens`
+   from `usage.prompt_tokens` (cached is a subset — verified shape);
+   anthropic's `input_tokens` already excludes both cache classes (no
+   subtraction). `cached_input_tokens` = cache-read class;
+   `cache_write_input_tokens` = anthropic cache-creation (no OpenAI-
+   compatible write class exists). A kimi shape anomaly
+   (cached > prompt) raises — never guesses.
+2. **PricingConfig.cost_usd** prices each class at its own rate. If a live
+   response reports tokens in a class with no configured price, it raises
+   PricingLookupError — a price is never guessed. call_log still persists
+   the ai_calls audit row for the (already billed) call with the failure
+   recorded, then raises ProviderError (Rule 8: a billed call never
+   vanishes from the log).
+3. **pricing.yaml 2026-08-v3** — cache-class prices are FIRST-PARTY,
+   fetched 2026-08-07: anthropic read $0.30 / 5m write $3.75
+   (platform.claude.com/docs/en/about-claude/pricing); kimi hit $0.30
+   (platform.kimi.ai/docs/pricing/chat-k3.md). **openai gpt-4o is
+   deliberately NOT split**: its cached rate ($1.25) is corroborated only
+   by third-party trackers (gpt-4o is absent from the current first-party
+   pricing table), so openai_provider bills all input at the verified full
+   rate — conservative; real cost can only be lower. Revisit when
+   first-party-verified.
+4. **Persistence:** ai_calls and council_calls gained
+   cached_input_tokens / cache_write_input_tokens (schema v3, DEFAULT 0 —
+   folded into v3 before any operator deployment of v3, so no v4 migration
+   is needed).
+5. **Offline transports updated** to carry the live-verified usage fields
+   (conftest.py), with new tests proving the split math, the loud-failure
+   paths, and audit persistence (tests/test_cache_pricing.py, 7 tests).
+
+**Consequences.** Session cost estimates drop materially when cache hits
+occur (10x cheaper hit input on kimi; 0.1x on anthropic reads). The
+pre-dispatch ESTIMATE still bills all input at the miss rate (conservative
+cap check). The $1.15 session estimate will be re-measured against the
+first live session (step 4) with the split in force.
