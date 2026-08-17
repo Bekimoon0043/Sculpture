@@ -25,6 +25,16 @@ Hard constraints (all violations are collected and reported together):
      (design rule, defensible in numbers: the vertical gap between dishes is
      spacing - depth; overlapping dishes are a design error, not a silent
      fusion)
+  7. min_clearance_mm >= the material's min_clearance_mm floor
+     (materials.yaml, ADR-029 — construction safety, the same class as 4:
+     at clearance 0 the widest dish rim is TANGENT to the basin inner wall,
+     the fuse carries coincident surfaces and the mesh is not watertight.
+     Constraint 1 alone cannot catch this: it is satisfied exactly at
+     tangency. Proven by the live gate failure of 2026-08-09.)
+
+UNIT CONVENTION: min_clearance_mm is DIAMETRAL — it is subtracted from a
+diameter in constraint 1, so the physical radial gap between the dish rim
+and the basin wall is min_clearance_mm / 2.
 """
 
 from __future__ import annotations
@@ -141,10 +151,19 @@ CASCADE_PARAMETERS: dict[str, dict[str, Any]] = {
     "min_clearance_mm": {
         "unit": "mm",
         "default": 100,
-        "min": 0,
+        # ADR-029: the static floor is the SMALLEST per-material floor in
+        # materials.yaml (the union, exactly as ADR-027 did for walls); hard
+        # constraint 7 then narrows it to the SELECTED material. 0 is gone:
+        # it puts the dish rim tangent to the basin wall and the fused solid
+        # is not watertight (live gate failure 2026-08-09).
+        "min": 20,
         "max": 1000,
         "type": "float",
-        "notes": "free water/fall gap between widest dish and basin wall",
+        "notes": (
+            "free water/fall gap between widest dish and basin wall — "
+            "DIAMETRAL, so the physical radial gap is half this number; "
+            "per-material floor applies (constraint 7)"
+        ),
     },
 }
 
@@ -315,6 +334,21 @@ def validate_params(
             f"tier_spacing_mm={params.tier_spacing_mm:g} < dish_depth_mm="
             f"{params.dish_depth_mm:g} — dishes would overlap "
             f"(vertical gap = {params.tier_spacing_mm - params.dish_depth_mm:g} mm)"
+        )
+
+    # --- hard constraint 7: fall gap inside the material's floor -----------
+    # Constraint 1 is satisfied EXACTLY at tangency (basin == required), so
+    # it cannot catch a zero gap on its own — this one does (ADR-029).
+    if material is not None and params.min_clearance_mm < material.min_clearance_mm:
+        violations.append(
+            f"min_clearance_mm={params.min_clearance_mm:g} < material "
+            f"minimum {material.min_clearance_mm:g} mm for "
+            f"{params.material_id} ({material.name}) — the fall gap between "
+            f"the widest dish and the basin wall would be "
+            f"{params.min_clearance_mm / 2:g} mm radial, below the "
+            f"{material.min_clearance_mm / 2:g} mm this material is built "
+            "to (materials.yaml, ADR-029). At zero the dish rim is tangent "
+            "to the basin wall and the fused solid is NOT watertight."
         )
 
     if violations:

@@ -35,6 +35,21 @@ DEFAULT_HARD_TIMEOUT_S = 120
 KILL_GRACE_S = 10
 
 
+def _write_result(job_dir: Path, payload: dict) -> None:
+    """Publish result.json ATOMICALLY.
+
+    The backend polls for result.json's EXISTENCE and parses it immediately
+    (fabricate.ScratchSandboxRunner / probe_scratch). A plain write creates
+    the file before it has content, so a poll landing in that window reads a
+    truncated file and raises JSONDecodeError. Write to a sibling temp name
+    the poller ignores, then os.replace — atomic within a directory, so the
+    backend only ever sees a complete file.
+    """
+    tmp = job_dir / "result.json.tmp"
+    tmp.write_text(json.dumps(payload), encoding="utf-8")
+    os.replace(tmp, job_dir / "result.json")
+
+
 def _pending_jobs(scratch: Path) -> list[Path]:
     jobs = []
     for d in sorted(scratch.iterdir()):
@@ -65,23 +80,23 @@ def execute_job(job_dir: Path) -> None:
     try:
         job = json.loads((job_dir / "job.json").read_text(encoding="utf-8"))
     except Exception as exc:  # malformed job file — answer it honestly
-        (job_dir / "result.json").write_text(json.dumps({
+        _write_result(job_dir, {
             "ok": False, "error": f"malformed job.json: {exc}",
             "artifacts": None, "brep_volume_mm3": None, "params": None,
-        }), encoding="utf-8")
+        })
         return
     # ADR-028 probe: answer inline (no subprocess, no code execution) with
     # proof of WHO answered — hostname + pid let the gate assert the file
     # was written by a DIFFERENT container than the one reading it.
     if job.get("probe"):
-        (job_dir / "result.json").write_text(json.dumps({
+        _write_result(job_dir, {
             "ok": True,
             "probe": True,
             "worker_hostname": socket.gethostname(),
             "worker_pid": os.getpid(),
             "error": None, "artifacts": None,
             "brep_volume_mm3": None, "params": None,
-        }), encoding="utf-8")
+        })
         log.info("probe %s answered inline", job_dir.name)
         return
     timeout_s = float(job.get("timeout_s", DEFAULT_HARD_TIMEOUT_S))
@@ -96,18 +111,18 @@ def execute_job(job_dir: Path) -> None:
         elapsed = time.perf_counter() - t0
         log.info("job %s finished rc=%s in %.1fs", job_dir.name, proc.returncode, elapsed)
         if not (job_dir / "result.json").exists():
-            (job_dir / "result.json").write_text(json.dumps({
+            _write_result(job_dir, {
                 "ok": False,
                 "error": f"job runner exited rc={proc.returncode} without a "
                          f"result; stderr tail: {(proc.stderr or '')[-1000:]}",
                 "artifacts": None, "brep_volume_mm3": None, "params": None,
-            }), encoding="utf-8")
+            })
     except subprocess.TimeoutExpired:
-        (job_dir / "result.json").write_text(json.dumps({
+        _write_result(job_dir, {
             "ok": False,
             "error": f"hard timeout: exceeded {timeout_s:.0f}s sandbox limit",
             "artifacts": None, "brep_volume_mm3": None, "params": None,
-        }), encoding="utf-8")
+        })
         log.warning("job %s killed at hard timeout %.0fs", job_dir.name, timeout_s)
 
 

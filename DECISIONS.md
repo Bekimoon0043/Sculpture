@@ -1332,3 +1332,112 @@ Regression locks: _resolve_artifacts (basenames/missing/absolute-refusal),
 collection_failed persistence + repair continuation, worker probe pickup +
 inline answer, plus a live smoke (real worker subprocess answered a
 probe_scratch round trip). 149 tests, both auto gates PASS.
+
+## ADR-029 — Zero-clearance tangency, material fall-gap floors, prompt solving order (2026-08-17)
+
+The Phase 4 live gate failed three times. The last of those runs reached
+attempt 3, built a real solid, exported STEP and GLB, collected them
+correctly (ADR-028 held) — and failed validation on `watertight: False`.
+This ADR records the cause, the fix, and three defects found alongside it.
+
+**Root cause — a tangency singularity the constraint system permitted.**
+The geometrist set `min_clearance_mm = 0.0`, reasoning in its own comments:
+"min_clearance_mm <= 0. Use 0 (minimum allowed)." The brief fixes the basin
+at 2.6 m; with a 180 mm wall and a 2240 mm widest dish, constraint 1
+(`basin >= widest + 2*wall + clearance`) is satisfied EXACTLY at equality
+with clearance 0 — and at equality the widest dish rim is tangent to the
+basin inner wall. The fused solid carries coincident surfaces and meshes
+non-watertight. The registry declared `min_clearance_mm` with `"min": 0`,
+so the one degenerate value in the space was reachable, and constraint 1
+cannot catch it because it is satisfied *at* the singularity.
+
+**Measured, not reasoned (the threshold sweep).** Rebuilt offline through
+the real `validate_mesh` path, monumental massing, basin 2600:
+
+```
+gap(mm)  widest   watertight   volume_mm3
+  0.0    2240.0     False      3169987070     <- reproduces the live failure
+  0.5    2239.5     True       3169071696
+  1.0    2239.0     True       3168156539
+ 20.0    2220.0     True       3133537726
+```
+
+Volume 3169987070 matches the live run's 3169987069.696 — the failure was
+reproduced exactly, not approximated. The CAD threshold is therefore *any*
+positive clearance: zero is a knife-edge singularity, not a gradual
+degradation. Consequence for how the floors are set: they are chosen from
+FABRICATION reality and carry an enormous margin over the CAD threshold,
+rather than being tuned down to it.
+
+**Fix 1 — per-material fall-gap floors (materials.yaml).** Every material
+gains `min_clearance_mm`; new hard constraint 7 enforces it with real
+numbers in both the diametral and the radial figure. Registry static floor
+becomes 20 (the smallest material floor — the union, exactly as ADR-027 did
+for walls), so 0 is unreachable through any material.
+
+- stainless_316l_sheet 20 mm (10 radial) — parts finished before assembly;
+  clears weld bead (~4 mm proud) plus springback, passes a hose/brush
+- bronze_cast 20 mm (10 radial) — cast and chased before assembly
+- basalt_slab 40 mm (20 radial) — two carved faces bound this gap, each
+  with a few mm of carving tolerance; admits a brush once installed
+- cast_concrete_c35_45 50 mm (25 radial) — coarsest tolerance in the
+  library; formwork deflects and aggregate bulges the face
+
+BASIS HONESTY (ADR-009, same status as ADR-027's wall envelopes): these are
+WORKSHOP values set by the fabricator — the operator — and tunable in
+materials.yaml. They are NOT citations of an external standard and no
+standard was fetched. The threshold arithmetic above is computed.
+
+**UNIT CONVENTION recorded because it caused the defect:**
+`min_clearance_mm` is DIAMETRAL — it is subtracted from a diameter, so the
+physical radial gap is HALF of it. The parameter note said "free water/fall
+gap", which reads as radial. Both the note and the prompt now say so.
+
+**Fix 2 — the prompt teaches the solving ORDER, and this is what actually
+worked.** A floor alone would only have converted a validation failure into
+a constraint failure — the model would still have driven the clearance down
+and burned attempts. `registry_surface()` now states the diametral
+convention, names the tangency consequence in the failure's own words, and
+gives the order to solve in: when the brief fixes the basin, constraint 1
+binds the DISHES, so size `widest_dish <= basin - 2*wall - clearance` and
+choose the tier geometry under it. The next live run's program followed
+that instruction verbatim ("Solve constraint 1 for dish sizing...", "100.0
+# Well above the 40 mm floor") and passed on ATTEMPT 1 — against 3 failed
+attempts for the same spec before it.
+
+**Fix 3 — success_rates counted specs, not runs.** A "fabrication unit" was
+`(session_id, spec_id)`, so every re-run of the same spec after a fix
+collapsed into one unit. On the real data that reported
+`first_attempt_pass_rate: 1.0` when three earlier runs of that spec had
+failed outright — the metric flattered itself exactly where the operator's
+2026-08-09 order says it must warn. Units are now RUNS, recovered without a
+schema change: attempt_no restarts at 1 per `fabricate_spec` call, so within
+one (session, spec) ordered by created_at a new run begins wherever
+attempt_no does not increase. True figures are in PHASE_4_REPORT.md.
+
+**Fix 4 — result.json is published atomically.** The backend polls for the
+file's EXISTENCE and parses it immediately; both writers created it empty
+and filled it afterwards, so a poll landing mid-write reads a truncated file
+and raises JSONDecodeError inside the fabrication loop. Both
+`worker._write_result` and `job_runner._write_result` now write a temp
+sibling and `os.replace`. The queue side of this handshake had always been
+correct (the worker requires job.json, which the backend writes last); the
+answer side never was. Not observed in production — found by inspection,
+fixed before it could bite on a slower disk.
+
+**Method note for future work — never judge watertightness from a raw GLB
+load.** `trimesh.load(...)` reports EVERY build non-watertight, including
+the Phase 2 canonical one: the exporter writes one mesh patch per B-rep face
+with duplicated seam vertices. Only `validate_mesh`, which merge_vertices()
+first, gives a meaningful answer. A first version of the ADR-029 regression
+test measured raw and "found" a defect in known-good geometry.
+
+**Regression locks:** constraint 7 with real numbers per material; the
+registry floor; the exact live-failure parameter set refused before the
+sandbox; a build AT basalt's floor proven watertight through the real
+validator; the tangency case re-measured as still failing (with the volume
+pinned, so a kernel change that invalidates this ADR's basis is loud); the
+prompt surface asserted to carry the convention, the consequence and the
+solving order; runs-not-specs rate counting; atomic publication observed at
+the write, not read from the source. 178 tests pass; Phase 2 and Phase 4
+auto gates PASS; the Phase 2 canonical STEP sha256 e1a59fa6… is unchanged.

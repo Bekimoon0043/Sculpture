@@ -1,4 +1,4 @@
-# LuxuryForm Studio v1 — Phase 4 of 7 IN PROGRESS (gate pending)
+# LuxuryForm Studio v1 — Phases 1-4 of 7 CLOSED
 
 **What this is:** an internal design platform for LuxuryCon (Addis Ababa). It
 turns a client brief for a sculpture or fountain into a design that is
@@ -6,28 +6,31 @@ defensible in numbers — real wall thickness, real weight, real water flow —
 using a council of AI models (Claude, GPT, Kimi) whose every call is logged
 and spend-capped, plus a real CAD engine.
 
-**Current phase status:** This platform has 7 phases. Phases 1, 2 and 3
+**Current phase status:** This platform has 7 phases. Phases 1, 2, 3 and 4
 are built and CLOSED (operator gates PASS, 2026-08-01 / 2026-08-04 /
-2026-08-07). **Phase 4 of 7 is IN PROGRESS** (AI-written geometry in the
-ADR-005 sandbox: AST gate, bounded repair, per-attempt lineage; built
-2026-08-09, fixture gate PASS, live gate pending operator).
-Phase 3 delivered the full AI Council: schema v3 persistence, the $0
-fixture replay pipeline, the costing rates schema, the orchestrator,
-cache-aware provider pricing (ADR-022) with cache-break prompts
-(ADR-024), the transcript UI with cost panel, and the live-run machinery.
-First live session measured $0.843842 against a $1.15 estimate. What works
-today:
-everything from Phase 1 (provider layer, spend caps, audit logging, gates)
-PLUS the geometry kernel — one fully parametric tiered-cascade fountain
-built as a single watertight CAD solid, hard design constraints with real
-numbers in every error, trimesh validation, deterministic STEP export (same
-spec + same seed = byte-identical file, proven cross-machine by printed
-sha256 hashes), GLB export, and a three.js browser viewport at
-http://localhost:5173, PLUS the full AI Council (Phase 3): six agents
-across three providers produce and cross-review Design Specs, a binding
-Arbiter decision, full transcript UI with per-call costs. The AI-written
-geometry sandbox, rendering and the remaining primitives arrive in
-Phases 4–7 (see `LIMITATIONS.md`).
+2026-08-07 / 2026-08-17). Phases 5, 6 and 7 are not started.
+
+What works today: everything from Phase 1 (provider layer, spend caps, audit
+logging, gates), PLUS the geometry kernel — one fully parametric
+tiered-cascade fountain built as a single watertight CAD solid, hard design
+constraints with real numbers in every error, trimesh validation,
+deterministic STEP export (same spec + same seed = byte-identical file,
+proven cross-machine by printed sha256 hashes), GLB export and a three.js
+browser viewport at http://localhost:5173, PLUS the full AI Council (Phase
+3) — six agents across three providers producing and cross-reviewing Design
+Specs, a binding Arbiter decision, full transcript UI with per-call costs
+(first live session measured $0.843842 against a $1.15 estimate), PLUS the
+fabrication loop (Phase 4) — the GEOMETRIST writes the CAD program, an AST
+gate refuses illegal programs, the ADR-005 sandbox (separate container,
+non-root, no network, read-only filesystem) executes legal ones, a bounded
+repair loop feeds every failure back, and every attempt is persisted with
+full spec -> program -> artifact lineage. On 2026-08-17 the operator's own
+brief produced a watertight 2.6 m basalt cascade (3,432 kg) passing the
+Phase 2 validation gate on the first attempt, for $0.046777.
+
+Rendering and the vision-critique loop (Phase 5), the primitive library
+(Phase 6) and the resumable job runner (Phase 7) are not built — see
+`LIMITATIONS.md`.
 
 ## One-command start (with Docker)
 
@@ -37,9 +40,10 @@ REM  open .env in Notepad and paste your three API keys
 docker compose up --build -d
 ```
 
-- The **viewport** is at http://localhost:5173 (first start downloads npm
-  packages — can take 5–30 minutes on a slow line; see
-  `docs/operator/02_phase2_viewport.md`).
+- The **viewport** is at http://localhost:5173. Node packages are baked
+  into the image at BUILD time (ADR-013), so container start is fast; it is
+  the first `--build` that downloads. See
+  `docs/operator/02_phase2_viewport.md`.
 - The **API** is at http://localhost:8000 — try
   http://localhost:8000/api/health in your browser.
 
@@ -48,11 +52,15 @@ docker compose up --build -d
 ```bat
 docker compose exec backend python scripts/gate_phase1.py
 docker compose exec backend python scripts/gate_phase2_auto.py
+docker compose exec backend python scripts/gate_phase3_auto.py
+docker compose exec backend python scripts/gate_phase4_auto.py
 ```
 
 Each gate prints a numbered transcript and ends in PASS or FAIL with exact
 reasons. The Phase 1 gate costs about **$0.01–0.05** in API calls per run;
-the Phase 2 auto gate is fully offline (no API calls). After the auto gate,
+the Phase 2, 3 and 4 auto gates are fully offline (no API calls, $0). The
+Phase 3 and 4 gates take `--live` to re-run their real-money halves on
+demand. After the auto gate,
 do the 15-minute visual check: `docs/operator/gate_phase2_visual.md`.
 Full walkthroughs: `docs/operator/01_starting_the_platform.md` (Phase 1) and
 `docs/operator/02_phase2_viewport.md` (Phase 2).
@@ -86,10 +94,13 @@ spending.
 - `schemas/design_spec_v1.json` — the AI-to-CAD contract (units everywhere)
 - `backend/app/` — the FastAPI backend (`core`, `db`, `ai`, `api`, `geometry`)
 - `backend/app/geometry/` — the Phase 2 kernel: parameter registry + hard
-  constraints, cascade builder, exporters, trimesh validation
+  constraints, cascade builder, exporters, trimesh validation — plus the
+  Phase 4 sandbox: `ast_gate.py`, `worker.py`, `job_runner.py`
+- `backend/app/council/` — the Phase 3 Council (orchestrator, prompts,
+  dispatch, replay) and the Phase 4 fabrication loop (`fabricate.py`)
 - `frontend/` — the three.js viewport (React + Vite + TypeScript, pinned)
-- `scripts/` — `gate_phase1.py`, `gate_phase2_auto.py`, `_cascade_build_once.py`
+- `scripts/` — one gate per phase (`gate_phase1.py` … `gate_phase4_auto.py`),
+  `_cascade_build_once.py`, `generate_hub_status.py`
 - `tests/` — the offline test suite (`pytest`)
 - `docs/operator/` — plain-language operator guides + the visual gate
-- `DECISIONS.md` / `LIMITATIONS.md` / `PHASE_1_REPORT.md` / `PHASE_2_REPORT.md`
-  — read these
+- `DECISIONS.md` / `LIMITATIONS.md` / `PHASE_1..4_REPORT.md` — read these

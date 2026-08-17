@@ -52,7 +52,7 @@ and update the file (bump `pricing_version` when you do). Every logged call
 records which pricing version computed its cost, so stale numbers can always
 be identified — but they are still stale until you update them.
 
-## 5. Phases 3–7 are not fully built yet
+## 5. Phases 5–7 are not fully built yet
 
 **CLOSED phases (no longer limitations):** Phase 1 (gate PASS 2026-08-01),
 Phase 2 (gate PASS 2026-08-04 — cascade primitive, STEP/GLB export,
@@ -62,24 +62,17 @@ replay, the orchestrator with strict-JSON validation and re-ask, audited
 retries and degraded-session resilience (ADR-023), cache-aware pricing
 (ADR-022), cache-break prompts (ADR-024), transcript UI, live machinery,
 split gate; first live session measured $0.843842 against a $1.15 estimate;
-see PHASE_3_REPORT.md). Phase 3's scope limits are documented in
-PHASE_3_REPORT.md, not here.
+see PHASE_3_REPORT.md), and Phase 4 (gate PASS 2026-08-17 — the fabrication
+loop: the GEOMETRIST writes parametric build123d code executed only in the
+ADR-005 sandbox, AST gate, bounded repair, full spec→program→artifact
+lineage; the operator's own brief produced a watertight 2.6 m basalt
+cascade passing the Phase 2 validation gate on the FIRST attempt for
+$0.046777; see PHASE_4_REPORT.md). Phases 3 and 4 scope limits are in their
+own reports and in §9 below, not here.
 
 Not present in this repository, by design (later-phase code is not created
 early):
 
-- **Phase 4 — IN PROGRESS (built 2026-08-09, live gate pending).** The
-  GEOMETRIST writes parametric build123d code from a Design Spec; the code
-  executes only in the ADR-005 sandbox (geo-worker container: non-root, no
-  network, read-only fs except one scratch mount, CPU/memory limits, hard
-  timeout); an AST gate whitelists imports {registry, build123d, math}
-  before any run; bounded repair (3 attempts) with every failure class fed
-  back as the repair digest; every program — including REJECTED ones with
-  their rejection reasons — persisted against its spec; success rates
-  reported first-attempt vs per-repair-round; geometrist_code separated in
-  cost rollups. Fixture gate PASS ($0). Live gate: the operator's Phase 3
-  brief (session 32e1c68f) must produce real geometry passing the Phase 2
-  validation gate — pending.
 - **Phase 5** — validation gates (mesh, hydraulics, structure, fabrication)
   and the render → vision-critique → bounded-delta loop (ADR-007), including
   enforcement of `max_vision_iterations`.
@@ -135,11 +128,52 @@ in git history (section numbers are never reused).
   bytes, render outputs and any file with embedded metadata are NOT part of
   the byte-identity guarantee (see §2) — only STEP + parameter set are, and
   that is what the gate hashes.
-- **The rebuild-time number [ADD-5] is pending operator hardware.** The
-  frontend measures it live; the value in PHASE_2_REPORT.md is filled in by
-  the operator from the viewport readout, on their machine — never estimated
-  by us.
+- ~~The rebuild-time number [ADD-5] is pending operator hardware~~ —
+  **CLOSED 2026-08-04**, measured by the operator on their machine: 1400 ms
+  viewport / 1170 ms server, recorded in PHASE_2_REPORT.md. (This entry
+  stayed open in error until 2026-08-17.)
 - **GLB tessellation is 1 mm deflection.** The preview mesh deviates from the
   exact B-rep by up to ~1 mm on curved surfaces; the volume cross-check
   (2% tolerance, both numbers printed) quantifies the effect. Fabrication
   always uses the STEP, never the GLB.
+- **Watertightness is only meaningful after `merge_vertices()`.** The GLB
+  exporter writes one mesh patch per B-rep face with duplicated seam
+  vertices, so a raw `trimesh.load()` reports EVERY build — including the
+  Phase 2 canonical one — as not watertight. `validate_mesh` dedupes
+  coincident vertices first (no vertex moves, no face changes) and is the
+  only honest place to read this number from (ADR-029 method note).
+
+---
+
+## 9. Phase 4 scope limits (what the fabrication loop does NOT do yet)
+
+- **One wall parameter serves the basin, the dishes AND the column.** Hard
+  constraint 4 (`column_diameter >= bore + 2*basin_wall`) applies the basin
+  wall thickness to the column, which is a different member. In the passing
+  live run the geometrist satisfied it by thinning the wall from the
+  Council's 180 mm to 60 mm rather than widening the column — legal,
+  watertight, and NOT the wall the Council specified. The platform has no
+  basis to prefer either resolution. Separate per-member wall parameters
+  are a Phase 6 registry change. **Until then, check the wall thickness in
+  the fabricated parameter set against the Design Spec before quoting.**
+- **The repair loop is so far diagnostic, not corrective.** Across four
+  live runs, rounds 2 and 3 have never produced a pass; every success came
+  at attempt 1. The failure digests have been valuable — they found three
+  real defects — but no repair round has yet rescued a run.
+- **First-attempt success rests on one post-fix data point.** One run
+  passing at attempt 1 is not a rate. PHASE_4_REPORT.md states this
+  plainly; the table extends with the next live fabrications.
+- **Material fall-gap floors and wall envelopes are WORKSHOP values**, set
+  by the fabricator and tunable in materials.yaml (ADR-027, ADR-029). They
+  are not citations of an external standard, and no standard was fetched to
+  set them.
+- **The scratch mount is never reaped.** `data/geo_scratch/` accumulates one
+  directory per sandbox job, holding the generated program and its result.
+  Nothing deletes them. Harmless today (kilobytes), and useful for
+  forensics, but it is not a cleanup story yet.
+- **The synthetic demo Council session is indistinguishable from a real
+  one** in the session list: `54e12d62` shows `completed` with
+  `total_cost_usd $1.2624` although no API call was ever made (it has zero
+  `ai_calls` rows — which is why budget enforcement is unaffected, ADR-003).
+  Any spend figure read from `council_sessions` rather than `ai_calls`
+  overstates by that amount.

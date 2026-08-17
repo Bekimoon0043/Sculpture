@@ -394,6 +394,11 @@ class Material(BaseModel):
     # ADR-027: per-material fabrication envelope ceiling (workshop-set,
     # tunable in materials.yaml — not an external standard citation).
     max_wall_mm: float = Field(gt=0)
+    # ADR-029: per-material fall-gap floor, DIAMETRAL (radial gap is half).
+    # gt=0 is load-bearing: clearance 0 makes the widest dish rim tangent to
+    # the basin wall, which fuses to a non-watertight solid (live gate
+    # failure 2026-08-09). Same workshop-set status as the wall envelope.
+    min_clearance_mm: float = Field(gt=0)
     stock_size_mm: StockSizeMm | None = None  # None = cast, no stock sheet
 
 

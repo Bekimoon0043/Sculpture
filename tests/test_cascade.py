@@ -216,6 +216,147 @@ def test_material_wall_envelope_ceiling_adr027():
     )
 
 
+def test_material_clearance_floor_adr029():
+    """ADR-029: hard constraint 7 — min_clearance_mm has a per-material
+    floor, enforced with real numbers in BOTH the diametral and the radial
+    figure. Constraint 1 alone cannot catch this: it is satisfied exactly
+    AT tangency."""
+    # basalt floor is 40 mm diametral (20 mm radial)
+    with pytest.raises(ConstraintViolation) as excinfo:
+        validate_params({"min_clearance_mm": 30})
+    msgs = excinfo.value.violations
+    assert any(
+        "min_clearance_mm=30" in m and "material minimum 40" in m
+        and "basalt_slab" in m and "15 mm radial" in m for m in msgs
+    ), msgs
+    # concrete is the coarsest: 50 mm diametral
+    with pytest.raises(ConstraintViolation) as excinfo:
+        validate_params({
+            "material_id": "cast_concrete_c35_45", "basin_wall_mm": 75,
+            "column_diameter_mm": 200, "min_clearance_mm": 40,
+        })
+    assert any(
+        "material minimum 50" in m and "cast_concrete_c35_45" in m
+        for m in excinfo.value.violations
+    ), excinfo.value.violations
+    # at the floor exactly, it passes
+    assert validate_params({"min_clearance_mm": 40}).min_clearance_mm == 40
+
+
+def test_zero_clearance_is_rejected_by_the_range_adr029():
+    """The registry floor (20 = smallest material floor) kills clearance 0
+    before the per-material constraint even runs — 0 is the value the live
+    geometrist chose, and it is now unreachable through any material."""
+    with pytest.raises(ConstraintViolation) as excinfo:
+        validate_params({"min_clearance_mm": 0})
+    assert any("min_clearance_mm" in m for m in excinfo.value.violations)
+    assert CASCADE_PARAMETERS["min_clearance_mm"]["min"] == 20
+
+
+def test_live_gate_failure_parameters_are_now_rejected_adr029():
+    """REGRESSION, verbatim from the failed live run of 2026-08-09: these
+    exact parameters built a solid that trimesh reported watertight=False,
+    because widest dish 2240 + 2x180 wall == basin 2600 exactly. The
+    registry must now refuse them BEFORE the sandbox burns an attempt."""
+    live = {
+        "tiers": 3, "tier_top_diameter_mm": 1120.0,
+        "tier_diameter_step_mm": 560.0, "dish_depth_mm": 420.0,
+        "tier_spacing_mm": 420.0, "lip_fillet_mm": 8.0,
+        "column_diameter_mm": 420.0, "basin_diameter_mm": 2600.0,
+        "basin_height_mm": 350.0, "basin_wall_mm": 180.0,
+        "bore_diameter_mm": 50.0, "material_id": "basalt_slab",
+        "min_clearance_mm": 0.0,
+    }
+    with pytest.raises(ConstraintViolation):
+        validate_params(live)
+    # and the fix the geometrist should reach for — shrink the DISHES, keep
+    # the brief's 2.6 m basin — validates cleanly
+    fixed = dict(live, min_clearance_mm=40.0,
+                 tier_top_diameter_mm=1080.0, tier_diameter_step_mm=560.0)
+    assert validate_params(fixed).min_clearance_mm == 40.0
+
+
+def _monumental(**overrides):
+    """The live brief's monumental basalt massing, parameterised.
+
+    basin 2.6 m, 180 mm wall, 420 mm dishes — the configuration the Council
+    actually produced on 2026-08-09 and the one the tangency defect hid in.
+    """
+    params = {
+        "tiers": 3, "tier_diameter_step_mm": 560.0, "dish_depth_mm": 420.0,
+        "tier_spacing_mm": 420.0, "lip_fillet_mm": 8.0,
+        "column_diameter_mm": 420.0, "basin_diameter_mm": 2600.0,
+        "basin_height_mm": 350.0, "basin_wall_mm": 180.0,
+        "bore_diameter_mm": 50.0, "material_id": "basalt_slab",
+    }
+    params.update(overrides)
+    return params
+
+
+def _watertight_at(tmp_path, name, params):
+    """Build + export + measure through the REAL Phase 2 validator.
+
+    Must go through validate_mesh, not a raw trimesh.load: the GLB exporter
+    writes one patch per B-rep face with duplicated seam vertices, so a raw
+    load reports EVERY build — including the Phase 2 canonical one — as not
+    watertight. validate_mesh merge_vertices() first (see its docstring).
+    """
+    from app.core.config import load_config_bundle
+    from app.geometry.cascade import build_cascade
+    from app.geometry.exporters import export_glb
+    from app.geometry.validate import validate_mesh
+
+    solid = build_cascade(params)
+    out = tmp_path / f"{name}.glb"
+    export_glb(solid, out)
+    material = load_config_bundle().materials.materials[params.material_id]
+    return validate_mesh(out, material, material_id=params.material_id,
+                         reference_volume_mm3=solid.volume)
+
+
+def test_build_at_the_material_clearance_floor_is_watertight_adr029(tmp_path):
+    """The floor is only worth having if geometry AT the floor is sound.
+    Builds the corrected live massing at basalt's exact floor and proves the
+    fused solid meshes watertight — the check that failed live."""
+    _build123d()
+    _trimesh()
+    # widest dish sized to sit exactly at the floor: 2600 - 2*180 - 40
+    params = validate_params(_monumental(
+        tier_top_diameter_mm=2200.0 - 1120.0, min_clearance_mm=40.0))
+    report = _watertight_at(tmp_path, "floor", params)
+    assert report.watertight, report.model_dump()
+    assert report.passed, report.model_dump()
+
+
+def test_zero_clearance_really_does_break_the_mesh_adr029(tmp_path):
+    """The evidence the floor rests on, re-measured rather than asserted.
+
+    model_construct BYPASSES the new range deliberately: this reproduces the
+    exact geometry of the failed live run (2026-08-09, volume 3169987070
+    mm3, watertight False) and shows that the smallest positive clearance
+    already fixes it. Zero is a knife-edge tangency singularity, not a
+    gradual degradation — which is why the FABRICATION floors in
+    materials.yaml (20-50 mm) are set by workshop reality and carry an
+    enormous margin over the CAD threshold, rather than being tuned to it.
+    """
+    _build123d()
+    _trimesh()
+    from app.geometry.registry import CascadeParams
+
+    tangent = CascadeParams.model_construct(
+        **_monumental(tier_top_diameter_mm=1120.0, min_clearance_mm=0.0))
+    report = _watertight_at(tmp_path, "tangent", tangent)
+    assert not report.watertight, (
+        "the tangency case must still reproduce as NOT watertight — if this "
+        "starts passing, the kernel changed and ADR-029's basis needs review"
+    )
+    assert round(report.volume_mm3) == 3169987070, report.volume_mm3
+
+    clear = CascadeParams.model_construct(
+        **_monumental(tier_top_diameter_mm=1119.5, min_clearance_mm=0.5))
+    assert _watertight_at(tmp_path, "clear", clear).watertight
+
+
 def test_monumental_dish_depth_adr027():
     """ADR-027 widened dish_depth_mm to 600 for monumental stonework;
     hard constraint 6 (spacing >= depth) still binds."""
@@ -234,9 +375,36 @@ def test_registry_surface_states_ranges_and_envelopes():
     surface = registry_surface()
     assert "basin_wall_mm (float, mm, default 20 [3..300])" in surface
     assert "dish_depth_mm (float, mm, default 90 [40..600])" in surface
-    assert "MATERIAL WALL ENVELOPES" in surface
-    assert "basalt_slab (Basalt slab): 20..250 mm" in surface
-    assert "stainless_316l_sheet (316L stainless steel sheet): 3..20 mm" in surface
+    assert "MATERIAL ENVELOPES" in surface
+    assert (
+        "basalt_slab (Basalt slab): basin_wall_mm 20..250 mm | "
+        "min_clearance_mm >= 40 mm (20 mm radial)"
+    ) in surface
+    assert (
+        "stainless_316l_sheet (316L stainless steel sheet): "
+        "basin_wall_mm 3..20 mm | min_clearance_mm >= 20 mm (10 mm radial)"
+    ) in surface
+
+
+def test_registry_surface_teaches_the_clearance_trap_adr029():
+    """ADR-029: the live gate failed because the geometrist drove
+    min_clearance_mm to 0 to satisfy constraint 1 against a brief-fixed
+    basin diameter. The surface must state the DIAMETRAL convention, name
+    the tangency consequence, and give the solving order that avoids it —
+    otherwise the same reasoning recurs on every monumental brief."""
+    from app.council.prompts import registry_surface
+
+    surface = registry_surface()
+    assert "7. min_clearance_mm >= the material's CLEARANCE FLOOR" in surface
+    assert "DIAMETRAL" in surface
+    assert "HALF" in surface
+    # the exact failure mode, named in the prompt
+    assert "TOUCHES the basin wall" in surface
+    assert "not watertight" in surface
+    # and the way out: solve for the dishes, not the clearance
+    assert (
+        "widest_dish <= basin_diameter_mm - 2*basin_wall_mm - min_clearance_mm"
+    ) in surface
 
 
 # ---------------------------------------------------------------------------

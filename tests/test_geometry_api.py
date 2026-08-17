@@ -161,6 +161,11 @@ def test_phase1_db_is_renamed_not_deleted(tmp_path, monkeypatch):
     assert "arbiter_decisions" in {
         row[0] for row in fresh.execute("SELECT name FROM sqlite_master WHERE type='table'")
     }
+    # Assert against the LIVE constant, never a literal: this test hardcoded
+    # (3,) and started failing the moment Phase 4 bumped the schema to v4,
+    # which is a bookkeeping change, not a regression in what it guards.
+    from app.db.database import SCHEMA_VERSION
+
     versions = fresh.execute("SELECT version FROM schema_migrations").fetchall()
-    assert (3,) in versions
+    assert (SCHEMA_VERSION,) in versions
     fresh.close()

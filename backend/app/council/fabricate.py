@@ -424,20 +424,44 @@ def _persist_program(orchestrator, row: GeneratedProgramRow) -> None:
 def success_rates(db, session_id: str | None = None) -> dict[str, Any]:
     """Per-attempt pass rates over generated_programs rows.
 
-    A "fabrication unit" is one (session_id, spec_id) pair. Rates:
+    A "fabrication unit" is one RUN of the repair loop — one call to
+    fabricate_spec. Rates:
       first_attempt: units passed at attempt 1 / all units
       round_k: units passed at attempt k / units that REACHED attempt k
     Also returns the rejection catalogue counts by AST-gate reason.
+
+    A unit is NOT (session_id, spec_id): the same spec is fabricated again
+    every time the operator re-runs the loop after a fix, and keying on the
+    pair collapsed all of those into one unit. Measured on the real data,
+    that reported a 1.0 first-attempt rate when three earlier runs of the
+    same spec had failed outright — the metric flattered itself exactly
+    where it was meant to warn (operator order 2026-08-09: a low
+    first-attempt rate is the signal to enrich the registry surface).
+
+    Runs are recovered WITHOUT a schema change: attempt_no restarts at 1 on
+    every fabricate_spec call, so within one (session, spec) ordered by
+    created_at, a new run begins wherever attempt_no does not increase.
     """
     with db.get_session() as s:
         q = s.query(GeneratedProgramRow)
         if session_id is not None:
             q = q.filter_by(session_id=session_id)
-        rows = q.order_by(GeneratedProgramRow.attempt_no).all()
+        rows = q.order_by(GeneratedProgramRow.created_at,
+                          GeneratedProgramRow.attempt_no).all()
 
-    units: dict[tuple[str, str], list[GeneratedProgramRow]] = {}
+    by_spec: dict[tuple[str, str], list[GeneratedProgramRow]] = {}
     for r in rows:
-        units.setdefault((r.session_id, r.spec_id), []).append(r)
+        by_spec.setdefault((r.session_id, r.spec_id), []).append(r)
+
+    units: dict[tuple[str, str, int], list[GeneratedProgramRow]] = {}
+    for (sid, spec), spec_rows in by_spec.items():
+        run = 0
+        previous = None
+        for r in spec_rows:
+            if previous is None or r.attempt_no <= previous:
+                run += 1          # attempt counter restarted -> new run
+            previous = r.attempt_no
+            units.setdefault((sid, spec, run), []).append(r)
 
     reached: dict[int, int] = {}
     passed_at: dict[int, int] = {}

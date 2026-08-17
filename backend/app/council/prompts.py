@@ -205,9 +205,25 @@ def registry_surface() -> str:
         "  4. column_diameter_mm >= bore_diameter_mm + 2*basin_wall_mm",
         "  5. lip_fillet_mm < basin_wall_mm",
         "  6. tier_spacing_mm >= dish_depth_mm",
+        "  7. min_clearance_mm >= the material's CLEARANCE FLOOR below",
         "",
-        "MATERIAL WALL ENVELOPES (basin_wall_mm must stay inside the "
-        "selected material's envelope — materials.yaml, ADR-027):",
+        "UNITS AND SOLVING ORDER — read this before choosing numbers:",
+        "  * min_clearance_mm is DIAMETRAL: the physical radial gap between",
+        "    the widest dish rim and the basin inner wall is HALF of it.",
+        "  * Constraint 1 is satisfied EXACTLY at equality, and equality at",
+        "    clearance 0 means the dish rim TOUCHES the basin wall. That",
+        "    fuses to a solid that is not watertight and the build is",
+        "    rejected. Never drive min_clearance_mm down to make constraint",
+        "    1 fit: it has a hard per-material floor (constraint 7).",
+        "  * When the basin diameter is fixed by the brief, constraint 1",
+        "    binds the DISHES, not the clearance. Solve it in this order:",
+        "      widest_dish <= basin_diameter_mm - 2*basin_wall_mm"
+        " - min_clearance_mm",
+        "    then pick tier_top_diameter_mm and tier_diameter_step_mm so",
+        "    that tier_top + (tiers-1)*step lands at or under that number.",
+        "",
+        "MATERIAL ENVELOPES (materials.yaml — ADR-027 walls, ADR-029 "
+        "clearance floors):",
     ]
     from app.core.config import load_config_bundle
 
@@ -215,8 +231,10 @@ def registry_surface() -> str:
         load_config_bundle().materials.materials.items()
     ):
         lines.append(
-            f"  {mat_id} ({mat.name}): {mat.min_wall_mm:g}.."
-            f"{mat.max_wall_mm:g} mm"
+            f"  {mat_id} ({mat.name}): basin_wall_mm {mat.min_wall_mm:g}.."
+            f"{mat.max_wall_mm:g} mm | min_clearance_mm >= "
+            f"{mat.min_clearance_mm:g} mm "
+            f"({mat.min_clearance_mm / 2:g} mm radial)"
         )
     return "\n".join(lines)
 

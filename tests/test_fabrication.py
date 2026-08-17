@@ -387,7 +387,90 @@ def test_worker_answers_probe_inline_without_executing(tmp_path):
     assert stray not in worker._pending_jobs(tmp_path)
 
 
+def test_result_json_is_published_atomically(tmp_path):
+    """The backend polls for result.json's EXISTENCE then parses it at once.
+    If the file were created empty and filled afterwards, a poll landing in
+    that window would read a truncated file and raise JSONDecodeError inside
+    the fabrication loop. BOTH writers must publish via a temp sibling +
+    os.replace, so the name only ever appears complete.
+
+    Proven by observing the write, not by reading the source: a patched
+    write_text asserts that at the moment ANY file is written, the published
+    name does not yet exist — i.e. content lands under the temp name first.
+    """
+    from pathlib import Path as _Path
+
+    from app.geometry import job_runner, worker
+
+    for module, job_name in ((worker, "probe-atomic"), (job_runner, "job-atomic")):
+        job = tmp_path / job_name
+        job.mkdir()
+        seen: list[tuple[str, bool]] = []
+        real_write_text = _Path.write_text
+
+        def spy(self, data, *args, **kwargs):
+            # record: which name was written, and whether result.json
+            # already existed at that instant
+            seen.append((self.name, (job / "result.json").exists()))
+            return real_write_text(self, data, *args, **kwargs)
+
+        _Path.write_text = spy
+        try:
+            module._write_result(job, {"ok": True, "error": None})
+        finally:
+            _Path.write_text = real_write_text
+
+        assert seen, f"{module.__name__} wrote nothing"
+        name, existed = seen[-1]
+        assert name == "result.json.tmp", (
+            f"{module.__name__} wrote content straight to {name!r} — the "
+            "poller can observe a half-written result.json"
+        )
+        assert not existed
+        # after the replace, the real name is present and parses
+        assert json.loads((job / "result.json").read_text(encoding="utf-8"))["ok"]
+        assert not (job / "result.json.tmp").exists()
+
+
 # --- rates + rollup separation ----------------------------------------------
+
+
+def test_success_rates_counts_each_RUN_not_each_spec(db, config, base_spec, tmp_path):
+    """A re-run of the SAME spec is a separate fabrication unit.
+
+    Keying units on (session_id, spec_id) made every re-run of a spec
+    collapse into one unit, so three failed runs followed by one
+    first-attempt success reported first_attempt_pass_rate = 1.0 instead of
+    0.25 — the metric hid exactly the signal it exists to raise. Runs are
+    recovered from the attempt_no restart.
+    """
+    from app.council.fabricate import success_rates
+    from app.db.models import GeneratedProgramRow
+
+    sid = _run_council_session(db, config, base_spec)
+    spec_id = _first_spec_id(db, sid)
+
+    # run 1: three attempts, all failed;  run 2: one attempt, passed
+    plan = [(1, "exec_failed"), (2, "exec_failed"), (3, "validation_failed"),
+            (1, "passed")]
+    with db.get_session() as s:
+        for i, (attempt, status) in enumerate(plan):
+            s.add(GeneratedProgramRow(
+                id=f"p{i}", created_at=f"2026-08-09T0{i}:00:00+00:00",
+                session_id=sid, spec_id=spec_id, attempt_no=attempt,
+                provider="anthropic", model="m", program_text="",
+                program_hash="", status=status, rejection_reason=None,
+                error_digest=None, artifacts_json=None, validation_json=None))
+
+    rates = success_rates(db, session_id=sid)
+    assert rates["fabrication_units"] == 2, rates
+    assert rates["first_attempt_pass_rate"] == 0.5, rates
+    assert rates["per_round"]["round_1"] == {
+        "reached": 2, "passed": 1, "pass_rate_of_reached": 0.5}, rates
+    # only the failing run reached rounds 2 and 3
+    assert rates["per_round"]["round_2"]["reached"] == 1
+    assert rates["per_round"]["round_3"]["reached"] == 1
+    assert rates["per_round"]["round_3"]["passed"] == 0
 
 
 def test_success_rates_first_attempt_vs_repair_rounds(db, config, base_spec, tmp_path):

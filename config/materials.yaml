@@ -8,6 +8,21 @@
 # fabricator (the operator), tunable here, NOT citations of an external
 # standard. The registry enforces them as hard constraint 2 with real
 # numbers in every violation. Basis for each ceiling is noted inline.
+#
+# min_clearance_mm is the per-material FALL-GAP FLOOR (ADR-029): the
+# smallest free gap the workshop will build between the widest dish rim and
+# the basin inner wall. NOTE THE UNIT CONVENTION — min_clearance_mm is
+# DIAMETRAL (it is subtracted from a diameter), so the physical radial gap
+# is HALF this number. Same status as the wall envelopes: workshop values
+# set by the fabricator, tunable here, not standard citations.
+#
+# Why a floor > 0 exists at all (computed, not recalled): at clearance 0 the
+# widest dish rim is exactly TANGENT to the basin inner wall. The fused
+# solid then carries coincident surfaces and tessellates to a mesh that is
+# not watertight — this is not theory, it failed the live gate on
+# 2026-08-09 (watertight=False, basin 2600 = dish 2240 + 2x180 wall). Every
+# floor below also clears the 1.0 mm GLB tessellation deflection by >=10x,
+# so the preview mesh can never show the two surfaces merged.
 materials:
   stainless_316l_sheet:
     name: "316L stainless steel sheet"
@@ -18,6 +33,10 @@ materials:
     # are machining plate, not forming sheet, and the stock sheet size no
     # longer applies.
     max_wall_mm: 20
+    # Sheet parts are cut, formed and finished BEFORE assembly, so the gap
+    # only has to stay open after fit-up: 10 mm radial clears the weld bead
+    # (~4 mm proud) plus sheet-forming springback, and passes a hose/brush.
+    min_clearance_mm: 20
     stock_size_mm: {length: 3000, width: 1500}
   basalt_slab:
     name: "Basalt slab"
@@ -30,6 +49,11 @@ materials:
     # ~ 11.0 t — at the edge of handling; the 2.6 m brief's 180 mm
     # wall is ~1.7 t, routine for a stone workshop with a crane.
     max_wall_mm: 250
+    # Carved stone: each face carries a few mm of carving tolerance, and two
+    # carved faces bound this gap. 20 mm radial keeps a real, visible fall
+    # gap after both faces vary, and admits a brush for cleaning scale off
+    # the basin wall once installed.
+    min_clearance_mm: 40
     stock_size_mm: {length: 2400, width: 1200}
   cast_concrete_c35_45:
     name: "C35/45 cast concrete"
@@ -40,6 +64,10 @@ materials:
     # thicker sections are mass pours needing thermal control, not shell
     # casting.
     max_wall_mm: 300
+    # Coarsest tolerance in the library: formwork deflects and aggregate
+    # bulges the face. 25 mm radial is what survives a cast-in-place pour
+    # and still reads as a deliberate gap rather than a casting defect.
+    min_clearance_mm: 50
     stock_size_mm: null   # cast in place — no stock sheet/slab size
   bronze_cast:
     name: "Cast bronze"
@@ -49,4 +77,7 @@ materials:
     # Cast envelope: 6 mm floor (pour fluidity), 40 mm ceiling — thicker
     # sections risk shrinkage porosity and are usually cored instead.
     max_wall_mm: 40
+    # Cast and chased before assembly, like the sheet metal: 10 mm radial
+    # clears the chasing allowance and passes a hose/brush.
+    min_clearance_mm: 20
     stock_size_mm: null   # cast — no stock sheet/slab size

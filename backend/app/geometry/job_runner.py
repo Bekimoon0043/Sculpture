@@ -21,6 +21,7 @@ stopped before exec).
 from __future__ import annotations
 
 import json
+import os
 import sys
 import traceback
 from pathlib import Path
@@ -31,9 +32,15 @@ RESULT_NAME = "result.json"
 
 
 def _write_result(job_dir: Path, payload: dict) -> None:
-    (job_dir / RESULT_NAME).write_text(
-        json.dumps(payload, sort_keys=True), encoding="utf-8"
-    )
+    """Publish result.json ATOMICALLY (same reasoning as worker._write_result).
+
+    The backend polls for this file's EXISTENCE and parses it immediately; a
+    plain write creates it empty first, so a poll landing mid-write reads a
+    truncated file. Write a temp sibling, then os.replace.
+    """
+    tmp = job_dir / (RESULT_NAME + ".tmp")
+    tmp.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    os.replace(tmp, job_dir / RESULT_NAME)
 
 
 def run_job(job_dir: Path) -> int:
