@@ -177,3 +177,35 @@ in git history (section numbers are never reused).
   `ai_calls` rows — which is why budget enforcement is unaffected, ADR-003).
   Any spend figure read from `council_sessions` rather than `ai_calls`
   overstates by that amount.
+
+---
+
+## 10. Costing layer scope limits (2026-08-17)
+
+The engine is built, gated and honest. What it cannot yet do splits into two
+piles, and the BOM says on every line which pile a gap belongs to.
+
+- **The rate card is empty.** 33 null entries in `config/costing.yaml`. Every
+  one is named by `GET /api/costing/rate-card` and by the BOM itself. No cost
+  is computed from a null rate and none is defaulted to zero, so **no real
+  design can produce a total today** — the gate proves the machinery is
+  honest about that, not that a client-ready quote exists.
+- **Three cost lines have no DRIVER yet — ours to build, not a missing
+  rate**: `material_purchase` when `buy_price` is quoted per slab or sheet
+  (needs nesting into `stock_size_mm`), `seam_welding` (no seams until there
+  are modules) and `install_transport` (a trip count needs a module count).
+  All three need segmentation against `fabrication.max_module_m` — Phase 6.
+- **Consequence for filling in the rate card**: basalt is quoted `per: slab`
+  and 316L `per: sheet` in the template, and neither unit is computable
+  today. **Quoting basalt per m3 or per kg makes the largest line on the BOM
+  work immediately**; quoting per slab defers it to segmentation.
+- **There is no seam rate in costing.yaml v1.** One is needed when
+  segmentation lands.
+- **The budget constraint binds at the BOM boundary**, not inside
+  `registry.validate_params` (ADR-031 records why: the sandbox has no rate
+  card and the geometrist has no rates in its prompt). An over-budget design
+  is refused with real numbers and cannot be exported as a quote; it is not
+  refused at geometry-build time.
+- **Crane pick weight equals total mass** because every design today is one
+  fused solid. It becomes the heaviest ELEMENT once assemblies exist
+  (Phase 6); the driver records `monolithic: true` so the change is visible.

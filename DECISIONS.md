@@ -1441,3 +1441,78 @@ prompt surface asserted to carry the convention, the consequence and the
 solving order; runs-not-specs rate counting; atomic publication observed at
 the write, not read from the source. 178 tests pass; Phase 2 and Phase 4
 auto gates PASS; the Phase 2 canonical STEP sha256 e1a59fa6… is unchanged.
+
+## ADR-031 — Costing layer: derived drivers, traced lines, four statuses (2026-08-17)
+
+Operator instruction: wire up costing from the supplied rates, with costs
+derived from validation numbers the platform already computes, multi-currency
+dated FX, every line tracing to a formula and a source rate, never an invented
+rate, and a budget constraint that is real rather than advisory.
+
+**The rates were not supplied.** `config/costing.yaml` was unmodified from
+HEAD with all 33 entries null. Reported immediately rather than worked around.
+The engine was built anyway: the null card is the ideal fixture for the
+never-guess rule, and rates are data while the engine is code.
+
+**1. Drivers are read, never re-measured.** `costing/drivers.py` takes a
+`ValidationReport` and unit-converts it. The package contains no geometry, so
+a cost can never disagree with the validation numbers already signed off.
+Costing a design whose validation FAILED raises — putting a price on geometry
+the platform has already refused is worse than declining to quote.
+
+**2. Four line statuses, deliberately not three.** `computed`,
+`missing_rate`, `not_computable`, `not_applicable`. The distinction that earns
+its keep is **missing_rate vs not_computable**: the first is a number the
+OPERATOR supplies, the second is machinery WE have not built. Collapsing them
+would hand the operator homework that is ours. The rendered BOM prints them
+under literal headings "YOU SUPPLY" and "WE BUILD".
+
+**3. Two of the five named drivers do not exist.** The operator named mass,
+surface area, module count, seam length and crane pick weight. Mass, surface
+area and pick weight come straight from the validation report. Module count
+and seam length do not exist until the solid is segmented against
+`fabrication.max_module_m` (Phase 6). They are `None` with a stated reason,
+never `0` — zero would silently price a segmented job as needing no modules
+and having no seams.
+
+**4. Count-priced materials are refused, not divided.** The template quotes
+basalt `per: slab` and 316L `per: sheet`. A slab count requires nesting into
+`stock_size_mm`, which requires segmentation, so the line refuses rather than
+dividing mass by a nominal slab. The blocker names the fix: quote per kg or
+per m3 and the line computes today. This is the highest-value thing for the
+operator to know before filling the card in, because material purchase is the
+largest line on the BOM.
+
+**5. No total from partial costs.** A BOM with any `missing_rate` or
+`not_computable` line produces NO total — not a subtotal labelled as one.
+Untraceable totals are exactly what the operator says they cannot defend.
+
+**6. FX must be dated to be usable.** An `fx_rates` entry with a rate but no
+`as_of` is MISSING, not usable — the same anti-stale-data rule
+`pricing_version` enforces. Every converted line prints the rate and its date.
+
+**7. The budget constraint binds at the BOM boundary — placement recorded.**
+The operator asked for "the same treatment as the basin_diameter hard
+constraint". Same TREATMENT: it refuses, carries real numbers, cannot be
+ignored (`BudgetViolation` mirrors `ConstraintViolation`; the API returns 422
+like a geometry violation). Different PLACEMENT, for three practical reasons:
+`registry.validate_params` runs inside the ADR-005 sandbox, which has no
+network and no rate card; the GEOMETRIST has no rates in its prompt, so a cost
+rejection would burn its three bounded repair attempts guessing at an
+arithmetic it cannot perform — the exact failure ADR-029 measured; and a cost
+depends on the finished validated solid, which does not exist until after the
+build the constraint would gate. So an over-budget design is refused at the
+BOM boundary and cannot be exported as a quote. Putting it inside the geometry
+loop as well needs rates in the sandbox and in the prompt first — a deliberate
+decision, not a line-move.
+
+**8. An incomplete BOM's budget check is `not_performed`, never `pass`.** The
+most dangerous silent failure available here is declaring a design affordable
+because most of its costs were never computed. Locked by test.
+
+**Verification:** 195 tests pass (17 new). `scripts/gate_costing_auto.py`
+PASSES at $0, printing the rate-card state, drivers taken from the Phase 4
+live-gate design (mass 3,432.476 kg, surface 42.9542 m2), a fully traced line
+set against a TEST rate card, the honest incomplete BOM against the REPO card,
+and the budget refusal with real numbers. `GET /api/costing/bom/{design_id}`
+verified against a real persisted design.

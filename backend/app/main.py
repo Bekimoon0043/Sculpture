@@ -9,7 +9,13 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from app.api import routes_council, routes_geometry, routes_health, routes_logs
+from app.api import (
+    routes_costing,
+    routes_council,
+    routes_geometry,
+    routes_health,
+    routes_logs,
+)
 from app.db.database import get_default_db
 
 app = FastAPI(
@@ -32,3 +38,4 @@ app.include_router(routes_health.router, prefix="/api")
 app.include_router(routes_logs.router, prefix="/api")
 app.include_router(routes_geometry.router, prefix="/api")
 app.include_router(routes_council.router, prefix="/api")
+app.include_router(routes_costing.router, prefix="/api")
