@@ -55,7 +55,11 @@ def _report(passed: bool = True) -> ValidationReport:
 def basalt() -> Material:
     return Material(name="Basalt slab", category="stone",
                     density_kg_per_m3=2700, min_wall_mm=20, max_wall_mm=250,
-                    min_clearance_mm=40, stock_size_mm=None)
+                    min_clearance_mm=40,
+                    # slice A1 (ADR-032): signed basalt envelope values
+                    joint_overlap_mm=10, min_feature_mm=15,
+                    min_internal_radius_mm=10,
+                    stock_size_mm=None)
 
 
 @pytest.fixture

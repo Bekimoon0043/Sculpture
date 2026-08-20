@@ -4,9 +4,11 @@
 assembly-in-slice-A approved; count settled at SIXTEEN (§1);
 `fabrication.max_lift_kg` / `max_module_m` confirmed as real workshop limits
 and correct to make binding. Slice A is SPLIT into A1/A2 (§2.0) on the
-operator's question about its size. Envelope sheet for slice A is out for
-correction: `PHASE_6_SLICE_A_ENVELOPES.md`. **No code is written until that
-sheet is signed off.**
+operator's question about its size.
+
+**PROGRESS: envelope sheet SIGNED as drafted 2026-08-20; slice A1 BUILT,
+auto gate PASS 2026-08-20 at $0 (ADR-030 enforced, ADR-032; evidence in
+PHASE_6_REPORT.md). Next: slice A2 — the AI and the surfaces.**
 
 Scope: the platform stops being a single-shape configurator and becomes a
 design platform — a library of primitives that COMPOSE into one fabricable

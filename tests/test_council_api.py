@@ -130,8 +130,13 @@ def test_live_run_without_keys_fails_honestly(client, monkeypatch):
     # No API keys in the test environment: the run endpoint must NOT hang or
     # pretend — it 500s with the provider error, and the session row is
     # finalized "failed" (never left "running").
+    # SET TO EMPTY, never delenv (incident 2026-08-20): with the vars
+    # deleted, pydantic-settings falls back to a .env FILE in the cwd — on
+    # a repo checkout that is the operator's real keys, and this exact test
+    # dispatched a REAL council session. Empty overrides the file and is
+    # falsy at the call_log key check.
     for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "MOONSHOT_API_KEY"):
-        monkeypatch.delenv(var, raising=False)
+        monkeypatch.setenv(var, "")
     from app.core.config import get_settings
 
     get_settings.cache_clear()

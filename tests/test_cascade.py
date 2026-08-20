@@ -36,6 +36,9 @@ def test_registry_has_exactly_the_plan_parameters():
         "dish_depth_mm", "tier_spacing_mm", "lip_fillet_mm",
         "column_diameter_mm", "basin_diameter_mm", "basin_height_mm",
         "basin_wall_mm", "bore_diameter_mm", "material_id", "min_clearance_mm",
+        # slice A1 (ADR-032): per-member walls — the column's own wall,
+        # derived default basin_wall_mm (closes LIMITATIONS §9 first bullet)
+        "column_wall_mm",
     }
     assert set(CASCADE_PARAMETERS) == expected
     for name, spec in CASCADE_PARAMETERS.items():
@@ -302,7 +305,7 @@ def _watertight_at(tmp_path, name, params):
     watertight. validate_mesh merge_vertices() first (see its docstring).
     """
     from app.core.config import load_config_bundle
-    from app.geometry.cascade import build_cascade
+    from app.geometry.primitives.cascade import build_cascade
     from app.geometry.exporters import export_glb
     from app.geometry.validate import validate_mesh
 

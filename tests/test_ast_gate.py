@@ -12,7 +12,6 @@ GOOD = '''\
 """A passing fabrication program."""
 import math
 import registry
-from build123d import Pos, Rot
 
 
 def build(spec):
@@ -24,7 +23,6 @@ def build(spec):
         "material_id": "basalt_slab",
     }
     solid, validated = registry.cascade_fountain(params, seed=seed)
-    solid = Pos(0, 0, 0) * solid
     _ = math.pi
     return solid, validated.canonical_dict(), seed
 '''
@@ -35,7 +33,18 @@ def test_good_program_passes():
 
 
 def test_whitelist_roots_documented():
-    assert ALLOWED_IMPORT_ROOTS == {"registry", "build123d", "math"}
+    # ADR-030 (2026-08-20): build123d is deliberately OUT — the registry is
+    # the ceiling on geometric capability; generated code declares, trusted
+    # code fuses. Widening this set back means making the constraint system
+    # advisory again.
+    assert ALLOWED_IMPORT_ROOTS == {"registry", "math"}
+
+
+def test_build123d_import_rejected_adr030():
+    src = GOOD.replace("import registry",
+                       "import registry\nfrom build123d import Pos")
+    reason = check_program(src)
+    assert reason is not None and "build123d" in reason
 
 
 def test_import_os_rejected_with_reason():
@@ -52,8 +61,8 @@ def test_from_subprocess_import_rejected():
 
 
 def test_open_call_rejected():
-    src = GOOD.replace('solid = Pos(0, 0, 0) * solid',
-                       'open("/etc/passwd")\n    solid = Pos(0, 0, 0) * solid')
+    src = GOOD.replace('_ = math.pi',
+                       'open("/etc/passwd")\n    _ = math.pi')
     reason = check_program(src)
     assert reason is not None and "open()" in reason
 

@@ -26,14 +26,31 @@ from app.db.database import Database  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _hermetic_env(monkeypatch):
-    """No API keys, no DB override — the suite never touches the network."""
+    """No API keys, no DB override — the suite never touches the network.
+
+    The key vars are SET TO EMPTY, not deleted (incident 2026-08-20):
+    pydantic-settings reads `.env` from the working directory as a
+    FALLBACK when the env var is absent, so with the suite run from a repo
+    checkout containing the operator's real .env, delenv alone left the
+    providers configured and `test_live_run_without_keys_fails_honestly`
+    dispatched a REAL council session. An empty env var takes precedence
+    over the .env file and is falsy at the call_log key check, so the
+    "not configured" path is guaranteed regardless of cwd or .env presence.
+    """
     for var in (
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
         "MOONSHOT_API_KEY",
-        "LUXURYFORM_DB",
     ):
-        monkeypatch.delenv(var, raising=False)
+        monkeypatch.setenv(var, "")
+    monkeypatch.delenv("LUXURYFORM_DB", raising=False)
+    # get_settings is lru_cached; a previous test/import may have cached a
+    # Settings built before this fixture ran.
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.fixture()

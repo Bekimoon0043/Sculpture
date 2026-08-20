@@ -399,7 +399,50 @@ class Material(BaseModel):
     # the basin wall, which fuses to a non-watertight solid (live gate
     # failure 2026-08-09). Same workshop-set status as the wall envelope.
     min_clearance_mm: float = Field(gt=0)
+    # Slice A envelope sheet (signed 2026-08-20, ADR-032) — same workshop
+    # status as the wall envelope: fabricator-set, tunable here, not a
+    # standard citation.
+    #
+    # joint_overlap_mm: the SMALLEST deliberate interference at a mating
+    # joint. Every joint is a real overlap, never a contact (ADR-029
+    # generalised: zero overlap is the tangency knife edge). Floor
+    # arithmetic: 2 x per-face fabrication tolerance + margin.
+    joint_overlap_mm: float = Field(gt=0)
+    # min_feature_mm / min_internal_radius_mm: the smallest projecting
+    # detail the process reproduces, and the radius the tool actually
+    # leaves in an internal corner. The literal string "wall" means the
+    # floor EQUALS the part's wall thickness (316L sheet: a formed feature
+    # cannot be thinner than the sheet; press-brake inside radius is about
+    # one material thickness) — a constant would be wrong across the sheet
+    # envelope, so it is a formula, per the signed sheet. Read them through
+    # min_feature_floor_mm()/min_internal_radius_floor_mm(), never raw.
+    min_feature_mm: float | Literal["wall"]
+    min_internal_radius_mm: float | Literal["wall"]
     stock_size_mm: StockSizeMm | None = None  # None = cast, no stock sheet
+
+    @field_validator("min_feature_mm", "min_internal_radius_mm")
+    @classmethod
+    def _floor_positive_or_wall(cls, value: object) -> object:
+        if isinstance(value, str):
+            if value != "wall":
+                raise ValueError(
+                    f"only the literal 'wall' is a valid non-numeric floor, got {value!r}"
+                )
+        elif not isinstance(value, (int, float)) or value <= 0:
+            raise ValueError(f"floor must be > 0 mm or the literal 'wall', got {value!r}")
+        return value
+
+    def min_feature_floor_mm(self, wall_mm: float) -> float:
+        """Smallest projecting feature for a part with this wall thickness."""
+        return float(wall_mm) if self.min_feature_mm == "wall" else float(self.min_feature_mm)
+
+    def min_internal_radius_floor_mm(self, wall_mm: float) -> float:
+        """Smallest internal corner radius for a part with this wall thickness."""
+        return (
+            float(wall_mm)
+            if self.min_internal_radius_mm == "wall"
+            else float(self.min_internal_radius_mm)
+        )
 
 
 class MaterialsConfig(BaseModel):

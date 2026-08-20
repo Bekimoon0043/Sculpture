@@ -21,37 +21,45 @@ from typing import TYPE_CHECKING
 
 from app.geometry.registry import (
     CASCADE_PARAMETERS,
+    PRIMITIVES,
     CascadeParams,
     ConstraintViolation,
+    assemble,
     validate_params,
 )
 
 if TYPE_CHECKING:  # static view only; runtime loads lazily via __getattr__
-    from app.geometry.cascade import build_cascade
     from app.geometry.exporters import export_glb, export_step
     from app.geometry.kernel import GeometryBuild
+    from app.geometry.primitives.cascade import build_cascade
     from app.geometry.validate import ValidationReport, validate_mesh
 
 _LAZY = {
     "GeometryBuild": "app.geometry.kernel",
-    "build_cascade": "app.geometry.cascade",
+    "build_cascade": "app.geometry.primitives.cascade",
     "export_step": "app.geometry.exporters",
     "export_glb": "app.geometry.exporters",
     "validate_mesh": "app.geometry.validate",
     "ValidationReport": "app.geometry.validate",
+    "validate_assembly": "app.geometry.validate",
+    "AssemblyValidationReport": "app.geometry.validate",
 }
 
 __all__ = [
     "GeometryBuild",
     "CASCADE_PARAMETERS",
+    "PRIMITIVES",
     "CascadeParams",
     "ConstraintViolation",
+    "assemble",
     "validate_params",
     "build_cascade",
     "export_step",
     "export_glb",
     "validate_mesh",
     "ValidationReport",
+    "validate_assembly",
+    "AssemblyValidationReport",
 ]
 
 

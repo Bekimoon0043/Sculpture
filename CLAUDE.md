@@ -47,9 +47,12 @@ LLMs do not generate geometry. They generate text. **They write the program that
 ## Build status
 
 Phases 1, 2, 3, 4 CLOSED (gates PASS 2026-08-01 / 08-04 / 08-07 / 08-17).
-Phases 5, 6, 7 not started. Operator's stated order: **Phase 6 (primitive
-library) before Phase 5 (vision critique)**. Each closed phase has a
-`PHASE_N_REPORT.md` with its gate evidence.
+Phase 6 IN PROGRESS: envelope sheet signed and slice A1 (assembly core)
+CLOSED, auto gate PASS 2026-08-20 (ADR-030, ADR-032, PHASE_6_REPORT.md);
+next is slice A2 (AI + surfaces). Phases 5, 7 not started. Operator's
+stated order: **Phase 6 (primitive library) before Phase 5 (vision
+critique)**. Each closed phase has a `PHASE_N_REPORT.md` with its gate
+evidence.
 
 > `SCOPE.md` is referenced above but **does not exist in this repository and
 > never has** (checked against full git history, 2026-08-17). The same is

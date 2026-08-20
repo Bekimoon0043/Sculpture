@@ -1516,3 +1516,191 @@ live-gate design (mass 3,432.476 kg, surface 42.9542 m2), a fully traced line
 set against a TEST rate card, the honest incomplete BOM against the REPO card,
 and the budget refusal with real numbers. `GET /api/costing/bom/{design_id}`
 verified against a real persisted design.
+
+---
+
+## ADR-030 — The registry becomes the ceiling on geometric capability (2026-08-20)
+
+**Status: accepted.** (Numbering note, per this log's own honesty rule: the
+number 030 was RESERVED when the operator ordered this trade on 2026-08-17
+and the draft was recorded in PHASE_6_PLAN.md §4; ADR-031 was written the
+same day for the costing layer, so this entry lands after 031 in file order.
+Nothing was removed — the gap was a reservation, now filled.)
+
+Enforced in Phase 6 slice A1: `ALLOWED_IMPORT_ROOTS` in
+`ast_gate.py` is now `{registry, math}` — **`build123d` is dropped from the
+AST whitelist.** AI-written code can only reach geometry the registry
+exposes. The model can never reach for a kernel operation we have not
+deliberately published.
+
+**What we buy:** every constraint becomes enforceable rather than advisory,
+every boolean is performed by trusted code (`registry.assemble`), and the
+failure class measured in ADR-029 — the model reasoning itself into a
+geometric singularity — cannot be constructed directly.
+
+**What we give up:** novel form is gated on a registry edit. If a brief
+needs a shape the library does not have, the platform cannot improvise it,
+and the answer is a new primitive with its own envelopes and tests — a
+deliberate act with a gate, not an emergent one.
+
+**The operator accepts this ceiling knowingly (ordered 2026-08-17).** A
+future decision to widen it should be made against this record: the
+question to ask then is not "is build123d safe?" but "are we willing to
+make the constraint system advisory again?" — because that, and not
+sandbox escape, is what widening costs. The sandbox (ADR-005) remains the
+real security boundary either way; this trade is about correctness.
+
+Locked by: `test_whitelist_roots_documented`,
+`test_build123d_import_rejected_adr030`, gate_phase6a1_auto §2. The
+GEOMETRIST program contract text was updated in the same commit (a prompt
+promising an import the gate rejects would burn repair attempts).
+
+---
+
+## ADR-032 — Phase 6 slice A1: primitive library core + assembler (2026-08-20)
+
+**Envelope sheet signed.** The operator accepted
+`PHASE_6_SLICE_A_ENVELOPES.md` AS DRAFTED (2026-08-20, "restore and go to
+slice"). All Part 2/3 values are now in force in materials.yaml and the
+primitive registries; they remain WORKSHOP values, tunable in config, not
+standard citations (ADR-027/029 status). The sheet's own least-sure flag
+stands in the file: concrete's ±5 mm per-face tolerance (joint_overlap_mm
+15) — if the formwork is better, the floor comes down in materials.yaml.
+
+**1. Material model gains the Part-2 floors.** `joint_overlap_mm` (basalt
+10 / concrete 15 / bronze 5 / 316L 3), `min_feature_mm` and
+`min_internal_radius_mm` per material. 316L's two floors are the literal
+string `"wall"` — a FORMULA (floor = the part's wall thickness), because a
+constant would be wrong across the 3–20 mm sheet envelope; read through
+`Material.min_feature_floor_mm(wall)` / `min_internal_radius_floor_mm(wall)`.
+The feature/radius floors are recorded and config-validated now; the
+parameters they bound arrive with slices B (rim treatments) and C (arrays)
+— stated in materials.yaml rather than silently dormant.
+
+**2. Registry restructure.** `backend/app/geometry/primitives/` — one
+module per primitive (`cascade`, `basin_round`, `plinth`,
+`sculptural_column`), a shared protocol in `primitives/base.py`
+(PARAMETERS / validate / build / anchors / joint capabilities), and
+`PRIMITIVES` (id → module) as the single registry dict. The cascade
+BUILDER moved unchanged; its parameter registry moved with it;
+`registry.py` is now the facade: PRIMITIVES + `assemble()` +
+`cascade_fountain()` + the compat re-exports every existing import path
+uses. build123d imports inside primitive modules are lazy — the registry
+stays importable without the geometry stack, as before.
+
+**3. Per-member walls (sheet Part 5).** `tiered_cascade` gains
+`column_wall_mm`, default DERIVED = `basin_wall_mm`; hard constraint 4 is
+now `column_diameter_mm >= bore + 2*column_wall_mm`. Geometry reads the
+new parameter ONLY through constraint 4, so defaults build bit-identical
+solids — **proven, not asserted: gate §3 rebuilds the canonical cascade
+and gets the Phase 2 STEP sha256 `e1a59fa6…` byte-for-byte.** This closes
+the column half of LIMITATIONS §9's first bullet; the dishes still share
+`basin_wall_mm` with the basin (they are drawn from the same profile
+family), recorded there.
+
+**4. The assembler (`assembly.py`, surfaced as `registry.assemble`).** The
+generated program DECLARES an assembly plan (elements + typed joints:
+`stack_on`, `concentric_insert`); trusted code computes every placement
+and performs every boolean. Enforced with real numbers: overlap floors per
+material with cross-material MAX (constraint 9); insert seat/fit against
+the parent's declared `min_clearance_mm` (DIAMETRAL, ADR-029 convention);
+punch-through refusal; per-joint interference PROVEN (intersection volume
+> 0) before the fuse; canonical fuse order (sorted element_id); B-rep
+body_count == 1; volume conservation (members − declared intersections =
+fused, tol 0.2%) so undeclared overlap cannot hide.
+
+**5. A failure class found during slice A1, before it could bite: joints
+meeting THROUGH an intermediate element.** In a coaxial plinth → basin →
+column stack, the column inserted into the basin floor reaches the PLINTH
+when floor_mm < (stack overlap + insert overlap): one millimetre decides
+between undeclared interference and EXACT TANGENCY — the ADR-029 knife
+edge, invisible to every per-joint check. The assembler now checks every
+NON-joined pair: intersection volume > 0 → refused as undeclared
+interference naming both elements; distance == 0 with volume 0 → refused
+as tangent contact citing ADR-029 and the fix (thicken the middle
+element's floor or reduce overlaps). `distance_to` behaviour verified
+against the installed build123d 0.11.1 (tangent boxes: distance 0.0,
+intersection volume 0.0), not recalled.
+
+**6. Computed handling limits (plan §5) — the dead spec fields become
+load-bearing.** `assemble(..., fabrication={max_lift_kg, max_module_m})`
+checks per-element mass (exact B-rep volume × the element's OWN material
+density) and bounding box. The refusal message carries both numbers and,
+for a solid element, names HOLLOWING as the lever — the signed sheet's
+§4.2 example runs live in the gate: the 1.0 × 1.0 m solid basalt plinth
+(2,120.6 kg) is refused by a 2,000 kg crane and the same plinth at a
+180 mm wall (1,252.0 kg) passes.
+
+**7. Assembly validation (`validate_assembly` + mesh body_count).**
+`ValidationReport` gains `body_count` (None for pre-A1 persisted rows;
+every new measurement fills it, passed requires 1) — a watertight mesh of
+TWO closed bodies was the phase's most dangerous silent failure (plan
+§8.5) and is now caught at both B-rep and mesh level.
+`AssemblyValidationReport` carries per-element masses from the manifest
+(a fused mesh has no single material — one mass_kg would be fiction for
+mixed materials) and cross-checks mesh volume against the exact fused
+B-rep volume (2%).
+
+**Verification (see also ADR-033 for a test-hermeticity incident found
+during this slice's full-suite run).** 45 new tests (test_primitives.py,
+test_assembly.py);
+`scripts/gate_phase6a1_auto.py` PASSES at $0: signed envelopes printed,
+ADR-030 enforcement, the canonical hash byte-identical, an eight-case
+refusal battery with real numbers, the three-primitive gate composition
+watertight (body_count 1 both levels, conservation delta 0.0000%), and
+byte-identical assembly STEP across two separate processes
+(`529014af…`). Slice A2 (spec→plan mapping, two-tier prompt surface,
+primitive-agnostic API/frontend, DB manifest persistence) is next; the
+operator-facing visual gate arrives there, where there is something to
+look at.
+
+---
+
+## ADR-033 — Test hermeticity: key env vars are forced EMPTY, never deleted (2026-08-20)
+
+**Incident, reported honestly (Rule 12).** During slice A1's full-suite
+run, executed with the repo bind-mounted into the backend image
+(`docker run -v <repo>:/repo -w /repo`), the "hermetic" test fixture
+deleted the three provider key env vars — but pydantic-settings reads a
+`.env` FILE from the working directory as a fallback when the env var is
+absent. The repo root contains the operator's real `.env`, so the
+providers were CONFIGURED inside the suite, and
+`test_live_run_without_keys_fails_honestly` — a test whose purpose is to
+prove the no-keys failure path — POSTed a real Council session that could
+DISPATCH REAL PROVIDER CALLS. The test failed (it expected the honest
+500), which is how the leak surfaced. A follow-up single-test repro was
+killed ~6 minutes in once the cause was understood.
+
+**Spend exposure.** The suite's session ran against a fresh temp database,
+so the ADR-003 caps ($5 session / $25 day) were enforced but with full
+headroom, and the audit rows died with the container — the local audit
+trail is GONE (the exact failure mode Rule 8 exists to prevent, here in a
+context nobody had classed as spend-capable). Bounded worst case: one full
+Council session (~$0.84 at Phase 3 measured rates) plus a partial second
+from the killed repro. **The provider consoles are the only source of
+truth; the operator has been asked to check all three for calls in the
+suite's window (2026-08-20, ~09:35–10:10 EAT).**
+
+**Why the baked-image runs never hit this:** `.dockerignore` excludes
+`.env`, so `/app` has no dotenv file and compose-injected env vars were
+genuinely removed by delenv. The leak needed cwd == a repo checkout — the
+exact environment of local dev loops and of any future CI checkout. This
+is the ADR-019 class again: environment state (here, dotenv fallback
+semantics) silently crossing a boundary it was assumed not to cross.
+
+**Fix (standing rule).** The autouse `_hermetic_env` fixture and the
+council no-keys test now SET the three key vars to the EMPTY STRING
+instead of deleting them: an env var, even empty, takes precedence over
+the `.env` file in pydantic-settings, and an empty key is falsy at the
+`call_log` pre-dispatch check, so every provider path resolves to the
+honest "not configured" ProviderError BEFORE any network traffic —
+regardless of cwd, mounts, or what `.env` exists. The fixture also clears
+the `get_settings` lru_cache on entry AND exit. Verified: the previously
+failing test now passes from the mounted repo checkout with the real
+`.env` present; `provider_keys_status` reports configured=False on empty
+keys (bool("") is False).
+
+**Standing rule for future tests:** a test that must simulate a missing
+credential sets it to empty; `delenv` is never sufficient in a
+pydantic-settings codebase. Never assume a test is offline because the
+environment variables are gone.

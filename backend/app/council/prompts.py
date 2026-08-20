@@ -202,7 +202,9 @@ def registry_surface() -> str:
         "*tier_diameter_step_mm)",
         "  2. basin_wall_mm inside the material's WALL ENVELOPE below",
         "  3. lip_fillet_mm < dish_depth_mm / 2",
-        "  4. column_diameter_mm >= bore_diameter_mm + 2*basin_wall_mm",
+        "  4. column_diameter_mm >= bore_diameter_mm + 2*column_wall_mm",
+        "     (column_wall_mm defaults to basin_wall_mm; set it "
+        "independently — per-member walls, ADR-032)",
         "  5. lip_fillet_mm < basin_wall_mm",
         "  6. tier_spacing_mm >= dish_depth_mm",
         "  7. min_clearance_mm >= the material's CLEARANCE FLOOR below",
@@ -242,7 +244,8 @@ def registry_surface() -> str:
 _PROGRAM_CONTRACT = """PROGRAM CONTRACT (the sandbox runner enforces it exactly):
   * Define ONE top-level function: def build(spec):  — spec is the Design
     Spec dict below; return (solid, params_dict, seed).
-  * You may import ONLY: registry, build123d, math.
+  * You may import ONLY: registry, math. (build123d is NOT importable —
+    all geometry goes through the registry's primitives, ADR-030.)
   * You may NOT: open files, use eval/exec/getattr/__import__, access any
     attribute starting with '_', or export files yourself (the runner owns
     export — STEP and GLB are produced for you).

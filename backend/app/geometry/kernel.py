@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from app.core.seeds import DeterminismContext
-from app.geometry.cascade import build_cascade
+from app.geometry.primitives.cascade import build_cascade
 from app.geometry.registry import CascadeParams
 
 if TYPE_CHECKING:  # avoid importing build123d at module-import time for typing

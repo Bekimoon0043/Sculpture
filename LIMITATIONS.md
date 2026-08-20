@@ -76,8 +76,15 @@ early):
 - **Phase 5** — validation gates (mesh, hydraulics, structure, fabrication)
   and the render → vision-critique → bounded-delta loop (ADR-007), including
   enforcement of `max_vision_iterations`.
-- **Phase 6** — DesignDNA memory store and retrieval; full export suite.
-- **Phase 7** — resumable job runner with kill-and-resume checkpoints.
+- **Phase 6** — the primitive library (PHASE_6_PLAN.md). Slice A1 (assembly
+  core + basin_round/plinth/sculptural_column, gate PASS 2026-08-20, ADR-032)
+  is BUILT; slices A2 (AI + surfaces), B (rim treatments + fixtures),
+  C (extrusion/array masses), D (free-form) are not. See §11 for what A1
+  does not do. (DesignDNA and the full export suite, once listed under this
+  phase, are re-homed by the 2026-08-19 completion plan: export suite after
+  Phase 5, DesignDNA in Phase 7.)
+- **Phase 7** — resumable job runner with kill-and-resume checkpoints;
+  DesignDNA memory store and retrieval.
 
 ## 6. ~~Provider vision failures found by the gate~~ — RETIRED 2026-08-01
 
@@ -147,15 +154,14 @@ in git history (section numbers are never reused).
 
 ## 9. Phase 4 scope limits (what the fabrication loop does NOT do yet)
 
-- **One wall parameter serves the basin, the dishes AND the column.** Hard
-  constraint 4 (`column_diameter >= bore + 2*basin_wall`) applies the basin
-  wall thickness to the column, which is a different member. In the passing
-  live run the geometrist satisfied it by thinning the wall from the
-  Council's 180 mm to 60 mm rather than widening the column — legal,
-  watertight, and NOT the wall the Council specified. The platform has no
-  basis to prefer either resolution. Separate per-member wall parameters
-  are a Phase 6 registry change. **Until then, check the wall thickness in
-  the fabricated parameter set against the Design Spec before quoting.**
+- ~~One wall parameter serves the basin, the dishes AND the column~~ —
+  **COLUMN HALF RETIRED 2026-08-20 (slice A1, ADR-032):** `column_wall_mm`
+  now exists, defaults to `basin_wall_mm`, and hard constraint 4 reads it —
+  the geometrist no longer has to thin the Council's basin wall to satisfy
+  a column constraint. STILL TRUE: the basin and the DISHES share
+  `basin_wall_mm` (they are drawn from the same profile family). Until a
+  live fabrication demonstrates the model using the split parameter, keep
+  checking fabricated wall values against the Design Spec before quoting.
 - **The repair loop is so far diagnostic, not corrective.** Across four
   live runs, rounds 2 and 3 have never produced a pass; every success came
   at attempt 1. The failure digests have been valuable — they found three
@@ -209,3 +215,39 @@ piles, and the BOM says on every line which pile a gap belongs to.
 - **Crane pick weight equals total mass** because every design today is one
   fused solid. It becomes the heaviest ELEMENT once assemblies exist
   (Phase 6); the driver records `monolithic: true` so the change is visible.
+
+---
+
+## 11. Phase 6 slice A1 scope limits (2026-08-20)
+
+The assembly core is built and gated offline. What A1 deliberately does
+NOT do:
+
+- **The AI cannot use any of it yet.** Slice A2 wires the spec→plan
+  mapping, the two-tier prompt surface, the designer index and spec
+  validation. Today `registry.assemble` is reachable by generated code in
+  principle, but the GEOMETRIST's prompt still documents only
+  `cascade_fountain` — a live fabrication still produces a single cascade.
+- **Four primitives.** `tiered_cascade`, `basin_round`, `plinth`,
+  `sculptural_column`. Rim treatments and nozzle fixtures are slice B;
+  extrusion/array masses slice C; free-form slice D.
+- **Joints are a tree, and inserts are coaxial.** One root, `stack_on`
+  (with lateral offset) and `concentric_insert` (axis-locked to the
+  parent). Only `basin_round` accepts inserts. No side-by-side joints, no
+  multi-parent bridging.
+- **`min_feature_mm` and `min_internal_radius_mm` are recorded and
+  config-validated but nothing consumes them yet** — the parameters they
+  floor (rim profile radii, blade/petal thicknesses) arrive with slices B
+  and C. Recorded now because the operator signed them now (ADR-032).
+- **The API and frontend are still cascade-shaped.**
+  `/api/geometry/cascade/*` and the viewport panel know nothing of
+  assemblies; the primitive-agnostic surfaces are budgeted into A2.
+- **The assembly manifest is not yet persisted** — designs/
+  generated_programs gain manifest columns with A2, when fabrication can
+  actually produce one.
+- **Mixed-material assemblies validate but cannot be costed correctly
+  yet:** the persisted ValidationReport carries one material_id; per-
+  element mass exists only in the (unpersisted) manifest. Reconciled in A2
+  alongside persistence.
+- **The operator's visual gate arrives with A2**, when there is something
+  to look at in the viewport; A1's gate is the $0 auto script only.

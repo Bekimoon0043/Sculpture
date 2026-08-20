@@ -30,9 +30,21 @@ import ast
 
 #: Import roots a generated program may use. ``registry`` is the fabrication
 #: API alias the runner injects (app.geometry.registry) — the ONLY way to
-#: reach geometry primitives. build123d for assembly work; math for
-#: arithmetic. Nothing else. Phase 6 widens this list deliberately.
-ALLOWED_IMPORT_ROOTS = frozenset({"registry", "build123d", "math"})
+#: reach geometry primitives; math for arithmetic. Nothing else.
+#:
+#: ADR-030 (accepted 2026-08-20): ``build123d`` is DELIBERATELY absent. The
+#: registry is the ceiling on geometric capability — generated code can
+#: only reach geometry the registry exposes, so every constraint is
+#: enforceable rather than advisory and every boolean is performed by
+#: trusted code (registry.assemble). The failure class measured in ADR-029
+#: — the model reasoning itself into a geometric singularity — cannot be
+#: constructed directly. The cost, accepted knowingly by the operator: a
+#: brief needing a shape the library lacks gets a NEW PRIMITIVE with its
+#: own envelopes and tests, never an improvisation. Widening this set back
+#: means making the constraint system advisory again — that, not sandbox
+#: escape, is what it would cost (the ADR-005 sandbox remains the real
+#: security boundary either way).
+ALLOWED_IMPORT_ROOTS = frozenset({"registry", "math"})
 
 #: Names a generated program may never call. File/network/process access,
 #: dynamic evaluation, and introspection that leads to sandbox escapes.

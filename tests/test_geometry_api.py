@@ -35,7 +35,8 @@ def test_defaults_endpoint(client):
     assert resp.status_code == 200
     body = resp.json()
     assert "tiers" in body["parameters"]
-    assert len(body["parameters"]) == 13
+    # 13 Phase 2 parameters + column_wall_mm (slice A1 per-member walls)
+    assert len(body["parameters"]) == 14
     assert body["parameters"]["basin_diameter_mm"]["default"] == 2600
     assert "basalt_slab" in body["materials"]
     assert body["materials"]["basalt_slab"]["min_wall_mm"] == 20

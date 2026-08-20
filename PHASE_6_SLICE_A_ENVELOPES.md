@@ -1,10 +1,11 @@
-# PHASE_6_SLICE_A_ENVELOPES.md — DRAFT for operator correction (2026-08-17)
+# PHASE_6_SLICE_A_ENVELOPES.md — SIGNED (operator, 2026-08-20)
 
-**STATUS: DRAFT. Nothing is built to these numbers.** Every value in Part 2
-and Part 3 is my proposal with the arithmetic shown, for you to correct.
-Cross out, overwrite, or tell me the driver is wrong — then I build to the
-corrected sheet, and it becomes `materials.yaml` + the primitive registries
-with the reasoning recorded in the ADR (the ADR-027 / ADR-029 pattern).
+**STATUS: SIGNED AS DRAFTED (operator instruction 2026-08-20, "restore and
+go to slice"). Slice A1 is BUILT to these numbers** — they are now in force
+in `materials.yaml` and the primitive registries, recorded in ADR-032, and
+asserted by `scripts/gate_phase6a1_auto.py` §1. They remain workshop
+values, tunable in materials.yaml; the least-sure flag below (concrete's
+±5 mm) stands — if the formwork is better, lower `joint_overlap_mm` there.
 
 **Basis honesty (ADR-009, standing):** these are WORKSHOP envelopes set by
 the fabricator — you. They are not citations of an external standard and no
