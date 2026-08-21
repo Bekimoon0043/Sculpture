@@ -1,13 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ApiError,
   AssemblyDefaultsResponse,
   type AssemblyBuildResponse,
-  type ExportsResponse,
   getAssemblyDefaults,
-  getAssemblyExports,
   postAssemblyBuild,
-  postAssemblyExports,
 } from "../api/client";
 
 interface AssemblyPanelProps {
@@ -20,13 +17,6 @@ interface AssemblyPanelProps {
   onBuilt: (response: AssemblyBuildResponse) => void;
   onFatal: (message: string) => void;
 }
-
-const EXPORT_STATUS_LABEL: Record<string, string> = {
-  included: "in package",
-  failed: "failed",
-  unavailable: "unavailable",
-  impossible: "not possible",
-};
 
 function normalizeIntField(
   e: React.ChangeEvent<HTMLInputElement>,
@@ -49,10 +39,7 @@ export default function AssemblyPanel({
   onFatal,
 }: AssemblyPanelProps) {
   const [defaults, setDefaults] = useState<AssemblyDefaultsResponse | null>(null);
-  const [lastBuild, setLastBuild] = useState<AssemblyBuildResponse | null>(null);
   const [profileId, setProfileId] = useState<string>("");
-  const [exports, setExports] = useState<ExportsResponse | null>(null);
-  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     getAssemblyDefaults()
@@ -66,10 +53,6 @@ export default function AssemblyPanel({
         )
       );
   }, [onFatal]);
-
-  useEffect(() => {
-    getAssemblyExports().then(setExports).catch(() => undefined);
-  }, [lastBuild]);
 
   const elements = useMemo(() => {
     if (!defaults) return [];
@@ -122,7 +105,6 @@ export default function AssemblyPanel({
       profileId || undefined
     )
       .then((resp) => {
-        setLastBuild(resp);
         onBuilt(resp);
         onBusyChange(false);
       })
@@ -136,27 +118,11 @@ export default function AssemblyPanel({
       });
   };
 
-  const onExport = useCallback(() => {
-    const designId = lastBuild?.design_id ?? exports?.design_id;
-    if (!designId) return;
-    setExporting(true);
-    postAssemblyExports(designId)
-      .then((resp) => {
-        setExports(resp as unknown as ExportsResponse);
-        setExporting(false);
-      })
-      .catch((e) => {
-        setExporting(false);
-        onFatal(`Export failed: ${e.message}`);
-      });
-  }, [lastBuild, exports, onFatal]);
-
   if (!defaults) {
     return <div className="panel">Loading assembly registry...</div>;
   }
 
   const profile = defaults.gate_profiles.profiles[profileId];
-  const designId = lastBuild?.design_id ?? exports?.design_id ?? null;
 
   return (
     <div className="panel cascade-panel">
@@ -217,58 +183,6 @@ export default function AssemblyPanel({
       <button className="rebuild" onClick={onBuild} disabled={busy}>
         {busy ? "Building..." : "Build assembly"}
       </button>
-
-      <div className="export-box">
-        <strong>Export package</strong>
-        <button
-          className="rebuild secondary"
-          onClick={onExport}
-          disabled={exporting || !designId}
-        >
-          {exporting ? "Exporting..." : "Build LUXEXCHANGE package"}
-        </button>
-        {!designId && (
-          <p className="hint">Build an assembly first — there is nothing to export yet.</p>
-        )}
-
-        {exports && (
-          <>
-            {exports.package_built ? (
-              <div className="export-links">
-                <a href={exports.luxexchange_url}>Download LUXEXCHANGE .zip</a>
-                <a href="/api/geometry/assembly/latest.step">STEP</a>
-                <a href="/api/geometry/assembly/latest.glb">GLB</a>
-              </div>
-            ) : (
-              <p className="hint">
-                No package built yet for this design. Press the button above.
-              </p>
-            )}
-            {exports.content_digest && (
-              <p className="hint">
-                content digest <code>{exports.content_digest.slice(0, 16)}…</code>{" "}
-                — the same design always produces the same package. Run{" "}
-                <code>python verify_luxexchange.py</code> inside the extracted
-                zip to check it.
-              </p>
-            )}
-            <table className="export-table">
-              <tbody>
-                {exports.exports.map((row) => (
-                  <tr key={row.format} className={`row-${row.status ?? "unknown"}`}>
-                    <td>{row.format}</td>
-                    <td>{EXPORT_STATUS_LABEL[row.status ?? ""] ?? row.status}</td>
-                    <td className="num">
-                      {row.bytes ? `${(row.bytes / 1024).toFixed(0)} kB` : "—"}
-                    </td>
-                    {row.error && <td className="check-message">{row.error}</td>}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </>
-        )}
-      </div>
 
       {violations && (
         <div className="violations">

@@ -10,16 +10,20 @@ import {
   DefaultsResponse,
   Validation,
   ValidationGate,
+  type ExportsResponse,
   type GateStatus,
   getDefaults,
+  getAssemblyExports,
   getLatestAssemblyValidation,
   latestAssemblyGlbUrl,
   latestGlbUrl,
   getLatestValidation,
+  postAssemblyExports,
   postBuild,
 } from "./api/client";
 import ErrorBoundary from "./ErrorBoundary";
 import AssemblyPanel from "./panels/AssemblyPanel";
+import ExportPanel from "./panels/ExportPanel";
 import CascadePanel from "./panels/CascadePanel";
 import CouncilPanel from "./panels/CouncilPanel";
 import ValidationPanel from "./panels/ValidationPanel";
@@ -37,6 +41,12 @@ export default function App() {
   // Worst status across every gate. Kept separate from `validation.passed`
   // so a warned or needs_input design can never render a green PASS.
   const [overallStatus, setOverallStatus] = useState<GateStatus | null>(null);
+  // Export state lives here, not in AssemblyPanel: the export panel is a
+  // sibling of the build panel, and rebuilding an assembly must refresh what
+  // the export panel shows.
+  const [designId, setDesignId] = useState<string | null>(null);
+  const [exports, setExports] = useState<ExportsResponse | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
   const [view, setView] = useState<"cascade" | "assembly" | "council">("cascade");
   const [serverBuildMs, setServerBuildMs] = useState<number | null>(null);
@@ -65,6 +75,15 @@ export default function App() {
 
   useEffect(() => {
     if (view !== "assembly") return;
+    // A package built in an earlier session is still on disk — show it
+    // rather than making the operator rebuild to get his own file back.
+    getAssemblyExports()
+      .then((e) => {
+        if (!e) return;
+        setExports(e);
+        setDesignId((current) => current ?? e.design_id);
+      })
+      .catch(() => undefined);
     getLatestAssemblyValidation()
       .then((v) => {
         if (!v) return;
@@ -104,8 +123,28 @@ export default function App() {
     setValidationGates(resp.validation_gates);
     setOverallStatus(resp.overall_status ?? null);
     setServerBuildMs(resp.build_ms);
+    setDesignId(resp.design_id);
+    // A new build is a NEW design with no package yet. Clearing this stops
+    // the panel offering the previous design's zip as if it were this one.
+    setExports(null);
+    getAssemblyExports(resp.design_id).then(setExports).catch(() => undefined);
     setReloadToken((t) => t + 1);
   }, []);
+
+  const onExport = useCallback(() => {
+    if (!designId) return;
+    setExporting(true);
+    postAssemblyExports(designId)
+      .then(() => getAssemblyExports(designId))
+      .then((e) => {
+        setExports(e);
+        setExporting(false);
+      })
+      .catch((e) => {
+        setExporting(false);
+        setFatalError(`Export failed: ${e.message}`);
+      });
+  }, [designId]);
 
   const onModelRendered = useCallback(() => {
     if (rebuildStartRef.current !== null) {
@@ -222,6 +261,16 @@ export default function App() {
             overallStatus={overallStatus}
           />
         </ErrorBoundary>
+        {view === "assembly" && (
+          <ErrorBoundary label="Export">
+            <ExportPanel
+              designId={designId}
+              exports={exports}
+              exporting={exporting}
+              onExport={onExport}
+            />
+          </ErrorBoundary>
+        )}
       </div>
       </div>
     </div>

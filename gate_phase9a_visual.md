@@ -22,16 +22,31 @@ Open http://localhost:5173, **Assembly** tab.
 Opening a download link must never create data. If clicking a link builds
 files and writes database rows, that is the defect Phase 9A fixed.
 
-## 2. The format list is honest
+## 2. The format list is honest, and readable at a glance
 
-Press **Build LUXEXCHANGE package**.
+Press **Build export package**.
 
-- [ ] STEP, BREP, STL, DXF, SVG, GLB, OBJ, PLY show **in package** with a
-      size in kB.
-- [ ] USD, USDZ, FBX, ABC show **unavailable**.
-- [ ] DWG and SKP show **not possible**.
-- [ ] DAE and 3MF show **unavailable** naming a missing Python package.
+- [ ] A green **Download LUXEXCHANGE package** card appears with the zip
+      size and file count. It is the most prominent thing in the panel.
+- [ ] Files are grouped under **CAD — exact geometry** and
+      **Mesh — triangulated**, each with a one-line note saying what the
+      group is for.
+- [ ] **STEP is the first file listed**, above BREP — it is the one a
+      machinist opens.
+- [ ] Each file shows its size, and the row highlights on hover.
+- [ ] **Not included (6)** and **Not possible (2)** are collapsed, but their
+      counts are visible without opening them.
+- [ ] Expanding each shows the reason per format: the render worker for
+      USD/USDZ/FBX/ABC, a named Python package for DAE/3MF, and the DXF
+      workaround for DWG/SKP.
 - [ ] Nothing is silently absent from the list.
+
+## 2b. Single files download on their own
+
+- [ ] Click the **DXF** row. It downloads `assembly.dxf` by itself.
+- [ ] Click **STEP**. It downloads `assembly.step`.
+- [ ] Rows under *Not included* and *Not possible* are **not** clickable —
+      no dead links.
 
 ## 3. The digest is shown and stable
 

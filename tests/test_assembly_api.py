@@ -465,3 +465,113 @@ def test_every_gate_payload_carries_rows_the_ui_can_render(client):
             continue
         rows = gate.get("rows") or gate.get("checks")
         assert isinstance(rows, list), f"gate {name} has no renderable rows"
+
+
+# ---------------------------------------------------------------------------
+# Per-file downloads (export UI)
+# ---------------------------------------------------------------------------
+
+def test_each_included_format_downloads_on_its_own(client):
+    """"Just send me the DXF" is the most common real request.
+
+    A format listed in the panel that cannot be fetched on its own is a dead
+    end, so every `included` row carries a working download_url.
+    """
+    design_id = client.post(
+        "/api/geometry/assembly/build", json=valid_assembly_payload()
+    ).json()["design_id"]
+    client.post(f"/api/geometry/assembly/{design_id}/exports")
+
+    body = client.get(f"/api/geometry/assembly/{design_id}/exports").json()
+    included = [r for r in body["exports"]
+                if r["status"] == "included" and r["format"] != "LUXEXCHANGE"]
+    assert len(included) >= 8
+
+    for row in included:
+        assert row["download_url"], f"{row['format']} has no download link"
+        resp = client.get(row["download_url"])
+        assert resp.status_code == 200, f"{row['format']}: {resp.text[:120]}"
+        assert len(resp.content) == row["bytes"]
+        # Served as a file to save, not something to render in the page.
+        assert "attachment" in resp.headers["content-disposition"]
+        assert row["filename"] in resp.headers["content-disposition"]
+
+    step = client.get(f"/api/geometry/assembly/{design_id}/exports/STEP/download")
+    assert step.headers["content-type"].startswith("application/step")
+    assert b"ISO-10303-21" in step.content
+    dxf = client.get(f"/api/geometry/assembly/{design_id}/exports/DXF/download")
+    assert dxf.headers["content-type"].startswith("image/vnd.dxf")
+
+
+def test_downloading_before_exporting_says_what_to_do(client):
+    design_id = client.post(
+        "/api/geometry/assembly/build", json=valid_assembly_payload()
+    ).json()["design_id"]
+    resp = client.get(f"/api/geometry/assembly/{design_id}/exports/DXF/download")
+    assert resp.status_code == 409
+    assert "POST" in resp.json()["detail"]
+
+
+def test_an_absent_format_refuses_with_its_reason_not_a_broken_file(client):
+    design_id = client.post(
+        "/api/geometry/assembly/build", json=valid_assembly_payload()
+    ).json()["design_id"]
+    client.post(f"/api/geometry/assembly/{design_id}/exports")
+
+    usd = client.get(f"/api/geometry/assembly/{design_id}/exports/USD/download")
+    assert usd.status_code == 409
+    assert "render worker" in usd.json()["detail"]
+
+    dwg = client.get(f"/api/geometry/assembly/{design_id}/exports/DWG/download")
+    assert dwg.status_code == 409
+    assert "DXF" in dwg.json()["detail"]
+
+    unknown = client.get(f"/api/geometry/assembly/{design_id}/exports/NOPE/download")
+    assert unknown.status_code == 404
+    assert "unknown format" in unknown.json()["detail"]
+
+
+def test_absent_formats_never_offer_a_dead_link(client):
+    design_id = client.post(
+        "/api/geometry/assembly/build", json=valid_assembly_payload()
+    ).json()["design_id"]
+    client.post(f"/api/geometry/assembly/{design_id}/exports")
+
+    body = client.get(f"/api/geometry/assembly/{design_id}/exports").json()
+    for row in body["exports"]:
+        if row["status"] != "included":
+            assert row["download_url"] is None, (
+                f"{row['format']} is {row['status']} but offers a download link"
+            )
+
+
+def test_exports_are_listed_in_registry_order_not_alphabetically(client):
+    """STEP is the file a machinist opens; it belongs above BREP."""
+    design_id = client.post(
+        "/api/geometry/assembly/build", json=valid_assembly_payload()
+    ).json()["design_id"]
+    client.post(f"/api/geometry/assembly/{design_id}/exports")
+
+    formats = [r["format"] for r in
+               client.get(f"/api/geometry/assembly/{design_id}/exports").json()["exports"]]
+    assert formats.index("STEP") < formats.index("BREP")
+    assert formats.index("DXF") < formats.index("GLB")     # CAD before mesh
+    assert formats.index("PLY") < formats.index("DWG")     # real before impossible
+    assert formats[-1] == "LUXEXCHANGE"                    # the package last
+
+
+def test_export_status_carries_what_the_panel_needs_to_group_files(client):
+    design_id = client.post(
+        "/api/geometry/assembly/build", json=valid_assembly_payload()
+    ).json()["design_id"]
+    client.post(f"/api/geometry/assembly/{design_id}/exports")
+
+    body = client.get(f"/api/geometry/assembly/{design_id}/exports").json()
+    assert body["package_bytes"] > 0
+    by_format = {r["format"]: r for r in body["exports"]}
+    assert by_format["STEP"]["tier"] == "cad"
+    assert by_format["OBJ"]["tier"] == "mesh"
+    assert by_format["USD"]["tier"] == "render"
+    # Every row explains what it is for, so the panel never shows a bare code.
+    for row in body["exports"]:
+        assert row["purpose"], f"{row['format']} has no purpose text"

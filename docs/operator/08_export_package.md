@@ -7,8 +7,20 @@ else's desk.
 
 ## Making one
 
-In the Assembly tab: **Build assembly**, then **Build LUXEXCHANGE package**,
-then the download link.
+In the Assembly tab: **Build assembly**, then in the **Export** panel press
+**Build export package**. The panel then shows:
+
+- a green **Download LUXEXCHANGE package** card with the zip size and file
+  count — this is the whole thing, and what you normally send;
+- the **content digest**, with a copy button;
+- the files grouped by what they are *for*:
+  - **CAD — exact geometry**: cut, machine and measure from these;
+  - **Mesh — triangulated**: for viewing only, never for machining;
+- **Not included** and **Not possible**, collapsed but always showing their
+  counts, so nothing is ever silently dropped.
+
+**Click any single file to download just that one.** If a fabricator asks
+only for the DXF, you do not have to send the whole package.
 
 Or from PowerShell:
 
@@ -17,6 +29,15 @@ $design = (Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/geometr
 Invoke-RestMethod -Method Post -Uri "http://localhost:8000/api/geometry/assembly/$design/exports"
 Invoke-WebRequest -Uri "http://localhost:8000/api/geometry/assembly/$design/luxexchange.zip" -OutFile .\luxexchange.zip
 ```
+
+One file on its own:
+
+```powershell
+Invoke-WebRequest -Uri "http://localhost:8000/api/geometry/assembly/$design/exports/DXF/download" -OutFile .\assembly.dxf
+```
+
+A format that is not available refuses with the reason rather than handing
+you a broken file.
 
 Note that **building the package is a POST**. Opening the download link
 never builds anything — it serves what is already there, or tells you to

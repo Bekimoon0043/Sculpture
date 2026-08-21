@@ -253,6 +253,23 @@ def _mesh_writer(file_type: str) -> Callable[[Any, Path, dict[str, Any]], None]:
 # The registry
 # ---------------------------------------------------------------------------
 
+#: What a browser should be told a file is. Every one is served as an
+#: attachment, so this is about the file the operator ends up with, not
+#: about rendering anything in the page.
+MEDIA_TYPES: dict[str, str] = {
+    ".step": "application/step",
+    ".brep": "application/octet-stream",
+    ".stl": "model/stl",
+    ".dxf": "image/vnd.dxf",
+    ".svg": "image/svg+xml",
+    ".glb": "model/gltf-binary",
+    ".obj": "model/obj",
+    ".ply": "application/octet-stream",
+    ".dae": "model/vnd.collada+xml",
+    ".3mf": "model/3mf",
+}
+
+
 @dataclass(frozen=True)
 class FormatSpec:
     format: str
@@ -263,6 +280,14 @@ class FormatSpec:
     status_without_writer: ExportStatus = "unavailable"
     reason: str | None = None
     derived_from: str | None = None
+
+    @property
+    def media_type(self) -> str:
+        return MEDIA_TYPES.get(self.extension, "application/octet-stream")
+
+    @property
+    def filename(self) -> str:
+        return f"assembly{self.extension}"
 
 
 #: Ordered so the package lists CAD first — that is what a fabricator needs.

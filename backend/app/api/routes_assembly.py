@@ -41,7 +41,11 @@ from app.core.config import (
 from app.db.database import get_default_db
 from app.db.models import DesignRow, ExportRow, JobRow, ValidationReportRow
 from app.geometry import ConstraintViolation, PRIMITIVES, assemble
-from app.geometry.export_formats import FORMAT_REGISTRY, write_exports
+from app.geometry.export_formats import (
+    FORMAT_REGISTRY,
+    FORMATS_BY_NAME,
+    write_exports,
+)
 from app.geometry.exporters import export_glb, export_step
 from app.geometry.gates import WaterContext, validate_layered_gates, worst_status
 from app.geometry.kernel import step_timestamp_for
@@ -465,10 +469,16 @@ def _export_rows(design_id: str) -> list[dict[str, Any]]:
     with db.get_session() as session:
         rows = session.execute(
             select(ExportRow).where(ExportRow.design_id == design_id)
-            .order_by(ExportRow.format.asc())
         ).scalars().all()
-    return [
-        {
+    # Registry order, not alphabetical: STEP is the file a machinist opens
+    # and belongs at the top of its group, not after BREP. Anything not in
+    # the registry (the package row) sorts last.
+    order = {spec.format: i for i, spec in enumerate(FORMAT_REGISTRY)}
+    rows = sorted(rows, key=lambda r: (order.get(r.format, len(order)), r.format))
+    out = []
+    for r in rows:
+        spec = FORMATS_BY_NAME.get(r.format)
+        out.append({
             "format": r.format,
             "status": r.status,
             "path": r.path or None,
@@ -478,9 +488,17 @@ def _export_rows(design_id: str) -> list[dict[str, Any]]:
             "error": r.error,
             "job_id": r.job_id,
             "created_at": r.created_at,
-        }
-        for r in rows
-    ]
+            "tier": spec.tier if spec else "package",
+            "purpose": spec.purpose if spec else "the package itself",
+            "filename": spec.filename if spec else PACKAGE_NAME,
+            # Only offer a link for something that can actually be fetched.
+            "download_url": (
+                f"/api/geometry/assembly/{design_id}/exports/{r.format}/download"
+                if r.status == "included" and r.format in FORMATS_BY_NAME
+                else None
+            ),
+        })
+    return out
 
 
 def _upsert_export_rows(
@@ -678,6 +696,7 @@ def _exports_status(row: DesignRow) -> dict[str, Any]:
         "schema": "luxexchange_v1",
         "package_built": package_path.exists(),
         "package_path": str(package_path) if package_path.exists() else None,
+        "package_bytes": package_path.stat().st_size if package_path.exists() else None,
         "content_digest": (job_state or {}).get("state", {}).get("content_digest"),
         "last_job": job_state,
         "exports": rows,
@@ -729,6 +748,59 @@ def _serve_package(row: DesignRow) -> FileResponse:
         package_path, media_type="application/zip",
         filename=f"luxexchange_{row.id}.zip",
     )
+
+
+def _serve_export_file(row: DesignRow, fmt: str) -> FileResponse:
+    """Serve ONE exported file.
+
+    The operator's most common real request is "just send me the DXF" — a
+    format listed in the panel that cannot be downloaded on its own is a
+    dead end. Reads only; the file must already have been exported.
+    """
+    spec = FORMATS_BY_NAME.get(fmt.upper())
+    if spec is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"unknown format {fmt!r}; known: {sorted(FORMATS_BY_NAME)}",
+        )
+    db = get_default_db()
+    with db.get_session() as session:
+        export = session.execute(
+            select(ExportRow)
+            .where(ExportRow.design_id == row.id)
+            .where(ExportRow.format == spec.format)
+        ).scalars().first()
+        status = export.status if export else None
+        path = Path(export.path) if export and export.path else None
+        error = export.error if export else None
+
+    if export is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{spec.format} has not been exported for design {row.id} — POST "
+                f"to /api/geometry/assembly/{row.id}/exports first"
+            ),
+        )
+    if status != "included" or path is None or not path.exists():
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{spec.format} is not available for this design "
+                f"(status: {status}). {error or spec.reason or ''}".strip()
+            ),
+        )
+    return FileResponse(path, media_type=spec.media_type, filename=spec.filename)
+
+
+@router.get("/latest/exports/{fmt}/download")
+def get_latest_export_file(fmt: str) -> FileResponse:
+    return _serve_export_file(_latest_assembly_design(), fmt)
+
+
+@router.get("/{design_id}/exports/{fmt}/download")
+def get_design_export_file(design_id: str, fmt: str) -> FileResponse:
+    return _serve_export_file(_design_or_404(design_id), fmt)
 
 
 @router.get("/latest/luxexchange.zip")

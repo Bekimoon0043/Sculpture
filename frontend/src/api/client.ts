@@ -148,17 +148,29 @@ export interface ExportEntry {
   sha256: string | null;
   bytes: number | null;
   error: string | null;
+  /** "cad" | "mesh" | "render" | "none" | "package" — what the file is FOR. */
+  tier?: string;
+  purpose?: string;
+  filename?: string;
+  /** Present only when the file exists and can actually be fetched. */
+  download_url?: string | null;
 }
 
 export interface ExportsResponse {
   design_id: string;
   package_built: boolean;
+  package_bytes?: number | null;
   content_digest: string | null;
   exports: ExportEntry[];
   counts: Record<string, number>;
   luxexchange_url: string;
   catalog: ExportFormatInfo[];
   last_job: { status: string; halt_reason: string | null } | null;
+}
+
+/** URL for ONE exported file. Only valid once that format is `included`. */
+export function exportFileUrl(designId: string, format: string): string {
+  return `/api/geometry/assembly/${designId}/exports/${format}/download`;
 }
 
 export class ApiError extends Error {

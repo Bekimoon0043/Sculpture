@@ -376,22 +376,6 @@ pre.payload {
 .profile-note { color: #c9a86a; font-size: 11px; font-style: italic; }
 .warn-hint { color: #c9a86a; }
 
-/* --- Phase 9A: export package -------------------------------------------- */
-.export-table {
-  width: 100%;
-  margin-top: 8px;
-  font-size: 12px;
-}
-.export-table td { padding: 2px 4px; }
-.export-table tr.row-included td:nth-child(2) { color: #7fb285; }
-.export-table tr.row-failed td:nth-child(2) { color: #d08a8a; }
-.export-table tr.row-unavailable td:nth-child(2) { color: #7f9dc9; }
-.export-table tr.row-impossible td:nth-child(2) { color: #8b96a3; }
-.rebuild.secondary {
-  background: #1b2027;
-  border: 1px solid #2a3138;
-  margin-top: 6px;
-}
 
 /* A crashed panel must be legible, not a black void. */
 .error-panel { border: 1px solid #6b3a3a; }
@@ -403,5 +387,158 @@ pre.payload {
   font-size: 11px;
   white-space: pre-wrap;
   overflow-x: auto;
+  color: #d08a8a;
+}
+
+/* ==========================================================================
+   Phase 9A — export panel
+   ==========================================================================
+   The old layout gave every format the same visual weight, so STEP (what a
+   machinist opens) sat level with SKP (a format we cannot write at all).
+   Weight here follows consequence: the package download is the loudest
+   thing, CAD files come next, and everything absent is quiet but never
+   hidden — the counts stay in the summary line so nothing looks silently
+   dropped. */
+
+.export-panel h3 {
+  margin: 14px 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #8b96a3;
+}
+.export-panel h3.group-fail { color: #d08a8a; }
+.group-blurb {
+  margin: 0 0 6px;
+  font-size: 11px;
+  color: #6d7681;
+  max-width: 44ch;
+}
+
+/* The primary action. One obvious thing to press, then one obvious thing to
+   download. */
+.rebuild.export-primary { width: 100%; }
+.rebuild.secondary {
+  background: #1b2027;
+  border: 1px solid #2a3138;
+  margin-top: 8px;
+  width: 100%;
+}
+
+.package-card {
+  display: block;
+  text-decoration: none;
+  border: 1px solid #3c5a41;
+  background: linear-gradient(180deg, #17211a 0%, #141a17 100%);
+  border-radius: 6px;
+  padding: 10px 12px;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.package-card:hover {
+  border-color: #5c8a63;
+  background: linear-gradient(180deg, #1b2820 0%, #16201a 100%);
+}
+.package-title {
+  display: block;
+  color: #9fd0a6;
+  font-weight: 600;
+  font-size: 13px;
+}
+.package-meta {
+  display: block;
+  margin-top: 2px;
+  color: #6d7681;
+  font-size: 11px;
+}
+
+.digest-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 11px;
+}
+.digest-label { color: #6d7681; }
+.digest-row code {
+  color: #8b96a3;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.digest-copy {
+  background: #1b2027;
+  border: 1px solid #2a3138;
+  border-radius: 4px;
+  color: #8b96a3;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 1px 6px;
+}
+.digest-copy:hover { border-color: #3d4650; color: #c8d0d8; }
+
+/* File rows: the whole row is the download target, so there is no small
+   icon to hit. */
+.file-list { list-style: none; margin: 0; padding: 0; }
+.file-row + .file-row { margin-top: 2px; }
+
+.file-main {
+  display: grid;
+  grid-template-columns: 1fr auto 16px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  text-decoration: none;
+  color: #c8d0d8;
+  font-size: 12px;
+}
+a.file-main:hover {
+  background: #171c22;
+  border-color: #2a3138;
+}
+a.file-main:hover .file-dl { color: #9fd0a6; }
+.file-main.static { grid-template-columns: 1fr auto; cursor: default; }
+
+.file-format {
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.file-size { color: #6d7681; font-variant-numeric: tabular-nums; }
+.file-dl { color: #3d4650; text-align: right; transition: color 120ms ease; }
+.file-status { color: #6d7681; font-size: 11px; }
+
+.file-purpose {
+  margin: 0 0 0 8px;
+  font-size: 10px;
+  color: #6d7681;
+  max-width: 46ch;
+}
+
+.file-row.missing .file-format { color: #8b96a3; font-weight: 500; }
+.file-row.row-failed .file-status { color: #d08a8a; }
+.file-row.row-failed .file-purpose { color: #b07a7a; }
+.file-row.row-unavailable .file-status { color: #7f9dc9; }
+.file-row.row-impossible .file-status { color: #6d7681; }
+
+/* Absent formats collapse, but the count is always on the summary line. */
+.collapsed-group {
+  margin-top: 12px;
+  border-top: 1px solid #21272e;
+  padding-top: 8px;
+}
+.collapsed-group > summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: #8b96a3;
+  list-style-position: outside;
+}
+.collapsed-group > summary:hover { color: #c8d0d8; }
+
+.export-error {
+  border: 1px solid #6b3a3a;
+  background: rgba(107, 58, 58, 0.16);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 11px;
   color: #d08a8a;
 }
