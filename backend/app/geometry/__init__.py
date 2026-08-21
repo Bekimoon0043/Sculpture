@@ -25,11 +25,14 @@ from app.geometry.registry import (
     CascadeParams,
     ConstraintViolation,
     assemble,
+    assembly_plan_from_spec,
+    fabrication_limits_from_spec,
     validate_params,
 )
 
 if TYPE_CHECKING:  # static view only; runtime loads lazily via __getattr__
     from app.geometry.exporters import export_glb, export_step
+    from app.geometry.gates import LayeredGateReport, validate_layered_gates
     from app.geometry.kernel import GeometryBuild
     from app.geometry.primitives.cascade import build_cascade
     from app.geometry.validate import ValidationReport, validate_mesh
@@ -43,6 +46,8 @@ _LAZY = {
     "ValidationReport": "app.geometry.validate",
     "validate_assembly": "app.geometry.validate",
     "AssemblyValidationReport": "app.geometry.validate",
+    "LayeredGateReport": "app.geometry.gates",
+    "validate_layered_gates": "app.geometry.gates",
 }
 
 __all__ = [
@@ -52,6 +57,8 @@ __all__ = [
     "CascadeParams",
     "ConstraintViolation",
     "assemble",
+    "assembly_plan_from_spec",
+    "fabrication_limits_from_spec",
     "validate_params",
     "build_cascade",
     "export_step",
@@ -60,6 +67,8 @@ __all__ = [
     "ValidationReport",
     "validate_assembly",
     "AssemblyValidationReport",
+    "LayeredGateReport",
+    "validate_layered_gates",
 ]
 
 

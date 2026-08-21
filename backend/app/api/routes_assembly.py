@@ -1,0 +1,741 @@
+"""Primitive-agnostic assembly API — Phase 7A, 8 and 9A.
+
+A caller builds from the live primitive registry, persists the returned
+`assembly_manifest_v1`, reloads it, runs the layered validation gates
+(Phase 8), and produces a reproducible, self-verifying LUXEXCHANGE package
+(Phase 9A).
+
+Two design rules this module now keeps that the foundation slice did not:
+
+* GET never mutates. Exporting is a POST that creates a job; the GETs read
+  status and serve artifacts. The old download endpoint wrote files and
+  inserted DB rows on every request, so three clicks produced nine export
+  rows.
+* A warning is never reported as a pass. `overall_status` rolls up the four
+  Phase 8 statuses, and `passed` means `pass` — not "did not fail".
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import os
+import platform
+import time
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from sqlalchemy import select
+
+from app.core.config import (
+    DEFAULT_GATE_PROFILE_ID,
+    REPO_ROOT,
+    load_config_bundle,
+)
+from app.db.database import get_default_db
+from app.db.models import DesignRow, ExportRow, JobRow, ValidationReportRow
+from app.geometry import ConstraintViolation, PRIMITIVES, assemble
+from app.geometry.export_formats import FORMAT_REGISTRY, write_exports
+from app.geometry.exporters import export_glb, export_step
+from app.geometry.gates import WaterContext, validate_layered_gates, worst_status
+from app.geometry.kernel import step_timestamp_for
+from app.geometry.luxexchange import build_luxexchange_package
+from app.geometry.validate import validate_assembly
+
+log = logging.getLogger("luxuryform.api.assembly")
+
+router = APIRouter(prefix="/geometry/assembly", tags=["geometry"])
+
+PACKAGE_NAME = "luxexchange_v1.zip"
+
+
+def data_dir() -> Path:
+    """Root for exported design files (env-overridable for tests)."""
+    return Path(os.environ.get("LUXURYFORM_DATA_DIR", str(REPO_ROOT / "data")))
+
+
+class AssemblyBuildRequest(BaseModel):
+    elements: list[dict[str, Any]]
+    fabrication: dict[str, Any] | None = None
+    water: WaterContext | None = None
+    hydraulic_network: dict[str, Any] | None = None
+    gate_profile_id: str | None = None
+    seed: int = 0
+    #: ADR-034. False (the default for this operator-facing route) builds the
+    #: geometry even when a declared workshop limit is breached, and reports
+    #: the breach through the fabrication gate. The AI fabrication loop calls
+    #: assemble(strict=True) directly and is unaffected.
+    strict: bool = False
+
+
+def _materials_public() -> dict[str, dict[str, Any]]:
+    bundle = load_config_bundle()
+    return {
+        mid: {
+            "name": m.name,
+            "category": m.category,
+            "density_kg_per_m3": m.density_kg_per_m3,
+            "min_wall_mm": m.min_wall_mm,
+        }
+        for mid, m in bundle.materials.materials.items()
+    }
+
+
+def _primitive_registry_public() -> dict[str, dict[str, Any]]:
+    return {
+        pid: {
+            "purpose": getattr(module, "PURPOSE", ""),
+            "can_parent_stack": bool(getattr(module, "CAN_PARENT_STACK", False)),
+            "can_parent_insert": bool(getattr(module, "CAN_PARENT_INSERT", False)),
+            "parameters": getattr(module, "PARAMETERS"),
+        }
+        for pid, module in sorted(PRIMITIVES.items())
+    }
+
+
+def _gate_profiles_public() -> dict[str, Any]:
+    profiles = load_config_bundle().gate_profiles
+    return {
+        "version": profiles.version,
+        "default": DEFAULT_GATE_PROFILE_ID,
+        "profiles": {
+            pid: {
+                "name": p.name,
+                "signed_off": p.signed_off,
+                "site_altitude_m": p.site_altitude_m,
+                # Which thresholds are still unsupplied, so the UI can say
+                # what to fill in rather than only showing needs_input rows.
+                "unset_thresholds": sorted(
+                    field
+                    for field in (
+                        "design_wind_speed_m_s", "overturning_safety_factor",
+                        "allowable_bearing_kpa", "min_freeboard_mm",
+                        "min_reservoir_turnover_min", "jet_velocity_m_s",
+                        "nozzle_bore_tolerance_pct", "max_bore_aspect_ratio",
+                        "min_service_void_mm", "manual_handling_limit_kg",
+                    )
+                    if getattr(p, field) is None
+                ),
+            }
+            for pid, p in sorted(profiles.profiles.items())
+        },
+    }
+
+
+def _canonical_payload(request: AssemblyBuildRequest) -> dict[str, Any]:
+    return {
+        "schema": "assembly_request_v1",
+        "seed": int(request.seed),
+        "elements": request.elements,
+        "fabrication": request.fabrication or {},
+        "water": request.water.model_dump() if request.water else {},
+        "hydraulic_network": request.hydraulic_network or {},
+        "gate_profile_id": request.gate_profile_id or DEFAULT_GATE_PROFILE_ID,
+    }
+
+
+def _spec_hash(payload: dict[str, Any]) -> str:
+    blob = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(blob).hexdigest()
+
+
+def _stored_parameters(
+    request_payload: dict[str, Any],
+    manifest: dict[str, Any],
+    artifacts: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "schema": "assembly_design_record_v1",
+        "request": request_payload,
+        "manifest": manifest,
+        "artifacts": artifacts,
+    }
+
+
+def _tool_versions() -> dict[str, Any]:
+    versions: dict[str, Any] = {
+        "luxuryform_export_package": "1",
+        "python": platform.python_version(),
+    }
+    for name in ("build123d", "trimesh", "ezdxf"):
+        try:
+            module = __import__(name)
+            versions[name] = getattr(module, "__version__", "unknown")
+        except Exception as exc:
+            versions[f"{name}_error"] = str(exc)
+    return versions
+
+
+def _validation_rows(design_id: str) -> dict[str, Any]:
+    db = get_default_db()
+    with db.get_session() as session:
+        rows = session.execute(
+            select(ValidationReportRow)
+            .where(ValidationReportRow.design_id == design_id)
+            .order_by(ValidationReportRow.created_at.asc())
+        ).scalars().all()
+    return {row.gate_name: json.loads(row.numbers_json) for row in rows}
+
+
+#: Statuses a stored report may legitimately carry.
+_KNOWN_STATUSES = frozenset({"pass", "warn", "fail", "needs_input"})
+
+
+def _row_status(row: ValidationReportRow) -> str:
+    """Status of one persisted report, without ever inventing a pass.
+
+    Three cases, in order:
+
+    1. The `status` column is set — Phase 8 onward. Use it.
+    2. The column is NULL but the stored JSON carries a status — a report
+       written between the layered-gate slice and the Phase 8 column patch.
+       Use that.
+    3. Neither — a pre-Phase-8 row whose only signal is `passed`, which back
+       then meant "did not fail" and so cannot distinguish a pass from a
+       warning. We do not know, so we say we do not know: `needs_input`.
+       Mapping it to `pass` is precisely the lie Phase 8 exists to stop
+       (ADR-036), and it would resurface every time an old row was read.
+    """
+    if row.status in _KNOWN_STATUSES:
+        return row.status
+    try:
+        stored = json.loads(row.numbers_json)
+    except (ValueError, TypeError):
+        stored = {}
+    status = stored.get("status") if isinstance(stored, dict) else None
+    if status in _KNOWN_STATUSES:
+        return status
+    if isinstance(stored, dict) and isinstance(stored.get("passed"), bool):
+        # A mesh report: `passed` there really is a two-state verdict.
+        if stored.get("schema") is None and "watertight" in stored:
+            return "pass" if stored["passed"] else "fail"
+    return "needs_input"
+
+
+def _validation_statuses(design_id: str) -> dict[str, str]:
+    db = get_default_db()
+    with db.get_session() as session:
+        rows = session.execute(
+            select(ValidationReportRow)
+            .where(ValidationReportRow.design_id == design_id)
+        ).scalars().all()
+    return {row.gate_name: _row_status(row) for row in rows}
+
+
+# ---------------------------------------------------------------------------
+# Build
+# ---------------------------------------------------------------------------
+
+@router.get("/defaults")
+def get_assembly_defaults() -> dict[str, Any]:
+    """Live primitive registry + materials + gate profiles for the UI."""
+    return {
+        "schema": "assembly_defaults_v1",
+        "primitives": _primitive_registry_public(),
+        "materials": _materials_public(),
+        "joint_types": ["stack_on", "concentric_insert"],
+        "gate_profiles": _gate_profiles_public(),
+        "export_formats": [
+            {"format": f.format, "tier": f.tier, "purpose": f.purpose}
+            for f in FORMAT_REGISTRY
+        ],
+    }
+
+
+@router.post("/build")
+def post_assembly_build(request: AssemblyBuildRequest) -> dict[str, Any]:
+    """Assemble -> export STEP/GLB -> validate -> persist -> respond."""
+    t0 = time.perf_counter()
+    try:
+        solid, manifest = assemble(
+            request.elements,
+            seed=request.seed,
+            fabrication=request.fabrication,
+            strict=request.strict,
+        )
+    except ConstraintViolation as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"violations": exc.violations},
+        ) from exc
+
+    request_payload = _canonical_payload(request)
+    profile_id = request.gate_profile_id or DEFAULT_GATE_PROFILE_ID
+    spec_hash = _spec_hash(request_payload)
+    out_dir = data_dir() / "designs" / spec_hash
+    step_path = out_dir / "assembly.step"
+    glb_path = out_dir / "assembly.glb"
+    step_sha256 = export_step(solid, step_path, step_timestamp_for(request.seed))
+    glb_sha256 = export_glb(solid, glb_path)
+
+    mesh_report = validate_assembly(glb_path, manifest)
+    try:
+        layered_reports = validate_layered_gates(
+            manifest, water=request.water, gate_profile_id=profile_id
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail={"violations": [str(exc)]}) from exc
+    build_ms = (time.perf_counter() - t0) * 1000.0
+
+    gate_statuses = {"assembly_mesh": "pass" if mesh_report.passed else "fail"}
+    gate_statuses.update({name: r.status for name, r in layered_reports.items()})
+    overall = worst_status(gate_statuses.values())
+
+    now = datetime.now(timezone.utc).isoformat()
+    design_id = str(uuid.uuid4())
+    artifacts = {
+        "step_path": str(step_path),
+        "glb_path": str(glb_path),
+        "step_sha256": step_sha256,
+        "glb_sha256": glb_sha256,
+    }
+    db = get_default_db()
+    with db.get_session() as session:
+        session.add(
+            DesignRow(
+                id=design_id,
+                created_at=now,
+                spec_id=None,
+                geometry_hash=step_sha256,
+                parameter_json=json.dumps(
+                    _stored_parameters(request_payload, manifest, artifacts),
+                    sort_keys=True,
+                ),
+                status="assembly_built",
+                seed=request.seed,
+                spec_hash=spec_hash,
+                build_ms=build_ms,
+                glb_path=str(glb_path),
+                step_path=str(step_path),
+            )
+        )
+        session.flush()
+        session.add(
+            ValidationReportRow(
+                id=str(uuid.uuid4()), created_at=now, design_id=design_id,
+                gate_name="assembly_mesh",
+                passed=1 if mesh_report.passed else 0,
+                status=gate_statuses["assembly_mesh"],
+                numbers_json=mesh_report.model_dump_json(),
+            )
+        )
+        for gate_name, report in layered_reports.items():
+            session.add(
+                ValidationReportRow(
+                    id=str(uuid.uuid4()), created_at=now, design_id=design_id,
+                    gate_name=gate_name,
+                    # Phase 8: `passed` means PASS. A warn is not a pass.
+                    passed=1 if report.status == "pass" else 0,
+                    status=report.status,
+                    numbers_json=json.dumps(report.model_dump_wire(), sort_keys=True),
+                )
+            )
+
+    log.info(
+        "assembly build persisted: design=%s spec_hash=%s seed=%d overall=%s",
+        design_id, spec_hash, request.seed, overall,
+    )
+    return {
+        "design_id": design_id,
+        "spec_hash": spec_hash,
+        "seed": request.seed,
+        "strict": request.strict,
+        "gate_profile_id": profile_id,
+        "step_sha256": step_sha256,
+        "glb_sha256": glb_sha256,
+        "glb_url": "/api/geometry/assembly/latest.glb",
+        "step_url": "/api/geometry/assembly/latest.step",
+        "exports_url": f"/api/geometry/assembly/{design_id}/exports",
+        "luxexchange_url": f"/api/geometry/assembly/{design_id}/luxexchange.zip",
+        "build_ms": build_ms,
+        "manifest": manifest,
+        "overall_status": overall,
+        "passed": overall == "pass",
+        "validation": {**mesh_report.model_dump(), "rows": mesh_report.check_rows()},
+        "validation_gates": {
+            name: {**report.model_dump_wire(), "rows": report.check_rows()}
+            for name, report in layered_reports.items()
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Reading the latest build
+# ---------------------------------------------------------------------------
+
+def _latest_assembly_design() -> DesignRow:
+    db = get_default_db()
+    with db.get_session() as session:
+        row = session.execute(
+            select(DesignRow)
+            .where(DesignRow.status == "assembly_built")
+            .order_by(DesignRow.created_at.desc())
+            .limit(1)
+        ).scalars().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="no assembly build yet")
+    return row
+
+
+def _design_or_404(design_id: str) -> DesignRow:
+    db = get_default_db()
+    with db.get_session() as session:
+        row = session.get(DesignRow, design_id)
+    if row is None or row.status != "assembly_built":
+        raise HTTPException(status_code=404, detail=f"no assembly design {design_id}")
+    return row
+
+
+@router.get("/latest/manifest")
+def get_latest_manifest() -> dict[str, Any]:
+    row = _latest_assembly_design()
+    stored = json.loads(row.parameter_json)
+    return {
+        "created_at": row.created_at,
+        "design_id": row.id,
+        "spec_hash": row.spec_hash,
+        "seed": row.seed,
+        "manifest": stored["manifest"],
+        "request": stored["request"],
+        "artifacts": stored["artifacts"],
+    }
+
+
+@router.get("/latest.glb")
+def get_latest_glb() -> FileResponse:
+    row = _latest_assembly_design()
+    if not row.glb_path or not Path(row.glb_path).exists():
+        raise HTTPException(status_code=404, detail="latest assembly has no GLB on disk")
+    return FileResponse(row.glb_path, media_type="model/gltf-binary", filename="assembly.glb")
+
+
+@router.get("/latest.step")
+def get_latest_step() -> FileResponse:
+    row = _latest_assembly_design()
+    if not row.step_path or not Path(row.step_path).exists():
+        raise HTTPException(status_code=404, detail="latest assembly has no STEP on disk")
+    return FileResponse(row.step_path, media_type="application/step", filename="assembly.step")
+
+
+def _validation_payload(row: DesignRow) -> dict[str, Any]:
+    by_gate = _validation_rows(row.id)
+    if not by_gate:
+        raise HTTPException(status_code=404, detail="no assembly validation report yet")
+    statuses = _validation_statuses(row.id)
+    overall = worst_status(statuses.values())
+    return {
+        "design_id": row.id,
+        "gate_name": "phase8_layered",
+        "overall_status": overall,
+        # A warn is NOT a pass, and neither is needs_input.
+        "passed": overall == "pass",
+        "blocking": overall == "fail",
+        "gate_statuses": statuses,
+        "validation": by_gate.get("assembly_mesh"),
+        "gates": by_gate,
+    }
+
+
+@router.get("/latest/validation")
+def get_latest_validation() -> dict[str, Any]:
+    return _validation_payload(_latest_assembly_design())
+
+
+@router.get("/{design_id}/validation")
+def get_design_validation(design_id: str) -> dict[str, Any]:
+    return _validation_payload(_design_or_404(design_id))
+
+
+# ---------------------------------------------------------------------------
+# Export jobs (Phase 9A)
+# ---------------------------------------------------------------------------
+
+def _package_dir(design_id: str) -> Path:
+    return data_dir() / "exports" / design_id
+
+
+def _export_rows(design_id: str) -> list[dict[str, Any]]:
+    db = get_default_db()
+    with db.get_session() as session:
+        rows = session.execute(
+            select(ExportRow).where(ExportRow.design_id == design_id)
+            .order_by(ExportRow.format.asc())
+        ).scalars().all()
+    return [
+        {
+            "format": r.format,
+            "status": r.status,
+            "path": r.path or None,
+            "sha256": r.sha256,
+            "bytes": r.bytes,
+            "duration_ms": r.duration_ms,
+            "error": r.error,
+            "job_id": r.job_id,
+            "created_at": r.created_at,
+        }
+        for r in rows
+    ]
+
+
+def _upsert_export_rows(
+    design_id: str, job_id: str, entries: list[dict[str, Any]], versions: str
+) -> None:
+    """One row per (design_id, format). Re-exporting UPDATES, never appends."""
+    now = datetime.now(timezone.utc).isoformat()
+    db = get_default_db()
+    with db.get_session() as session:
+        existing = {
+            r.format: r
+            for r in session.execute(
+                select(ExportRow).where(ExportRow.design_id == design_id)
+            ).scalars().all()
+        }
+        for entry in entries:
+            row = existing.get(entry["format"])
+            if row is None:
+                row = ExportRow(
+                    id=str(uuid.uuid4()), created_at=now, design_id=design_id,
+                    format=entry["format"], path="", tool_versions_json=versions,
+                )
+                session.add(row)
+            row.path = entry.get("path") or ""
+            row.status = entry["status"]
+            row.sha256 = entry.get("sha256")
+            row.bytes = entry.get("bytes")
+            row.duration_ms = entry.get("duration_ms")
+            row.error = entry.get("error") or entry.get("reason")
+            row.job_id = job_id
+            row.tool_versions_json = versions
+
+
+def _costing_for(design_id: str) -> tuple[dict[str, Any] | None, str | None]:
+    """BOM for the package, or an honest reason it could not be computed."""
+    try:
+        from app.api.routes_costing import _bom_for
+
+        _, bom, _params = _bom_for(design_id)
+        return bom.as_dict(), None
+    except HTTPException as exc:
+        return None, f"costing unavailable: {exc.detail}"
+    except Exception as exc:
+        return None, f"costing unavailable: {type(exc).__name__}: {exc}"
+
+
+@router.post("/{design_id}/exports")
+def post_design_exports(design_id: str) -> dict[str, Any]:
+    """Run every export format, then seal a reproducible LUXEXCHANGE package.
+
+    This is the only endpoint that writes. It is idempotent by design: the
+    same design re-exported overwrites its own rows and produces a
+    byte-identical package.
+    """
+    row = _design_or_404(design_id)
+    stored = json.loads(row.parameter_json)
+    manifest = stored["manifest"]
+    request_payload = stored["request"]
+    seed = int(row.seed or 0)
+
+    job_id = str(uuid.uuid4())
+    started = datetime.now(timezone.utc).isoformat()
+    db = get_default_db()
+    with db.get_session() as session:
+        session.add(JobRow(
+            id=job_id, session_id=design_id, ts=started, job_type="export",
+            status="running",
+            state_json=json.dumps({"design_id": design_id, "step": "rebuild_solid"}),
+        ))
+
+    def _finish(status: str, state: dict[str, Any], halt: str | None = None) -> None:
+        with db.get_session() as session:
+            job = session.get(JobRow, job_id)
+            if job is not None:
+                job.status = status
+                job.state_json = json.dumps(state, sort_keys=True)
+                job.halt_reason = halt
+
+    t0 = time.perf_counter()
+    try:
+        # Rebuild the solid from the persisted manifest's own request. The
+        # B-rep is needed for the CAD-tier formats and is not stored.
+        solid, _ = assemble(
+            request_payload["elements"],
+            seed=seed,
+            fabrication=request_payload.get("fabrication") or None,
+            strict=False,
+        )
+    except Exception as exc:
+        _finish("failed", {"design_id": design_id, "step": "rebuild_solid"},
+                halt=f"{type(exc).__name__}: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"could not rebuild geometry for export: {type(exc).__name__}: {exc}",
+        ) from exc
+
+    out_dir = _package_dir(design_id)
+    results = write_exports(
+        solid, out_dir,
+        step_path=Path(row.step_path) if row.step_path else None,
+        glb_path=Path(row.glb_path) if row.glb_path else None,
+        seed=seed,
+    )
+
+    costing, costing_reason = _costing_for(design_id)
+    validation_reports = _validation_rows(design_id)
+    package_path = out_dir / PACKAGE_NAME
+    versions = _tool_versions()
+
+    _, package_manifest, digest = build_luxexchange_package(
+        package_path,
+        seed=seed,
+        design={
+            "design_id": row.id,
+            "created_at": row.created_at,
+            "status": row.status,
+            "spec_hash": row.spec_hash,
+            "geometry_hash": row.geometry_hash,
+            "seed": seed,
+            "gate_statuses": _validation_statuses(design_id),
+            "overall_status": worst_status(_validation_statuses(design_id).values()),
+        },
+        request_payload=request_payload,
+        assembly_manifest=manifest,
+        validation_reports=validation_reports,
+        exports=results,
+        costing=costing,
+        costing_unavailable_reason=costing_reason,
+        # Provenance is keyed to the DESIGN, not to this export run. Using
+        # the export wall clock here would make the package bytes differ on
+        # every re-export for a reason that has nothing to do with the
+        # design. When the export ran is recorded on the job row, which is
+        # where a timestamp belongs.
+        provenance={
+            "design_created_at": row.created_at,
+            "platform": platform.platform(),
+            "tool_versions": versions,
+        },
+    )
+
+    entries = [r.to_manifest_entry() for r in results]
+    entries.append({
+        "format": "LUXEXCHANGE",
+        "status": "included",
+        "tier": "package",
+        "purpose": "portable, self-verifying design package",
+        "path": str(package_path),
+        "sha256": hashlib.sha256(package_path.read_bytes()).hexdigest(),
+        "bytes": package_path.stat().st_size,
+    })
+    _upsert_export_rows(
+        design_id, job_id, entries, json.dumps(versions, sort_keys=True)
+    )
+    duration_ms = (time.perf_counter() - t0) * 1000.0
+    _finish("completed", {
+        "design_id": design_id, "step": "sealed",
+        "content_digest": digest, "duration_ms": duration_ms,
+    })
+
+    log.info(
+        "export job %s completed for design %s: digest=%s in %.0f ms",
+        job_id, design_id, digest, duration_ms,
+    )
+    return {
+        "design_id": design_id,
+        "job_id": job_id,
+        "schema": package_manifest["schema"],
+        "content_digest": digest,
+        "package_path": str(package_path),
+        "package_sha256": entries[-1]["sha256"],
+        "duration_ms": duration_ms,
+        "exports": entries,
+        "tool_versions": versions,
+        "luxexchange_url": f"/api/geometry/assembly/{design_id}/luxexchange.zip",
+    }
+
+
+def _exports_status(row: DesignRow) -> dict[str, Any]:
+    rows = _export_rows(row.id)
+    package_path = _package_dir(row.id) / PACKAGE_NAME
+    db = get_default_db()
+    with db.get_session() as session:
+        job = session.execute(
+            select(JobRow).where(JobRow.session_id == row.id)
+            .where(JobRow.job_type == "export")
+            .order_by(JobRow.ts.desc()).limit(1)
+        ).scalars().first()
+        job_state = (
+            {"job_id": job.id, "status": job.status, "ts": job.ts,
+             "state": json.loads(job.state_json), "halt_reason": job.halt_reason}
+            if job else None
+        )
+    return {
+        "design_id": row.id,
+        "schema": "luxexchange_v1",
+        "package_built": package_path.exists(),
+        "package_path": str(package_path) if package_path.exists() else None,
+        "content_digest": (job_state or {}).get("state", {}).get("content_digest"),
+        "last_job": job_state,
+        "exports": rows,
+        "counts": _status_counts(rows),
+        "luxexchange_url": f"/api/geometry/assembly/{row.id}/luxexchange.zip",
+        # The formats this build could produce, so the UI can show what is
+        # possible before anything has been exported.
+        "catalog": [
+            {"format": f.format, "tier": f.tier, "purpose": f.purpose}
+            for f in FORMAT_REGISTRY
+        ],
+    }
+
+
+def _status_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        key = row.get("status") or "unknown"
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+# NOTE: the /latest/... routes MUST be registered before the /{design_id}/...
+# ones. FastAPI matches in registration order, so a path parameter declared
+# first would swallow "latest" as a design id and 404 on it.
+
+@router.get("/latest/exports")
+def get_latest_exports() -> dict[str, Any]:
+    """Export status. Reads only — no files written, no rows inserted."""
+    return _exports_status(_latest_assembly_design())
+
+
+@router.get("/{design_id}/exports")
+def get_design_exports(design_id: str) -> dict[str, Any]:
+    return _exports_status(_design_or_404(design_id))
+
+
+def _serve_package(row: DesignRow) -> FileResponse:
+    package_path = _package_dir(row.id) / PACKAGE_NAME
+    if not package_path.exists():
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"no export package for design {row.id} yet — POST to "
+                f"/api/geometry/assembly/{row.id}/exports to build one"
+            ),
+        )
+    return FileResponse(
+        package_path, media_type="application/zip",
+        filename=f"luxexchange_{row.id}.zip",
+    )
+
+
+@router.get("/latest/luxexchange.zip")
+def get_latest_luxexchange_zip() -> FileResponse:
+    return _serve_package(_latest_assembly_design())
+
+
+@router.get("/{design_id}/luxexchange.zip")
+def get_design_luxexchange_zip(design_id: str) -> FileResponse:
+    return _serve_package(_design_or_404(design_id))

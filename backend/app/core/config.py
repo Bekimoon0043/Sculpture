@@ -449,10 +449,91 @@ class MaterialsConfig(BaseModel):
     materials: dict[str, Material]
 
 
+# --- gate_profiles.yaml -------------------------------------------------------
+
+class GateConstants(BaseModel):
+    """Physical constants. Not policy — see the header of gate_profiles.yaml."""
+
+    gravity_m_s2: float = Field(gt=0)
+    air_density_sea_level_kg_per_m3: float = Field(gt=0)
+    water_density_kg_per_m3: float = Field(gt=0)
+    isa_lapse_coefficient_per_m: float = Field(gt=0)
+    isa_density_exponent: float = Field(gt=0)
+
+    def air_density_at_m(self, altitude_m: float) -> float:
+        """ISA density at altitude: rho_0 * (1 - L*h) ** n.
+
+        Addis Ababa (~2355 m) comes out near 0.97 kg/m3 against 1.225 at sea
+        level — about 21% less wind load on the same silhouette. Applying the
+        sea-level value inland would overstate every wind moment.
+        """
+        factor = 1.0 - self.isa_lapse_coefficient_per_m * float(altitude_m)
+        if factor <= 0:
+            raise ConfigError(
+                f"site_altitude_m {altitude_m} is outside the ISA troposphere model"
+            )
+        return self.air_density_sea_level_kg_per_m3 * factor ** self.isa_density_exponent
+
+
+class GateProfile(BaseModel):
+    """One validation threshold set.
+
+    `None` on any threshold means NOT SUPPLIED: the gate reports
+    `needs_input` naming the field, never a warn and never a pass.
+    """
+
+    name: str
+    #: False -> a breach reports `warn` (nothing blocks on an unapproved
+    #: number). True -> a breach reports `fail`. See gate_profiles.yaml.
+    signed_off: bool = False
+
+    site_altitude_m: float = Field(ge=0)
+    design_wind_speed_m_s: float | None = Field(default=None, ge=0)
+    wind_drag_coefficient: float = Field(gt=0)
+    overturning_safety_factor: float | None = Field(default=None, gt=0)
+    allowable_bearing_kpa: float | None = Field(default=None, gt=0)
+
+    min_freeboard_mm: float | None = Field(default=None, ge=0)
+    min_reservoir_turnover_min: float | None = Field(default=None, gt=0)
+    jet_velocity_m_s: float | None = Field(default=None, gt=0)
+    nozzle_bore_tolerance_pct: float | None = Field(default=None, gt=0)
+
+    max_bore_aspect_ratio: float | None = Field(default=None, gt=0)
+    min_service_void_mm: float | None = Field(default=None, ge=0)
+    manual_handling_limit_kg: float | None = Field(default=None, gt=0)
+
+
+class GateProfilesConfig(BaseModel):
+    version: int = Field(ge=1)
+    constants: GateConstants
+    profiles: dict[str, GateProfile]
+
+    @field_validator("profiles")
+    @classmethod
+    def _at_least_one(cls, value: dict[str, GateProfile]) -> dict[str, GateProfile]:
+        if not value:
+            raise ValueError("gate_profiles.yaml must define at least one profile")
+        return value
+
+    def profile(self, profile_id: str) -> GateProfile:
+        try:
+            return self.profiles[profile_id]
+        except KeyError:
+            raise ConfigError(
+                f"unknown gate profile {profile_id!r}; "
+                f"config/gate_profiles.yaml defines {sorted(self.profiles)}"
+            ) from None
+
+
+#: Profile used when a Design Spec does not name one. The most conservative
+#: of the shipped set: outdoor, public access, wind case live.
+DEFAULT_GATE_PROFILE_ID = "public_plaza"
+
+
 # --- bundle ------------------------------------------------------------------
 
 class ConfigBundle(BaseModel):
-    """All four config files, validated together at startup."""
+    """All config files, validated together at startup."""
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -461,6 +542,7 @@ class ConfigBundle(BaseModel):
     budget: BudgetConfig
     materials: MaterialsConfig
     costing: CostingConfig
+    gate_profiles: GateProfilesConfig
 
 
 def load_config_bundle() -> ConfigBundle:
@@ -476,6 +558,21 @@ def load_config_bundle() -> ConfigBundle:
         MaterialsConfig, _load_yaml("materials.yaml"), "materials.yaml"
     )
     costing = _validate(CostingConfig, _load_yaml("costing.yaml"), "costing.yaml")
+    gate_profiles = _validate(
+        GateProfilesConfig, _load_yaml("gate_profiles.yaml"), "gate_profiles.yaml"
+    )
+    if DEFAULT_GATE_PROFILE_ID not in gate_profiles.profiles:
+        raise ConfigError(
+            f"gate_profiles.yaml must define the default profile "
+            f"{DEFAULT_GATE_PROFILE_ID!r}; found {sorted(gate_profiles.profiles)}"
+        )
+    # Fail at startup, not mid-gate: an altitude outside the ISA model would
+    # otherwise surface as an exception in the middle of a validation run.
+    for profile_id, profile in sorted(gate_profiles.profiles.items()):
+        try:
+            gate_profiles.constants.air_density_at_m(profile.site_altitude_m)
+        except ConfigError as exc:
+            raise ConfigError(f"gate_profiles.yaml profile {profile_id!r}: {exc}") from exc
     unknown = set(costing.materials) - set(materials.materials)
     if unknown:
         raise ConfigError(
@@ -490,5 +587,5 @@ def load_config_bundle() -> ConfigBundle:
         )
     return ConfigBundle(
         council=council, pricing=pricing, budget=budget,
-        materials=materials, costing=costing,
+        materials=materials, costing=costing, gate_profiles=gate_profiles,
     )

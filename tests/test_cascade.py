@@ -414,6 +414,42 @@ def test_registry_surface_teaches_the_clearance_trap_adr029():
 # Geometry construction — watertight at tier extremes (needs build123d+trimesh)
 # ---------------------------------------------------------------------------
 
+def test_registry_surface_teaches_phase6_slice_a1_assemblies():
+    """Phase 6 A1 widened the registry; the Phase 4 code-gen prompt must
+    teach that surface or live fabrication stays cascade-only."""
+    from app.council.prompts import registry_surface
+
+    surface = registry_surface()
+    assert "registry.assemble(elements: list[dict]" in surface
+    assert "assembly_manifest_v1" in surface
+    assert "PRIMITIVE INDEX (live registry)" in surface
+    for primitive_id in (
+        "tiered_cascade",
+        "basin_round",
+        "plinth",
+        "sculptural_column",
+    ):
+        assert primitive_id in surface
+    assert "stack_on" in surface
+    assert "concentric_insert" in surface
+    assert "exactly ONE root element" in surface
+    assert "body_count 1" in surface
+    assert "max_lift_kg and max_module_m are checked per element" in surface
+
+
+def test_fabrication_prompt_contract_allows_assembly_return():
+    """For assemblies the middle return value is the manifest, not cascade
+    params; the sandbox still carries it through as params."""
+    from app.council.prompts import fabrication_prompt
+
+    prompt = fabrication_prompt('{"meta": {"seed": 7}, "massing": {"elements": []}}')
+    assert "registry.assemble" in prompt
+    assert "registry.assembly_plan_from_spec(spec)" in prompt
+    assert "registry.fabrication_limits_from_spec(spec)" in prompt
+    assert "return (solid, manifest, seed)" in prompt
+    assert "The model never fuses" in prompt
+
+
 def _build_and_check_watertight(tmp_path, tiers: int):
     _build123d()
     _trimesh()

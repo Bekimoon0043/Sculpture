@@ -5,13 +5,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
+  AssemblyBuildResponse,
   BuildResponse,
   DefaultsResponse,
   Validation,
+  ValidationGate,
+  type GateStatus,
   getDefaults,
+  getLatestAssemblyValidation,
+  latestAssemblyGlbUrl,
+  latestGlbUrl,
   getLatestValidation,
   postBuild,
 } from "./api/client";
+import ErrorBoundary from "./ErrorBoundary";
+import AssemblyPanel from "./panels/AssemblyPanel";
 import CascadePanel from "./panels/CascadePanel";
 import CouncilPanel from "./panels/CouncilPanel";
 import ValidationPanel from "./panels/ValidationPanel";
@@ -25,8 +33,12 @@ export default function App() {
   const [violations, setViolations] = useState<string[] | null>(null);
   const [fatalError, setFatalError] = useState<string | null>(null);
   const [validation, setValidation] = useState<Validation | null>(null);
+  const [validationGates, setValidationGates] = useState<Record<string, ValidationGate> | null>(null);
+  // Worst status across every gate. Kept separate from `validation.passed`
+  // so a warned or needs_input design can never render a green PASS.
+  const [overallStatus, setOverallStatus] = useState<GateStatus | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
-  const [view, setView] = useState<"cascade" | "council">("cascade");
+  const [view, setView] = useState<"cascade" | "assembly" | "council">("cascade");
   const [serverBuildMs, setServerBuildMs] = useState<number | null>(null);
   const [lastRebuildMs, setLastRebuildMs] = useState<number | null>(null);
   const rebuildStartRef = useRef<number | null>(null);
@@ -51,6 +63,18 @@ export default function App() {
       .catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    if (view !== "assembly") return;
+    getLatestAssemblyValidation()
+      .then((v) => {
+        if (!v) return;
+        setValidation(v.validation);
+        setValidationGates(v.gates ?? null);
+        setOverallStatus(v.overall_status ?? null);
+      })
+      .catch(() => undefined);
+  }, [view]);
+
   const onRebuild = useCallback(() => {
     setBusy(true);
     setViolations(null);
@@ -58,6 +82,8 @@ export default function App() {
     postBuild(values, seed)
       .then((resp: BuildResponse) => {
         setValidation(resp.validation);
+        setValidationGates(null);
+        setOverallStatus(null);
         setServerBuildMs(resp.build_ms);
         setReloadToken((t) => t + 1); // viewport reloads; timer stops on render
         setBusy(false);
@@ -72,6 +98,14 @@ export default function App() {
         }
       });
   }, [values, seed]);
+
+  const onAssemblyBuilt = useCallback((resp: AssemblyBuildResponse) => {
+    setValidation(resp.validation);
+    setValidationGates(resp.validation_gates);
+    setOverallStatus(resp.overall_status ?? null);
+    setServerBuildMs(resp.build_ms);
+    setReloadToken((t) => t + 1);
+  }, []);
 
   const onModelRendered = useCallback(() => {
     if (rebuildStartRef.current !== null) {
@@ -94,6 +128,7 @@ export default function App() {
       <div className="council-wrap">
         <nav className="view-nav">
           <button onClick={() => setView("cascade")}>Cascade viewport</button>
+          <button onClick={() => setView("assembly")}>Assembly</button>
           <button className="active" disabled>
             AI Council
           </button>
@@ -122,8 +157,19 @@ export default function App() {
   return (
     <div>
       <nav className="view-nav">
-        <button className="active" disabled>
+        <button
+          className={view === "cascade" ? "active" : ""}
+          disabled={view === "cascade"}
+          onClick={() => setView("cascade")}
+        >
           Cascade viewport
+        </button>
+        <button
+          className={view === "assembly" ? "active" : ""}
+          disabled={view === "assembly"}
+          onClick={() => setView("assembly")}
+        >
+          Assembly
         </button>
         <button onClick={() => setView("council")}>AI Council</button>
       </nav>
@@ -131,6 +177,7 @@ export default function App() {
       <div className="viewport-wrap">
         <Viewport
           reloadToken={reloadToken}
+          glbUrl={view === "assembly" ? latestAssemblyGlbUrl : latestGlbUrl}
           onModelRendered={onModelRendered}
           onLoadError={onLoadError}
         />
@@ -143,17 +190,38 @@ export default function App() {
         </div>
       </div>
       <div className="side">
-        <CascadePanel
-          defaults={defaults}
-          values={values}
-          seed={seed}
-          busy={busy}
-          violations={violations}
-          onChange={(name, v) => setValues((prev) => ({ ...prev, [name]: v }))}
-          onSeedChange={setSeed}
-          onRebuild={onRebuild}
-        />
-        <ValidationPanel validation={validation} />
+        {view === "assembly" ? (
+          <ErrorBoundary label="Assembly">
+          <AssemblyPanel
+            seed={seed}
+            busy={busy}
+            violations={violations}
+            onSeedChange={setSeed}
+            onBusyChange={setBusy}
+            onViolationsChange={setViolations}
+            onBuilt={onAssemblyBuilt}
+            onFatal={setFatalError}
+          />
+          </ErrorBoundary>
+        ) : (
+          <CascadePanel
+            defaults={defaults}
+            values={values}
+            seed={seed}
+            busy={busy}
+            violations={violations}
+            onChange={(name, v) => setValues((prev) => ({ ...prev, [name]: v }))}
+            onSeedChange={setSeed}
+            onRebuild={onRebuild}
+          />
+        )}
+        <ErrorBoundary label="Validation">
+          <ValidationPanel
+            validation={validation}
+            gates={validationGates}
+            overallStatus={overallStatus}
+          />
+        </ErrorBoundary>
       </div>
       </div>
     </div>

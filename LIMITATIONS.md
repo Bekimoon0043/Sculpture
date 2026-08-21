@@ -10,6 +10,11 @@ on it.
 
 - **DWG** is Autodesk's closed format. Our tooling writes **DXF** (which
   every CAD program opens). Real DWG requires a converter.
+
+**Update 2026-08-21 (Phase 9A):** both now appear in every export manifest
+with status `impossible` and this workaround text ships INSIDE the
+LUXEXCHANGE package as `README_DWG_SKP.txt` — a fabricator reading the zip
+offline no longer needs this file.
 - **.skp** (SketchUp) has no working open-source writer anywhere. We cannot
   produce .skp files. SketchUp Pro opens our STEP/DXF/OBJ files directly.
 
@@ -85,6 +90,12 @@ early):
   Phase 5, DesignDNA in Phase 7.)
 - **Phase 7** — resumable job runner with kill-and-resume checkpoints;
   DesignDNA memory store and retrieval.
+
+The missing L5-L8 work now starts in `PHASE_7_COMPLETION_PLAN.md` and is
+split into follow-on plans through `PHASE_13_RECOVERY_HARDENING_PLAN.md`.
+Phase 7 starts with assembly-manifest persistence because validation,
+rendering, critique, export, and DesignDNA all need one shared design
+artifact.
 
 ## 6. ~~Provider vision failures found by the gate~~ — RETIRED 2026-08-01
 
@@ -220,6 +231,18 @@ piles, and the BOM says on every line which pile a gap belongs to.
 
 ## 11. Phase 6 slice A1 scope limits (2026-08-20)
 
+**Update 2026-08-21:** the Phase 4-to-6 bridge is now partial instead of
+absent: the GEOMETRIST prompt exposes `registry.assemble`, the slice-A1
+primitives, the assembly plan shape and the manifest return contract, and
+the fabrication loop validates returned `assembly_manifest_v1` data with
+`validate_assembly`. The Designer prompt now carries the live primitive
+index and Design Specs are re-asked when `massing.elements[].primitive`
+names a primitive outside the registry (2026-08-21). A trusted Slice A1
+spec-to-assembly-plan mapper now converts `massing.elements` into
+`registry.assemble` input with unit conversion and parent_id-derived joints.
+Still missing from A2: primitive-agnostic API/frontend surfaces, manifest
+persistence, and mapper widening beyond the current Slice A1 vocabulary.
+
 The assembly core is built and gated offline. What A1 deliberately does
 NOT do:
 
@@ -251,3 +274,106 @@ NOT do:
   alongside persistence.
 - **The operator's visual gate arrives with A2**, when there is something
   to look at in the viewport; A1's gate is the $0 auto script only.
+
+## 12. Phase 8 validation gate scope limits (2026-08-21)
+
+The four gates are real, measured and provenanced (ADR-036). What they do
+NOT do:
+
+- **This is not finite-element analysis.** The structural gate is rigid-body
+  statics: overturning about the footprint edge, ground bearing pressure,
+  wall floors, load-path connectivity. It tells you whether a piece **tips**
+  or overloads the ground. It does **not** tell you whether it cracks,
+  buckles, fatigues, or how stress concentrates at a joint. A monumental
+  piece still needs a structural engineer. The gate is named
+  `structure_static_v1` so nobody reads it as more than it is.
+
+- **Three thresholds ship empty and will report `needs_input` until you fill
+  them in** — `design_wind_speed_m_s`, `allowable_bearing_kpa`,
+  `overturning_safety_factor`. This is deliberate. No honest default exists
+  for a site's wind map or its ground bearing capacity, and inventing one
+  would be worse than reporting that we cannot check. See
+  `docs/operator/07_validation_gates.md`.
+
+- **No profile ships signed off.** Until `signed_off: true`, a breach of a
+  profile threshold reports `warn`, not `fail`. Nothing is blocked on a
+  number nobody has approved. Material limits from `materials.yaml` and
+  workshop limits from the Design Spec are always binding.
+
+- **The hydraulic gate depends on Phase 12.** Nothing in the brief → Design
+  Spec → assemble path populates `water_context_v1` yet, so in a live run
+  the hydraulic gate reports `needs_input`. It evaluates real numbers the
+  moment context is supplied (proven in tests and in
+  `gate_phase8_auto.py` section 6), but that supply arrives with Phase 12
+  brief intake. **Phase 8 therefore closes with `needs_input` accepted as a
+  legitimate terminal hydraulic status, and a Phase 8b re-gate after Phase
+  12.**
+
+- **Wind is a single static case.** One design wind speed, one drag
+  coefficient, one silhouette from the bounding box. No gust dynamics, no
+  vortex shedding, no directional wind rose, no shielding from surrounding
+  buildings.
+
+- **The silhouette is a bounding box.** Projected area for the wind
+  calculation is the overall bbox width x height. For an open or lattice
+  form this overstates the load — conservative, but not accurate.
+
+- **Seismic loading is not checked at all.** Not modelled, not reported, not
+  claimed.
+
+- **Rigging is declared, never derived.** The gate names which elements
+  exceed the manual handling limit and reports `needs_input` for their lift
+  points. Geometry cannot invent where a rigger should attach.
+
+- **Split-line feasibility is a count, not a plan.** An oversized element
+  reports how many modules it would need and how many joints it carries. It
+  does not compute where the split planes go — segmentation is Phase 6
+  slice C.
+
+## 13. Phase 9A export package scope limits (2026-08-21)
+
+Ten formats are produced, hashed and reproducible (ADR-035, ADR-037). What
+is NOT there:
+
+- **No renders.** The Blender/Cycles render worker is Phase 9B. Thumbnails
+  are absent from the package and the manifest says so rather than shipping
+  an empty `renders/` folder.
+
+- **USD, USDZ, FBX and Alembic report `unavailable`.** They need Blender,
+  which is Phase 9B and its own container. Not faked, not silently omitted.
+
+- **DAE and 3MF report `unavailable`** naming the missing optional Python
+  package (`pycollada`, `networkx`). Both are small, but adding them means a
+  download on a connection that has cost this project more time than any
+  code defect, so it is the operator's call — not something done behind his
+  back. Add the name to `pyproject.toml` and rebuild if you want them.
+
+- **DWG and SKP remain impossible** (see §1). Now reported as `impossible`
+  with `README_DWG_SKP.txt` travelling **inside** the package.
+
+- **The 2D drawing is two views, with no annotation.** A plan section at
+  mid-height and a hidden-line front elevation, on PLAN / ELEVATION / HIDDEN
+  layers. There are **no dimensions, no title block, no section marks, no
+  weld or finish callouts, no tolerances**. It is a true drawing of the
+  geometry, not an issued fabrication drawing. A draughtsman still adds the
+  annotation.
+
+- **One section plane, one viewpoint.** Mid-height plan, front elevation.
+  No side elevation, no detail views, no additional sections.
+
+- **Mesh-tier files are triangulated approximations.** OBJ, PLY and GLB
+  carry `derived_from: assembly.glb`. Never machine or measure from them.
+
+- **The BOM is included only when it can be computed.** Costing keys on a
+  single `material_id`; a mixed-material assembly still cannot be costed
+  correctly (§11), so the package records `costing_included: false` with the
+  reason rather than shipping a wrong number.
+
+- **Reproducibility is per (design, seed, image).** It holds across
+  processes and across export runs on this machine and this image. Two
+  different build123d or ezdxf versions may still differ — that is why
+  `provenance.json` records tool versions, and why the Phase 9A gate
+  re-checks reproducibility on every run.
+
+- **Renders will never be byte-identical** (§2 still stands). The package
+  determinism guarantee covers geometry, drawings and metadata.

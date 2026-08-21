@@ -60,6 +60,26 @@ _ADDITIVE_COLUMN_PATCHES: dict[tuple[str, str], str] = {
         "cache_write_input_tokens INTEGER NOT NULL DEFAULT 0",
     ("council_sessions", "corrected"):
         "corrected INTEGER NOT NULL DEFAULT 0",
+    # Phase 8: four-value gate status. `passed` alone cannot distinguish a
+    # warn from a pass, which is how a warned design showed a green badge.
+    ("validation_reports", "status"): "status TEXT",
+    # Phase 9A: export rows carry their own hash, size, timing and outcome.
+    ("exports", "sha256"): "sha256 TEXT",
+    ("exports", "bytes"): "bytes INTEGER",
+    ("exports", "duration_ms"): "duration_ms REAL",
+    ("exports", "status"): "status TEXT",
+    ("exports", "error"): "error TEXT",
+    ("exports", "job_id"): "job_id TEXT",
+}
+
+#: Unique indexes added after a schema version shipped. Same idempotent,
+#: startup-time treatment as the column patches above.
+_ADDITIVE_INDEX_PATCHES: dict[str, str] = {
+    # Phase 9A: one row per (design, format). Without this, every download
+    # appended a duplicate set of export rows.
+    "ux_exports_design_format":
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_exports_design_format "
+        "ON exports (design_id, format)",
 }
 
 
@@ -150,6 +170,8 @@ class Database:
                 "schema patch applied: %s.%s added via ALTER TABLE "
                 "(recorded in schema_patches)", table, column,
             )
+        for index_name, ddl in sorted(_ADDITIVE_INDEX_PATCHES.items()):
+            conn.exec_driver_sql(ddl)
 
     def _verify_no_drift(self) -> None:
         """Fail loudly if a mapped column is missing and NOT auto-patchable.

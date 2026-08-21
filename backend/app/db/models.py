@@ -233,8 +233,33 @@ class ValidationReportRow(Base):
     created_at: Mapped[str] = mapped_column(Text)
     design_id: Mapped[str] = mapped_column(Text, ForeignKey("designs.id"))
     gate_name: Mapped[str] = mapped_column(Text)
+    #: Legacy boolean. Phase 8 redefines it as `status == "pass"` — a warn is
+    #: NOT a pass, and neither is needs_input. Read `status` for the truth.
     passed: Mapped[int] = mapped_column(Integer)
+    #: pass | warn | fail | needs_input (Phase 8). Nullable for rows written
+    #: before the patch.
+    status: Mapped[str | None] = mapped_column(Text, nullable=True)
     numbers_json: Mapped[str] = mapped_column(Text)
+
+
+class ExportRow(Base):
+    __tablename__ = "exports"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    created_at: Mapped[str] = mapped_column(Text)
+    design_id: Mapped[str] = mapped_column(Text, ForeignKey("designs.id"))
+    format: Mapped[str] = mapped_column(Text)
+    path: Mapped[str] = mapped_column(Text)
+    tool_versions_json: Mapped[str] = mapped_column(Text)
+    # Phase 9A: hashes are computed once at export time and read from here
+    # afterwards — never re-hashed on a UI poll.
+    sha256: Mapped[str | None] = mapped_column(Text, nullable=True)
+    bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: included | failed | unavailable | impossible
+    status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    job_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class SchemaMigrationRow(Base):

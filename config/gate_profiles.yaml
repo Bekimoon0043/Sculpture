@@ -1,0 +1,176 @@
+# gate_profiles.yaml — Phase 8 validation thresholds (L5 Validation Gate)
+#
+# Units are explicit in every field name (Rule 6: a unitless number is a bug).
+#
+# ---------------------------------------------------------------------------
+# WHAT THIS FILE IS, AND WHAT IT IS NOT
+# ---------------------------------------------------------------------------
+# Two kinds of number live here and they must never be confused:
+#
+#   constants:  PHYSICAL. Not policy, not opinion, not tunable by taste.
+#               Standard gravity, sea-level air density, water density. Each
+#               carries its definition inline. Changing one is a physics
+#               claim, not a preference.
+#
+#   profiles:   SITE AND POLICY. Set by the operator and, where the field
+#               says so, by a licensed structural engineer or a geotechnical
+#               survey. These follow the same status as the workshop
+#               envelopes in materials.yaml (ADR-027/ADR-029/ADR-032):
+#               operator-set, tunable here, NOT citations of an external
+#               standard. Every value records the arithmetic or the source
+#               of judgement behind it.
+#
+# ---------------------------------------------------------------------------
+# signed_off — READ THIS BEFORE TRUSTING A FAIL
+# ---------------------------------------------------------------------------
+# Each profile carries `signed_off`. It does NOT switch checks on and off:
+# every gate always runs and always reports its real measured numbers.
+#
+#   signed_off: false  -> a violation reports `warn`, with a message saying
+#                         the threshold it breached has not been approved.
+#                         Nothing is blocked on a number nobody approved.
+#   signed_off: true   -> a violation reports `fail` and blocks acceptance.
+#
+# So the platform is useful on day one (real numbers, honest caveat) and
+# becomes binding the moment the operator and his engineer approve the
+# thresholds. Set signed_off: true only after the values below have been
+# reviewed by someone qualified to sign them.
+#
+# A value of `null` means "not supplied". The gate then reports
+# `needs_input` naming the field — never a warn, never a pass. "We could not
+# check" and "we checked and it is fine" are different answers.
+# ---------------------------------------------------------------------------
+
+version: 1
+
+constants:
+  # CGPM (1901) standard acceleration of free fall. A definition, not a
+  # measurement.
+  gravity_m_s2: 9.80665
+
+  # ISA sea-level air density at 15 C, 101325 Pa. Used only as rho_0 in the
+  # altitude correction below — never applied directly at an inland site.
+  air_density_sea_level_kg_per_m3: 1.225
+
+  # Fresh water at 20 C. Basins are gated on stored water mass, so this is a
+  # load input, not a decoration.
+  water_density_kg_per_m3: 998.2
+
+  # ISA density-altitude exponent and lapse coefficient:
+  #   rho(h) = rho_0 * (1 - 2.25577e-5 * h) ** 4.25588      [h in metres]
+  # This matters here more than at most sites. Addis Ababa sits near 2355 m,
+  # where the formula gives rho ~= 0.97 kg/m3 against 1.225 at sea level —
+  # roughly 21% less wind load on the same silhouette. Ignoring altitude
+  # would overstate every wind moment LuxuryCon's own city produces.
+  isa_lapse_coefficient_per_m: 0.0000225577
+  isa_density_exponent: 4.25588
+
+profiles:
+
+  public_plaza:
+    name: "Public plaza — outdoor, unrestricted public access"
+    signed_off: false
+
+    # --- site -------------------------------------------------------------
+    # Altitude drives air density (see constants). Addis Ababa city centre.
+    # Change per project site.
+    site_altitude_m: 2355
+
+    # Design wind speed at the piece's height, 3-second gust.
+    # SOURCE REQUIRED: the local building authority's wind map, or the
+    # project's structural engineer. There is no defensible universal value,
+    # so none is invented here. Until supplied, the overturning check reports
+    # needs_input rather than guessing.
+    design_wind_speed_m_s: null
+
+    # Drag coefficient of the silhouette presented to the wind.
+    # Basis: bluff-body drag. A circular cylinder sits near 0.7-1.2 depending
+    # on Reynolds number and surface roughness; a square prism runs higher.
+    # 1.2 is the conservative end of the cylinder range and is used because
+    # fountain masses are neither smooth nor perfectly circular. Operator-set,
+    # tunable, not a standard citation.
+    wind_drag_coefficient: 1.2
+
+    # Ratio of restoring moment to overturning moment that must be achieved.
+    # POLICY. A structural engineer signs this, not the software. A value
+    # below 1.0 means the piece tips.
+    overturning_safety_factor: null
+
+    # Allowable ground bearing pressure at the foundation interface.
+    # SOURCE REQUIRED: geotechnical survey for the actual site. Presumed
+    # values vary by an order of magnitude between soft clay and rock, so
+    # inventing one would be worse than reporting needs_input.
+    allowable_bearing_kpa: null
+
+    # --- water ------------------------------------------------------------
+    # Vertical distance from design water surface to the basin rim. Guards
+    # splash-out and wind drift of the jet. Operator-set from LuxuryCon's own
+    # commissioning experience with public basins.
+    min_freeboard_mm: 60
+
+    # Full turnover of the reservoir volume through the pump, in minutes.
+    # Below this the reservoir is too small for the pump and the basin
+    # aerates and cavitates. Operator-set from LuxuryCon practice.
+    min_reservoir_turnover_min: 15
+
+    # Target jet exit velocity, used to DERIVE the nozzle bore the declared
+    # flow actually needs:  d = sqrt(4Q / (pi * v)).
+    # Operator-set from the intended water character (a low lazy weir and a
+    # tall jet are different values).
+    jet_velocity_m_s: 6.0
+
+    # Allowed deviation between the declared nozzle bore and the derived one
+    # before the check complains. Operator-set.
+    nozzle_bore_tolerance_pct: 25.0
+
+    # --- fabrication ------------------------------------------------------
+    # Maximum depth-to-bore ratio for an internal cavity before the tool
+    # cannot reach or clear chips. Operator-set from LuxuryCon's workshop.
+    max_bore_aspect_ratio: 8.0
+
+    # Clear annulus required for pipe runs and service access inside a basin.
+    # Operator-set.
+    min_service_void_mm: 80
+
+    # Above this mass an element cannot be placed by hand and needs declared
+    # lift points. Operator-set from LuxuryCon's own site practice and crew
+    # size — this is a workplace-safety judgement, not a physics constant.
+    manual_handling_limit_kg: 50
+
+  indoor_lobby:
+    name: "Indoor lobby — sheltered, controlled access"
+    signed_off: false
+    site_altitude_m: 2355
+    # Sheltered: no wind load case. The overturning check reports that the
+    # profile declares no wind rather than pretending a number.
+    design_wind_speed_m_s: 0.0
+    wind_drag_coefficient: 1.2
+    overturning_safety_factor: null
+    # Indoor pieces bear on a structural slab, not on ground. The slab's
+    # capacity comes from the building's structural drawings.
+    allowable_bearing_kpa: null
+    # Indoors, splash onto finished floor is the binding concern, not wind
+    # drift — a higher freeboard for a lower jet. Operator-set.
+    min_freeboard_mm: 80
+    min_reservoir_turnover_min: 20
+    jet_velocity_m_s: 3.0
+    nozzle_bore_tolerance_pct: 25.0
+    max_bore_aspect_ratio: 8.0
+    min_service_void_mm: 80
+    manual_handling_limit_kg: 50
+
+  private_garden:
+    name: "Private garden — outdoor, restricted access"
+    signed_off: false
+    site_altitude_m: 2355
+    design_wind_speed_m_s: null
+    wind_drag_coefficient: 1.2
+    overturning_safety_factor: null
+    allowable_bearing_kpa: null
+    min_freeboard_mm: 50
+    min_reservoir_turnover_min: 15
+    jet_velocity_m_s: 4.0
+    nozzle_bore_tolerance_pct: 25.0
+    max_bore_aspect_ratio: 8.0
+    min_service_void_mm: 60
+    manual_handling_limit_kg: 50

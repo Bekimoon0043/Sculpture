@@ -126,6 +126,31 @@ def _extract_json(text: str) -> dict:
     return json.loads(t[start : end + 1])
 
 
+def _validate_live_primitives(spec: dict) -> list[str]:
+    """Return live-registry validation errors for massing.elements.
+
+    JSON Schema proves the Design Spec shape. This check proves the spec uses
+    primitives the current geometry registry can actually fabricate. That is
+    deliberately code-level validation: Phase 6 widens the registry one gated
+    slice at a time, and the prompt/schema must not carry a stale enum.
+    """
+    from app.geometry.registry import PRIMITIVES
+
+    available = ", ".join(sorted(PRIMITIVES))
+    errors: list[str] = []
+    elements = spec.get("massing", {}).get("elements", [])
+    for i, element in enumerate(elements):
+        primitive = element.get("primitive")
+        element_id = element.get("element_id", f"element[{i}]")
+        if primitive not in PRIMITIVES:
+            errors.append(
+                f"massing.elements[{i}] {element_id!r} uses primitive "
+                f"{primitive!r}, which is not in the live registry "
+                f"(available: {available})"
+            )
+    return errors
+
+
 class CouncilOrchestrator:
     def __init__(
         self,
@@ -238,6 +263,13 @@ class CouncilOrchestrator:
                     try:
                         candidate = _extract_json(outcome.text)
                         jsonschema.validate(instance=candidate, schema=self._schema)
+                        primitive_errors = _validate_live_primitives(candidate)
+                        if primitive_errors:
+                            errors = [
+                                "live registry violation: "
+                                + "; ".join(primitive_errors)
+                            ]
+                            continue
                         spec = candidate
                         if attempt > 1:
                             any_reask = True  # self-correction, not degradation

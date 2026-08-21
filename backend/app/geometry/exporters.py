@@ -26,6 +26,8 @@ from pathlib import Path
 
 from build123d import Solid, export_gltf, export_step as _b123d_export_step
 
+from app.geometry.canonicalize import canonicalize_step_file
+
 #: Tessellation tolerance for the preview/validation GLB, in mm.
 GLB_LINEAR_DEFLECTION_MM = 1.0
 GLB_ANGULAR_DEFLECTION_RAD = 0.1
@@ -44,6 +46,12 @@ def export_step(solid: Solid, path: str | Path, timestamp: str | datetime) -> st
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     _b123d_export_step(solid, str(path), timestamp=timestamp)
+    # OCCT numbers assembly occurrences from a PROCESS-global counter, so a
+    # second export of the same solid in the same process differs in one
+    # label. Renumber per file (canonicalize.py) — metadata only, and a
+    # first-in-process export is unchanged, so the Phase 2 canonical hash
+    # still reproduces byte-for-byte.
+    canonicalize_step_file(path)
     return _sha256(path)
 
 

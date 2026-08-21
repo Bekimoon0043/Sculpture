@@ -121,6 +121,26 @@ def _make_orch(db, config, dispatcher):
     return CouncilOrchestrator(db, config.pricing, dispatcher, config.council)
 
 
+def test_designer_prompt_carries_live_primitive_index(base_spec):
+    from app.council import prompts
+
+    prompt = prompts.designer_prompt(
+        "brief",
+        "research",
+        1,
+        json.dumps({"type": "object"}),
+    )
+    assert "LIVE PRIMITIVE INDEX" in prompt
+    for primitive_id in (
+        "tiered_cascade",
+        "basin_round",
+        "plinth",
+        "sculptural_column",
+    ):
+        assert primitive_id in prompt
+    assert "do not invent a primitive id" in prompt
+
+
 def test_happy_path_completed_session(db, config, base_spec):
     d = ScriptedDispatcher(config.pricing, base_spec)
     # arbiter decision needs real spec ids -> inject after designers ran:
@@ -181,6 +201,62 @@ def test_happy_path_completed_session(db, config, base_spec):
         chosen = json.loads(dec.chosen_spec_ids_json)
         assert len(chosen) == 3 and len(set(chosen)) == 3
         assert set(chosen) <= {sp.id for sp in specs}
+
+
+def test_designer_unknown_primitive_reasked_before_persist(
+    db, config, base_spec
+):
+    """Phase 6 A2: unknown primitive ids fail at the Designer boundary, not
+    later in fabrication."""
+    invalid = _spec_for("anthropic", 1, 101, base_spec)
+    invalid["massing"]["elements"][0]["primitive"] = "lotus_array"
+    fixed = _spec_for("anthropic", 1, 101, base_spec)
+
+    class ArbiterAware(ScriptedDispatcher):
+        def dispatch(self, **kw):
+            if kw["role"] == "arbiter" and kw["side"] == "primary" and not self.arbiter_script:
+                with db.get_session() as s:
+                    ids = [r.id for r in s.query(DesignSpecRow).all()]
+                return DispatchOutcome(
+                    provider=kw["provider"], model=MODELS[kw["provider"]],
+                    text=_arbiter_decision_json(ids), tokens_in=2000, tokens_out=900,
+                    latency_ms=100.0,
+                    cost_usd=config.pricing.cost_usd(
+                        kw["provider"], MODELS[kw["provider"]], 2000, 900
+                    ),
+                    pricing_version=config.pricing.pricing_version)
+            return super().dispatch(**kw)
+
+    d = ArbiterAware(config.pricing, base_spec)
+    d.designer_script[("anthropic", 1)] = [
+        json.dumps(invalid),
+        json.dumps(fixed),
+    ]
+    orch_ = _make_orch(db, config, d)
+    sid = orch_.run_session("A primitive validation brief")
+
+    with db.get_session() as s:
+        sess = s.get(CouncilSessionRow, sid)
+        assert sess.status == "completed"
+        assert sess.corrected == 1
+        calls = (
+            s.query(CouncilCallRow)
+            .filter_by(session_id=sid, role="designer", provider="anthropic")
+            .all()
+        )
+        assert len(calls) == 4  # alt 1 had one re-ask; alts 2/3 normal
+        reask_prompts = [
+            c.prompt for c in calls if "live registry violation" in c.prompt
+        ]
+        assert len(reask_prompts) == 1
+        assert "lotus_array" in reask_prompts[0]
+        specs = s.query(DesignSpecRow).filter_by(session_id=sid).all()
+        persisted = [json.loads(sp.spec_json) for sp in specs]
+        assert all(
+            el["primitive"] != "lotus_array"
+            for sp in persisted
+            for el in sp["massing"]["elements"]
+        )
 
 
 def test_designer_reask_then_success(db, config, base_spec):

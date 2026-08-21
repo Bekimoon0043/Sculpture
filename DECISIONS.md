@@ -1704,3 +1704,269 @@ keys (bool("") is False).
 credential sets it to empty; `delenv` is never sufficient in a
 pydantic-settings codebase. Never assume a test is offline because the
 environment variables are gone.
+
+---
+
+## ADR-034 — Diagnostic build mode: a workshop-limit breach returns geometry (2026-08-21)
+
+**Status:** accepted, implemented in Phase 8.
+
+### Context
+
+`assemble()` raised `ConstraintViolation` for `mass > max_lift_kg` and
+`bbox > max_module_m` *before* returning a manifest. Two consequences:
+
+1. The operator got a 422 and nothing to look at. He could not see the piece
+   that was too heavy, only a sentence saying it was.
+2. The Phase 8 fabrication gate could never fail in the live API path — the
+   build 422'd first, so no fabrication report was ever written for a
+   failing design. The gate re-checked numbers that had already passed by
+   construction, and only "failed" against hand-built dicts in tests. Phase 8
+   was duplicating a Phase 6 constraint rather than adding a layer.
+
+### Decision
+
+`assemble(..., strict: bool = True)`.
+
+* `strict=True` — unchanged behaviour. A limit breach raises. **The AI
+  fabrication loop keeps this.** Generated code that produces an unbuildable
+  part must be refused, not discussed.
+* `strict=False` — the operator-facing API. Geometry is built and returned;
+  limit breaches ride out in `manifest["fabrication_limit_violations"]` and
+  become failing rows in the Phase 8 fabrication gate.
+
+The distinction is **only** about declared workshop limits. Geometric and
+material prerequisites — unknown primitive, undeclared interference, wall
+outside the material envelope — still raise in both modes, because without
+them there is no solid to look at.
+
+### Consequences
+
+* The operator sees a 1550 kg basin in the viewport *and* the row that says
+  `basin_01.mass_kg 1550.02 limit 50.0 FAIL`.
+* The fabrication gate becomes a real layer with a reachable failure path.
+* Signed Phase 6 behaviour is preserved for every existing caller: `strict`
+  defaults to `True`, so only the new API route opted in.
+
+---
+
+## ADR-035 — Byte-canonicalization: two exporters were non-deterministic (2026-08-21)
+
+**Status:** accepted, implemented in Phase 9A.
+
+### Context
+
+Proving the LUXEXCHANGE package reproducible surfaced two defects that had
+nothing to do with geometry, one of them a live breach of Rule 5.
+
+**STEP — OpenCASCADE's process-global occurrence counter.** Exporting the
+same solid twice inside one Python process gives:
+
+```
+-#224 = NEXT_ASSEMBLY_USAGE_OCCURRENCE('1','=>[0:1:1:2]','',#5,#27,$);
++#224 = NEXT_ASSEMBLY_USAGE_OCCURRENCE('2','=>[0:1:1:2]','',#5,#27,$);
+```
+
+OCCT numbers occurrences from a counter that lives for the life of the
+**process**, not the file. Every gate to date ran one build per process, so
+the counter was always at 1 and this went unseen for four phases. In the
+long-running backend it means two builds of the same Design Spec produce two
+different `geometry_hash` values — a visible breach of the determinism
+guarantee, found 2026-08-21.
+
+**DXF — random GUIDs and wall clocks.** ezdxf writes `$FINGERPRINTGUID` and
+`$VERSIONGUID` as fresh random GUIDs on every save, plus `$TDCREATE` /
+`$TDUPDATE` Julian timestamps and a `<version> @ <ISO>` marker.
+
+**A third, in the drawing itself.** OCCT returns section faces in an order
+that varies between runs — the same set, a different sequence. The DXF
+writer emits entities in the order given, so the drawing bytes moved even
+though the drawing was identical.
+
+### Decision
+
+`backend/app/geometry/canonicalize.py`, applied inside `export_step` and the
+DXF writer. **Metadata only — never a coordinate, never a topology
+reference.**
+
+* STEP: renumber `NEXT_ASSEMBLY_USAGE_OCCURRENCE` ids sequentially from 1 in
+  order of appearance. Ids stay unique within the file, which is all they
+  are for.
+* DXF: replace both GUIDs and every group-40 time variable with values
+  derived from the seed.
+* Drawing shapes are sorted on a geometry-derived key (world bbox, then
+  area, then length) before being written.
+
+### Why this does not invalidate the canonical hash
+
+A file exported first in a fresh process already had `'1'`, so
+canonicalization is a no-op on it. The Phase 2 canonical STEP sha256
+`e1a59fa6…` — proven cross-machine 2026-08-04 — still reproduces
+byte-for-byte, asserted by `scripts/gate_phase6a1_auto.py` section 3, which
+was re-run after this change and passed.
+
+### Consequences
+
+* Rule 5 now holds inside a long-running process, not only across fresh ones.
+* The determinism guarantee extends from the canonical STEP to the whole
+  delivered package.
+* Anything OCCT or ezdxf adds in a future version could reintroduce this.
+  `scripts/gate_phase9a_auto.py` exports twice and compares, so a regression
+  fails the gate rather than reaching a fabricator.
+
+---
+
+## ADR-036 — Four validation statuses; `needs_input` is not a warning (2026-08-21)
+
+**Status:** accepted, implemented in Phase 8.
+
+### Context
+
+The Phase 8 foundation slice had three statuses, and `warn` was doing two
+incompatible jobs: *"we checked and it is marginal"* and *"we could not
+check at all"*. Worse, `LayeredGateReport.passed` was defined as
+`status != "fail"`, which flowed through `ValidationReportRow.passed` and
+the API to `ValidationPanel`, where the header rendered
+`validation.passed ? "PASS" : "FAIL"`.
+
+**A design warned on every layer displayed a green PASS badge** — precisely
+what that phase's own gate criteria forbade. In the real flow nothing
+populated the water context, so the hydraulic gate *always* returned that
+warning: every design ever built showed PASS for hydraulics that had never
+been evaluated.
+
+`severity` was also assigned `"fail"` when a check failed and `"info"` when
+it passed — a restatement of the outcome, not a property of the check. There
+was no way to express "this is a warn-level check and it was violated".
+
+### Decision
+
+Four statuses, rolled up worst-first: **`fail` > `needs_input` > `warn` >
+`pass`**.
+
+* `needs_input` — the check could not be evaluated. Never a pass, never a
+  warning. The row names the missing field and where to get it.
+* `passed` is redefined as `status == "pass"`, everywhere: model property,
+  `validation_reports.passed` column, API `passed`, UI badge.
+* `GateCheck` separates **policy** (`on_violation`, declared up front) from
+  **outcome** (`status`).
+* Every check carries `basis` — the provenance of its limit. Rule 11 becomes
+  structural rather than aspirational: an empty basis fails the test suite.
+* Non-finite values are sanitised to `None` on construction. `json.dumps`
+  emits bare `Infinity`, which is not valid JSON and would break any strict
+  parser reading a persisted report or a shipped package.
+
+`config/gate_profiles.yaml` carries the thresholds, versioned, each with its
+arithmetic or its source of judgement recorded — following the precedent set
+by `materials.yaml` (ADR-027/029/032): operator-set, tunable, **not**
+citations of an external standard.
+
+### The `signed_off` switch
+
+Site and policy thresholds — design wind speed, allowable bearing pressure,
+overturning safety factor — ship **empty**. No honest default exists: a
+presumed bearing pressure varies by more than ten times between soft clay
+and rock, and inventing one would be exactly the fabrication Rule 2 forbids.
+
+While a profile has `signed_off: false`, every gate still runs and reports
+real measured numbers, but a breach of one of *that profile's* thresholds
+reports `warn` instead of `fail`. Nothing is blocked on a number nobody has
+approved. Material and Design Spec limits are always binding — they were
+signed when they were entered.
+
+### Consequences
+
+* `structure_static_v1` is renamed so nobody reads it as FEA, and gains
+  overturning and ground-bearing checks — the two that decide whether a
+  monument is safe where it stands.
+* Wind pressure uses ISA density at the site altitude. Addis Ababa at 2355 m
+  is ~0.97 kg/m3 against 1.225 at sea level: using sea level would overstate
+  every wind moment LuxuryCon produces in its own city by about 26%.
+* The centre-of-mass check now weights real per-element mass centroids
+  against a world-space footprint. The previous version weighted *placement
+  origins*, and since every element the system produces sits at x=0,y=0 it
+  computed exactly 0.0 for every design ever built — a check that could not
+  discriminate. `gate_phase8_auto.py` section 5 now shows a built fountain at
+  safety factor 24.9 and an 8 m mast on the same base at 0.698.
+* Hydraulic limits are derived, not hardcoded. The nozzle bore comes from
+  continuity, `d = sqrt(4Q/(pi*v))`, replacing a literal `3..150 mm` range.
+* Phase 8 cannot fully close until Phase 12 supplies water and site context
+  from brief intake. `needs_input` is accepted as a legitimate terminal
+  status for that layer, with a Phase 8b re-gate after Phase 12.
+
+---
+
+## ADR-037 — Export is a job; the package is reproducible and self-verifying (2026-08-21)
+
+**Status:** accepted, implemented in Phase 9A.
+
+### Context
+
+The Phase 9 foundation slice had `GET /latest/luxexchange.zip` **write files
+to disk and insert database rows on every request**. Measured 2026-08-21:
+three downloads produced nine export rows, and three different ZIPs.
+
+```
+download 0  bytes 27563  sha 8f7e03bd…
+download 1  bytes 27564  sha 621ae78c…
+download 2  bytes 27564  sha 4ee43b15…
+export rows: [('GLB', 3), ('LUXEXCHANGE', 3), ('STEP', 3)]
+```
+
+The slice's own gate said "the package can be re-opened and its hashes
+verified". Nothing verified anything, no checksum file existed, and the
+manifest carried no digest of itself.
+
+It also reported eight formats as "not implemented" that the running image
+could already write. Probed live (ADR-009): build123d 0.11.1 has
+`export_stl`, `export_brep`, `ExportDXF`, `ExportSVG`; trimesh 5.0.0 writes
+obj/ply/dae/3mf; ezdxf 1.4.4 is installed. Under-claiming misinforms the
+operator about what he can send a fabricator today.
+
+### Decision
+
+**Export is a POST that creates a job.** `GET` reads status and serves
+artifacts, never mutates. `exports` gains `sha256`, `bytes`, `duration_ms`,
+`status`, `error`, `job_id` and a **unique index on (design_id, format)**
+with upsert. Hashes are computed once at export time, not on every UI poll.
+The job reuses the existing generic `JobRow` with `job_type="export"` — the
+first real consumer of the job model Phase 13 must harden, so Phase 13
+inherits a working example instead of a retrofit.
+
+**Ten formats, four statuses.** `included` / `failed` / `unavailable` /
+`impossible`, mirroring the costing layer's four line statuses (ADR-031).
+A missing *optional* library reports `unavailable` naming the pip package —
+not `failed`, which would send the operator hunting a bug that is really a
+one-line install. One exporter throwing never aborts the package.
+
+DWG and SKP are `impossible`, and `README_DWG_SKP.txt` **travels inside the
+package** rather than linking to `LIMITATIONS.md`, so a fabricator reading it
+offline still learns what to do.
+
+**The package is byte-reproducible.** Fixed seed-derived entry timestamps,
+sorted names, pinned compression level, pinned `create_system`. Provenance is
+keyed to the *design*, not the export run — using the export wall clock would
+make the bytes differ for a reason that has nothing to do with the design;
+when the export ran is recorded on the job row, where a timestamp belongs.
+
+**The package verifies itself, without us.** `CHECKSUMS.sha256` covers every
+content file; `content_digest` is the sha256 of that file, recorded in
+`provenance.json` (which is excluded from the checksum set, avoiding
+circularity and keeping the digest stable across hosts).
+`verify_luxexchange.py` ships **inside the ZIP** and imports only the
+standard library. A checksum that only this repository can verify is
+decoration, not integrity.
+
+**Manifest paths are relative to the package.** An absolute host path would
+make the digest depend on where the file was written, and would ship the
+operator's filesystem layout to whoever receives it.
+
+### Consequences
+
+* Ten formats produced today at zero bandwidth cost, against two before.
+* The DXF is a real drawing: a true plan section plus a hidden-line front
+  elevation, laid out side by side on PLAN / ELEVATION / HIDDEN layers.
+* Rule 5 extends from the canonical STEP to the deliverable.
+* Phase 9B (Blender render worker) remains the only part needing a download,
+  in its own image so a failed pull cannot invalidate the expensive OCCT
+  layer. Phase 9A closes without it.

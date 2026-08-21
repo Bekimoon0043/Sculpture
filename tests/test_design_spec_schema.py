@@ -56,11 +56,11 @@ def valid_example_spec() -> dict:
                     "position": {"x_m": 0.0, "y_m": 0.0, "z_m": 0.0},
                 },
                 {
-                    "element_id": "lotus_crown_01",
-                    "primitive": "lotus_array",
+                    "element_id": "column_01",
+                    "primitive": "sculptural_column",
                     "parameters": {
                         "height": {"value": 2400, "unit": "mm"},
-                        "petal_count": {"value": 8, "unit": "deg"},
+                        "diameter": {"value": 600, "unit": "mm"},
                     },
                     "material_id": "bronze_cast",
                     "position": {"x_m": 0.0, "y_m": 0.0, "z_m": 0.8},
@@ -86,7 +86,7 @@ def valid_example_spec() -> dict:
             "choreography": [
                 {
                     "name": "crown_jets",
-                    "nozzle_elements": ["lotus_crown_01"],
+                    "nozzle_elements": ["column_01"],
                     "flow_L_per_s": 4.0,
                     "jet_height_m": 2.5,
                     "sequence": "programmed",
@@ -108,7 +108,7 @@ def valid_example_spec() -> dict:
                     "node_id": "nozzle_ring_01",
                     "type": "nozzle",
                     "elevation_m": 2.4,
-                    "element_id": "lotus_crown_01",
+                    "element_id": "column_01",
                     "nozzle_bore_mm": 12.0,
                 },
                 {

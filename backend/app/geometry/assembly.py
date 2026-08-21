@@ -162,6 +162,7 @@ def assemble(
     seed: int = 0,
     fabrication: dict[str, Any] | None = None,
     materials: dict[str, Material] | None = None,
+    strict: bool = True,
 ):
     """Validate, place, prove interference, fuse. Returns (solid, manifest).
 
@@ -173,6 +174,21 @@ def assemble(
     ``fabrication``: optional {"max_lift_kg": float, "max_module_m": float}
     — the Design Spec's declared workshop limits. Checked per ELEMENT
     (today every element is one piece; segmentation is slice C).
+
+    ``strict`` (ADR-034 — diagnostic build mode):
+
+    * ``True`` (default, and what the AI fabrication loop uses): a breach of
+      a declared fabrication LIMIT raises ConstraintViolation like every
+      other violation. Generated code must be refused hard.
+    * ``False`` (what the operator-facing API uses): geometry is still built
+      and returned, and the limit breaches are recorded in the manifest as
+      ``fabrication_limit_violations`` for the Phase 8 fabrication gate to
+      report as failing rows.
+
+    The distinction is ONLY about declared workshop limits. Geometric and
+    material prerequisites — an unknown primitive, an undeclared
+    interference, a wall outside the material envelope — raise in both
+    modes, because without them there is no solid to look at.
     """
     materials = materials if materials is not None else load_materials()
     violations: list[str] = []
@@ -298,7 +314,7 @@ def assemble(
         raise ConstraintViolation(violations)
 
     # --- build + place every solid (deterministic: pure functions of params)
-    from build123d import Pos
+    from build123d import CenterOf, Pos
 
     solids: dict[str, Any] = {}
     for eid in sorted(by_id):
@@ -398,6 +414,9 @@ def assemble(
 
     # --- manifest: per-element real numbers + fabrication limit checks ------
     manifest_elements: list[dict[str, Any]] = []
+    # ADR-034: limit breaches are collected SEPARATELY from geometric
+    # violations, because strict=False still returns geometry for them.
+    limit_violations: list[str] = []
     max_lift = (fabrication or {}).get("max_lift_kg")
     max_module = (fabrication or {}).get("max_module_m")
     for eid in ordered_ids:
@@ -409,6 +428,13 @@ def assemble(
         mass = vol * 1e-9 * mat.density_kg_per_m3
         bb = s.bounding_box()
         dims = [float(bb.size.X), float(bb.size.Y), float(bb.size.Z)]
+        # WORLD-SPACE extents and mass centroid. The Phase 8 structural gate
+        # needs both: a placement origin is not a centre of mass (a hollow
+        # basin's mass is in its walls), and a bbox SIZE cannot locate a
+        # footprint that is not centred on the world origin.
+        bb_min = [float(bb.min.X), float(bb.min.Y), float(bb.min.Z)]
+        bb_max = [float(bb.max.X), float(bb.max.Y), float(bb.max.Z)]
+        com = s.center(CenterOf.MASS)
         x, y, z = placements[eid]
         manifest_elements.append({
             "element_id": eid,
@@ -419,6 +445,9 @@ def assemble(
             "volume_mm3": vol,
             "mass_kg": mass,
             "bbox_mm": dims,
+            "bbox_min_mm": bb_min,
+            "bbox_max_mm": bb_max,
+            "centroid_mm": {"x": float(com.X), "y": float(com.Y), "z": float(com.Z)},
         })
         if max_lift is not None and mass > float(max_lift):
             hint = ""
@@ -430,7 +459,7 @@ def assemble(
                     "(signed sheet §4.2: a 1.0x1.0 m basalt plinth drops "
                     "2121 -> 1252 kg at a 180 mm wall)"
                 )
-            violations.append(
+            limit_violations.append(
                 f"{eid}: mass {mass:.1f} kg > max_lift_kg "
                 f"{float(max_lift):g} (volume {vol:.0f} mm3 x density "
                 f"{mat.density_kg_per_m3:g} kg/m3, {p.material_id})" + hint
@@ -439,15 +468,17 @@ def assemble(
             limit_mm = float(max_module) * 1000.0
             worst = max(dims)
             if worst > limit_mm:
-                violations.append(
+                limit_violations.append(
                     f"{eid}: bounding box {dims[0]:.0f} x {dims[1]:.0f} x "
                     f"{dims[2]:.0f} mm exceeds max_module_m "
                     f"{float(max_module):g} m ({limit_mm:g} mm) — "
                     "segmentation arrives in slice C; an oversized element "
                     "is refused, never silently produced"
                 )
-    if violations:
-        raise ConstraintViolation(violations)
+    # Geometric/material violations always raise. Limit breaches raise only
+    # in strict mode (ADR-034) — otherwise they ride out in the manifest.
+    if violations or (strict and limit_violations):
+        raise ConstraintViolation(violations + limit_violations)
 
     manifest = {
         "schema": "assembly_manifest_v1",
@@ -465,7 +496,18 @@ def assemble(
             "max_lift_kg": max_lift,
             "max_module_m": max_module,
         },
+        # ADR-034: empty in strict mode by construction (it would have
+        # raised). Non-empty only on a diagnostic build, where the Phase 8
+        # fabrication gate turns each entry into a failing row.
+        "fabrication_limit_violations": limit_violations,
+        "strict": bool(strict),
         "total_mass_kg": sum(e["mass_kg"] for e in manifest_elements),
+        "assembly_bbox_min_mm": [
+            min(e["bbox_min_mm"][i] for e in manifest_elements) for i in range(3)
+        ],
+        "assembly_bbox_max_mm": [
+            max(e["bbox_max_mm"][i] for e in manifest_elements) for i in range(3)
+        ],
         "body_count_brep": 1,
     }
     return fused, manifest

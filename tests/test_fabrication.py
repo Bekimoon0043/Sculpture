@@ -244,6 +244,47 @@ def test_validation_failure_feeds_real_numbers(db, config, base_spec, tmp_path):
     assert "watertight" in d.fab_prompts[1]
 
 
+def test_assembly_manifest_uses_assembly_validator(
+    db, config, base_spec, tmp_path, monkeypatch
+):
+    """Phase 6 assembly fabrications return a manifest in params; validating
+    them as a single-material cascade would drop body_count and per-element
+    evidence."""
+    sid = _run_council_session(db, config, base_spec)
+    spec_id = _first_spec_id(db, sid)
+    d = FabDispatcher(config.pricing, base_spec, [GOOD])
+    result = _ok_result(tmp_path, with_real_glb=False)
+    result.params = {
+        "schema": "assembly_manifest_v1",
+        "elements": [],
+        "joints": [],
+        "volume_conservation": {"assembly_volume_mm3": 1_000_000.0},
+        "total_mass_kg": 1.0,
+    }
+    runner = ScriptedRunner([result])
+    orch = _fab_orchestrator(db, config, d)
+    calls = {"assembly": 0}
+
+    def fake_validate_assembly(glb_path, manifest):
+        calls["assembly"] += 1
+        assert manifest["schema"] == "assembly_manifest_v1"
+        assert str(glb_path).endswith("artifact.glb")
+        return _scripted_report(True)
+
+    def fail_validate_mesh(*args, **kwargs):
+        raise AssertionError("assembly manifest must not use validate_mesh")
+
+    monkeypatch.setattr(
+        "app.geometry.validate.validate_assembly", fake_validate_assembly
+    )
+    monkeypatch.setattr("app.geometry.validate.validate_mesh", fail_validate_mesh)
+
+    out = fabricate_spec(orch, sid, spec_id, runner, artifact_root=tmp_path / "fab")
+
+    assert out.success
+    assert calls["assembly"] == 1
+
+
 def test_bounded_repair_gives_up_honestly(db, config, base_spec, tmp_path):
     sid = _run_council_session(db, config, base_spec)
     spec_id = _first_spec_id(db, sid)

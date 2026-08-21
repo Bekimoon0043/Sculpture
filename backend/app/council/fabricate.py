@@ -368,17 +368,19 @@ def fabricate_spec(
             report = validator(artifacts["glb"], result.params or {},
                                result.brep_volume_mm3)
         else:
-            from app.geometry.validate import validate_mesh
+            from app.geometry.validate import validate_assembly, validate_mesh
 
-            bundle = load_config_bundle()
-            material_id = (result.params or {}).get(
-                "material_id", "basalt_slab"
-            )
-            material = bundle.materials.materials[material_id]
-            report = validate_mesh(
-                artifacts["glb"], material, material_id=material_id,
-                reference_volume_mm3=result.brep_volume_mm3,
-            )
+            params = result.params or {}
+            if params.get("schema") == "assembly_manifest_v1":
+                report = validate_assembly(artifacts["glb"], params)
+            else:
+                bundle = load_config_bundle()
+                material_id = params.get("material_id", "basalt_slab")
+                material = bundle.materials.materials[material_id]
+                report = validate_mesh(
+                    artifacts["glb"], material, material_id=material_id,
+                    reference_volume_mm3=result.brep_volume_mm3,
+                )
         row.validation_json = report.model_dump_json()
 
         if not report.passed:

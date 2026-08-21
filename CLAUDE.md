@@ -42,17 +42,36 @@ LLMs do not generate geometry. They generate text. **They write the program that
 - **Commit per gate**, with a clear message. One commit that can be rolled back.
 - Keep `LIMITATIONS.md`, `DECISIONS.md` and the phase report current in the same commit as the change.
 - After any change touching `backend/`, tell the operator to rebuild: `docker compose up --build -d`.
+- Gates: `python scripts\gate_phase8_auto.py` and `gate_phase9a_auto.py` run
+  at $0 with no network. Both must pass before touching Phase 9B or later.
 - The Hub status file regenerates with `python scripts\generate_hub_status.py --out "E:\Burook platform development\Luxurycon\AI-Team-Hub\luxuryform_status.json"`.
 
 ## Build status
 
 Phases 1, 2, 3, 4 CLOSED (gates PASS 2026-08-01 / 08-04 / 08-07 / 08-17).
-Phase 6 IN PROGRESS: envelope sheet signed and slice A1 (assembly core)
-CLOSED, auto gate PASS 2026-08-20 (ADR-030, ADR-032, PHASE_6_REPORT.md);
-next is slice A2 (AI + surfaces). Phases 5, 7 not started. Operator's
-stated order: **Phase 6 (primitive library) before Phase 5 (vision
-critique)**. Each closed phase has a `PHASE_N_REPORT.md` with its gate
-evidence.
+Phase 6 slice A1 (assembly core) CLOSED, auto gate PASS 2026-08-20
+(ADR-030, ADR-032). Phase 7A (primitive-agnostic API + manifest
+persistence) built.
+
+**Phase 8 (L5 layered validation) auto gate PASS 2026-08-21** — four
+statuses, provenanced limits, overturning + ground bearing, derived
+hydraulics (ADR-034, ADR-036, `scripts/gate_phase8_auto.py`).
+**Phase 9A (export package) auto gate PASS 2026-08-21** — ten formats,
+byte-reproducible self-verifying LUXEXCHANGE package (ADR-035, ADR-037,
+`scripts/gate_phase9a_auto.py`). Both still need the operator's visual
+gate: `gate_phase8_visual.md`, `gate_phase9a_visual.md`.
+
+Not started: Phase 9B (Blender render worker — the only part needing a
+download), 10 (vision critique), 11 (DesignDNA), 12 (brief intake), 13
+(recovery). Phase 6 slices B–D and Phase 5 remain open.
+
+**Phase 8 cannot fully close until Phase 12** supplies water/site context;
+`needs_input` is its accepted terminal hydraulic status, with a Phase 8b
+re-gate after Phase 12 (LIMITATIONS.md §12).
+
+Each closed phase has a `PHASE_N_REPORT.md` with its gate evidence; the
+forward plans are `PHASE_8_VALIDATION_GATE_PLAN.md` through
+`PHASE_13_RECOVERY_HARDENING_PLAN.md`.
 
 > `SCOPE.md` is referenced above but **does not exist in this repository and
 > never has** (checked against full git history, 2026-08-17). The same is

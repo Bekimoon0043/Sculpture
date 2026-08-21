@@ -8,3 +8,5 @@ data/
 scripts/assets/
 *.db
 debs/
+frontend/node_modules/
+frontend/dist/

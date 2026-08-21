@@ -22,10 +22,57 @@ export interface DefaultsResponse {
   materials: Record<string, MaterialInfo>;
 }
 
+export interface PrimitiveInfo {
+  purpose: string;
+  can_parent_stack: boolean;
+  can_parent_insert: boolean;
+  parameters: Record<string, ParameterSpec>;
+}
+
+export interface GateProfileInfo {
+  name: string;
+  signed_off: boolean;
+  site_altitude_m: number;
+  /** Thresholds still unsupplied — these produce `needs_input` rows. */
+  unset_thresholds: string[];
+}
+
+export interface ExportFormatInfo {
+  format: string;
+  tier: string;
+  purpose: string;
+}
+
+export interface AssemblyDefaultsResponse {
+  schema: "assembly_defaults_v1";
+  primitives: Record<string, PrimitiveInfo>;
+  materials: Record<string, MaterialInfo>;
+  joint_types: string[];
+  gate_profiles: {
+    version: number;
+    default: string;
+    profiles: Record<string, GateProfileInfo>;
+  };
+  export_formats: ExportFormatInfo[];
+}
+
+/**
+ * Four statuses, never three. `needs_input` means the check could NOT be
+ * evaluated — it is not a warning and it is never a pass.
+ */
+export type GateStatus = "pass" | "warn" | "fail" | "needs_input";
+
 export interface CheckRow {
   check: string;
   value: unknown;
   passed: boolean;
+  status?: GateStatus;
+  on_violation?: "warn" | "fail";
+  /** Provenance of `limit` — where the threshold came from (Rule 11). */
+  basis?: string;
+  units?: string | null;
+  limit?: unknown;
+  message?: string;
 }
 
 export interface Validation {
@@ -50,16 +97,68 @@ export interface BuildResponse {
   glb_sha256: string;
   glb_url: string;
   step_url: string;
+  luxexchange_url?: string;
   build_ms: number;
   validation: Validation;
 }
 
+export interface ValidationGate {
+  schema: string;
+  gate_name: string;
+  status: GateStatus;
+  gate_profile_id?: string;
+  gate_profiles_version?: number;
+  profile_signed_off?: boolean;
+  checks: CheckRow[];
+  rows?: CheckRow[];
+}
+
+export interface AssemblyBuildResponse extends BuildResponse {
+  design_id: string;
+  overall_status: GateStatus;
+  passed: boolean;
+  gate_profile_id: string;
+  exports_url: string;
+  manifest: {
+    schema: "assembly_manifest_v1";
+    elements: Array<Record<string, unknown>>;
+    joints: Array<Record<string, unknown>>;
+    [key: string]: unknown;
+  };
+  validation_gates: Record<string, ValidationGate>;
+}
+
 export interface LatestValidationResponse {
-  created_at: string;
+  created_at?: string;
   design_id: string;
   gate_name: string;
+  /** True only on a clean pass. A warn is not a pass, nor is needs_input. */
   passed: boolean;
+  overall_status?: GateStatus;
+  blocking?: boolean;
+  gate_statuses?: Record<string, GateStatus>;
   validation: Validation;
+  gates?: Record<string, ValidationGate>;
+}
+
+export interface ExportEntry {
+  format: string;
+  status: "included" | "failed" | "unavailable" | "impossible" | null;
+  path: string | null;
+  sha256: string | null;
+  bytes: number | null;
+  error: string | null;
+}
+
+export interface ExportsResponse {
+  design_id: string;
+  package_built: boolean;
+  content_digest: string | null;
+  exports: ExportEntry[];
+  counts: Record<string, number>;
+  luxexchange_url: string;
+  catalog: ExportFormatInfo[];
+  last_job: { status: string; halt_reason: string | null } | null;
 }
 
 export class ApiError extends Error {
@@ -112,6 +211,65 @@ export async function getLatestValidation(): Promise<LatestValidationResponse | 
 export function latestGlbUrl(cacheBuster: number): string {
   return `/api/geometry/cascade/latest.glb?ts=${cacheBuster}`;
 }
+
+export async function getAssemblyDefaults(): Promise<AssemblyDefaultsResponse> {
+  return parseOrThrow(await fetch("/api/geometry/assembly/defaults"));
+}
+
+export async function postAssemblyBuild(
+  elements: Array<Record<string, unknown>>,
+  fabrication: Record<string, number | string> | null,
+  seed: number,
+  gateProfileId?: string
+): Promise<AssemblyBuildResponse> {
+  return parseOrThrow(
+    await fetch("/api/geometry/assembly/build", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        elements,
+        fabrication,
+        seed,
+        gate_profile_id: gateProfileId ?? null,
+      }),
+    })
+  );
+}
+
+/** Build the export package. POST — this is the only call that writes. */
+export async function postAssemblyExports(
+  designId: string
+): Promise<ExportsResponse & { content_digest: string }> {
+  return parseOrThrow(
+    await fetch(`/api/geometry/assembly/${designId}/exports`, { method: "POST" })
+  );
+}
+
+/** Read export status. Never writes — safe to poll. */
+export async function getAssemblyExports(
+  designId?: string
+): Promise<ExportsResponse | null> {
+  const path = designId
+    ? `/api/geometry/assembly/${designId}/exports`
+    : "/api/geometry/assembly/latest/exports";
+  const resp = await fetch(path);
+  if (resp.status === 404) return null;
+  return parseOrThrow(resp);
+}
+
+export async function getLatestAssemblyValidation(): Promise<LatestValidationResponse | null> {
+  const resp = await fetch("/api/geometry/assembly/latest/validation");
+  if (resp.status === 404) return null;
+  return parseOrThrow(resp);
+}
+
+export function latestAssemblyGlbUrl(cacheBuster: number): string {
+  return `/api/geometry/assembly/latest.glb?ts=${cacheBuster}`;
+}
+
+export const latestAssemblyStepUrl = "/api/geometry/assembly/latest.step";
+export const latestAssemblyLuxexchangeUrl =
+  "/api/geometry/assembly/latest/luxexchange.zip";
 
 // ---------------------------------------------------------------------------
 // Council transcript API (Phase 3, build step 3)

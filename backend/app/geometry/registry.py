@@ -40,10 +40,13 @@ from app.geometry.primitives.cascade import (
     CascadeParams,
     validate_params,
 )
+from app.geometry.spec_mapper import assembly_plan_from_spec, fabrication_limits_from_spec
 
 __all__ = [
     "PRIMITIVES",
     "assemble",
+    "assembly_plan_from_spec",
+    "fabrication_limits_from_spec",
     "cascade_fountain",
     "CASCADE_PARAMETERS",
     "CascadeParams",

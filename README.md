@@ -28,9 +28,12 @@ full spec -> program -> artifact lineage. On 2026-08-17 the operator's own
 brief produced a watertight 2.6 m basalt cascade (3,432 kg) passing the
 Phase 2 validation gate on the first attempt, for $0.046777.
 
-Rendering and the vision-critique loop (Phase 5), the primitive library
-(Phase 6) and the resumable job runner (Phase 7) are not built — see
-`LIMITATIONS.md`.
+Rendering and the vision-critique loop (Phase 5), the remaining primitive
+library work (Phase 6), exports beyond STEP/GLB, and DesignDNA/recovery
+hardening are not fully built. The missing L5-L8 work starts in
+`PHASE_7_COMPLETION_PLAN.md` and is split into follow-on plans through
+`PHASE_13_RECOVERY_HARDENING_PLAN.md`; see `LIMITATIONS.md` for the current
+truth table.
 
 ## One-command start (with Docker)
 

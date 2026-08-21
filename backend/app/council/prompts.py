@@ -18,6 +18,33 @@ _JSON_ONLY = (
 )
 
 
+def primitive_index_surface() -> str:
+    """Live Phase 6 primitive index for Designer/Geometrist prompts.
+
+    The schema intentionally leaves massing.elements[].primitive as a string:
+    the LIVE registry is the source of truth for what can be fabricated in
+    this checkout. Keeping this text generated from PRIMITIVES preserves the
+    anti-drift property ADR-026 depends on.
+    """
+    from app.geometry.registry import PRIMITIVES
+
+    lines = ["LIVE PRIMITIVE INDEX - choose ONLY these primitive ids:"]
+    for primitive_id, module in sorted(PRIMITIVES.items()):
+        accepts = []
+        if getattr(module, "CAN_PARENT_STACK", False):
+            accepts.append("can parent stack_on")
+        if getattr(module, "CAN_PARENT_INSERT", False):
+            accepts.append("can parent concentric_insert")
+        accepts_text = ", ".join(accepts) if accepts else "cannot parent children"
+        lines.append(f"- {primitive_id}: {module.PURPOSE}; {accepts_text}")
+    lines.append(
+        "If the brief needs a shape not listed here, approximate it with the "
+        "listed primitives or state the limitation in assumptions; do not "
+        "invent a primitive id."
+    )
+    return "\n".join(lines)
+
+
 def researcher_prompt(brief: str) -> str:
     return (
         "You are the RESEARCHER of the LuxuryForm design council. Given the "
@@ -46,6 +73,7 @@ def designer_prompt(brief: str, research: str, alternative_no: int,
         "thicknesses) — never placeholders.\n\n"
         f"{_JSON_ONLY}\n\n"
         f"JSON SCHEMA:\n{schema_json}\n\n"
+        f"{primitive_index_surface()}\n\n"
         f"CLIENT BRIEF:\n{brief}\n\nRESEARCH CONTEXT:\n{research}"
         f"{CACHE_BREAK}"
         f"Produce ALTERNATIVE {alternative_no} of 3 now: "
@@ -169,7 +197,7 @@ def registry_surface() -> str:
     code (Phase 6 widens the vocabulary by editing registry.py — this text
     follows automatically).
     """
-    from app.geometry.registry import CASCADE_PARAMETERS
+    from app.geometry.registry import CASCADE_PARAMETERS, PRIMITIVES
 
     lines = [
         "FABRICATION API (module `registry` — the ONLY geometry vocabulary "
@@ -182,6 +210,66 @@ def registry_surface() -> str:
         "    watertight fused solid. Raises ConstraintViolation listing",
         "    EVERY violated range/constraint with real numbers.",
         "",
+        "  solid, manifest = registry.assemble(elements: list[dict], "
+        "seed: int = 0, fabrication: dict | None = None)",
+        "    Builds a Phase 6 assembly from declared primitive elements.",
+        "    The program DECLARES elements and joints; trusted registry code",
+        "    performs every placement and boolean. Returns ONE watertight",
+        "    fused solid plus an assembly_manifest_v1 dict with per-element",
+        "    mass, joints, volume conservation, fabrication limits, and",
+        "    body_count_brep.",
+        "",
+        "  elements = registry.assembly_plan_from_spec(spec)",
+        "    Trusted Slice A1 mapper: converts Design Spec massing.elements",
+        "    into the assembly plan shape above, including dimension-object",
+        "    unit conversion, parameter aliases and parent_id -> joint type.",
+        "",
+        "  fabrication = registry.fabrication_limits_from_spec(spec)",
+        "    Extracts max_lift_kg and scalar max_module_m from the Design",
+        "    Spec fabrication limits for registry.assemble.",
+        "",
+        "PRIMITIVE INDEX (live registry):",
+    ]
+    for primitive_id, module in sorted(PRIMITIVES.items()):
+        accepts = []
+        if getattr(module, "CAN_PARENT_STACK", False):
+            accepts.append("stack_on parent")
+        if getattr(module, "CAN_PARENT_INSERT", False):
+            accepts.append("concentric_insert parent")
+        accepts_text = ", ".join(accepts) if accepts else "cannot parent children"
+        lines.append(
+            f"  {primitive_id}: {module.PURPOSE}; accepts {accepts_text}; "
+            f"{len(module.PARAMETERS)} parameters"
+        )
+    lines += [
+        "",
+        "ASSEMBLY PLAN SHAPE:",
+        "  elements is a list of dicts. Each element has:",
+        "    element_id: unique string; fuse order is sorted by this id",
+        "    primitive: one of the live registry ids above",
+        "    parameters: dict validated by that primitive's table below",
+        "    joint: absent on exactly one root element; otherwise:",
+        "      {\"type\": \"stack_on\"|\"concentric_insert\", "
+        "\"parent\": element_id, \"overlap_mm\": optional}",
+        "  stack_on: child base stands on parent top face and sinks overlap",
+        "    into it. Use for basin_on_plinth, sculpture_on_plinth, etc.",
+        "  concentric_insert: child shares a basin's axis and stands on the",
+        "    basin floor, sunk by overlap. In slice A1 only basin_round",
+        "    accepts inserts.",
+        "  Omit overlap_mm unless the spec needs a larger interference; the",
+        "    assembler uses the material joint-overlap floor. Never use 0.",
+        "  Pass fabrication={\"max_lift_kg\": spec[\"fabrication\"]"
+        "[\"max_lift_kg\"], \"max_module_m\": spec[\"fabrication\"]"
+        "[\"max_module_m\"]} when those keys exist so crane/module limits",
+        "    bind per element with real numbers.",
+        "",
+        "ASSEMBLY RETURN CONTRACT:",
+        "  For an assembly, call registry.assembly_plan_from_spec(spec), then",
+        "  registry.assemble(elements, seed=seed, fabrication=fabrication).",
+        "  Return solid, manifest, seed. The runner carries the manifest as",
+        "  params, so validation/costing can see the real",
+        "  material_id, per-element mass and fabrication limit evidence.",
+        "",
         "PARAMETERS (all keys optional except as constrained; omit to use "
         "the default):",
     ]
@@ -193,9 +281,31 @@ def registry_surface() -> str:
             f"  {name} ({spec['type']}, {spec['unit']}, default "
             f"{spec['default']}{rng}) — {spec['notes']}"
         )
+    for primitive_id, module in sorted(PRIMITIVES.items()):
+        if primitive_id == "tiered_cascade":
+            continue
+        lines.append("")
+        lines.append(f"  {primitive_id}:")
+        for name, spec in module.PARAMETERS.items():
+            rng = ""
+            if spec.get("min") is not None or spec.get("max") is not None:
+                rng = f" [{spec['min']}..{spec['max']}]"
+            lines.append(
+                f"    {name} ({spec['type']}, {spec['unit']}, default "
+                f"{spec['default']}{rng}) - {spec['notes']}"
+            )
+
     lines += [
         "",
         "HARD CONSTRAINTS (validated with real numbers; violations raise):",
+        "  Assembly A. exactly ONE root element; every non-root has a joint",
+        "  Assembly B. primitive ids must exist in the live registry",
+        "  Assembly C. every declared joint must overlap by the material",
+        "     joint floor or more; tangency/zero overlap is refused",
+        "  Assembly D. non-joined elements must not intersect or touch",
+        "  Assembly E. fused result must have body_count 1 and pass volume",
+        "     conservation against declared joint intersections",
+        "  Assembly F. max_lift_kg and max_module_m are checked per element",
         "  1. basin_diameter_mm >= widest_dish + 2*basin_wall_mm + "
         "min_clearance_mm",
         "     (widest_dish = tier_top_diameter_mm + (tiers-1)"
@@ -208,6 +318,29 @@ def registry_surface() -> str:
         "  5. lip_fillet_mm < basin_wall_mm",
         "  6. tier_spacing_mm >= dish_depth_mm",
         "  7. min_clearance_mm >= the material's CLEARANCE FLOOR below",
+        "",
+        "SLICE A1 WORKING COMPOSITION EXAMPLE:",
+        "  elements = [",
+        "    {\"element_id\": \"p1\", \"primitive\": \"plinth\",",
+        "     \"parameters\": {\"top_diameter_mm\": 700, \"height_mm\": 300,",
+        "                    \"material_id\": \"basalt_slab\"}},",
+        "    {\"element_id\": \"b1\", \"primitive\": \"basin_round\",",
+        "     \"parameters\": {\"diameter_mm\": 600, \"height_mm\": 300,",
+        "                    \"wall_mm\": 25, \"floor_mm\": 60,",
+        "                    \"material_id\": \"basalt_slab\"},",
+        "     \"joint\": {\"type\": \"stack_on\", \"parent\": \"p1\"}},",
+        "    {\"element_id\": \"c1\", \"primitive\": \"sculptural_column\",",
+        "     \"parameters\": {\"diameter_mm\": 100, \"height_mm\": 400,",
+        "                    \"material_id\": \"basalt_slab\"},",
+        "     \"joint\": {\"type\": \"concentric_insert\", \"parent\": \"b1\"}},",
+        "  ]",
+        "  solid, manifest = registry.assemble(elements, seed=seed,",
+        "      fabrication=fabrication_limits)",
+        "  Prefer the trusted mapper in generated programs:",
+        "      elements = registry.assembly_plan_from_spec(spec)",
+        "      fabrication_limits = registry.fabrication_limits_from_spec(spec)",
+        "      solid, manifest = registry.assemble(elements, seed=seed,",
+        "          fabrication=fabrication_limits)",
         "",
         "UNITS AND SOLVING ORDER — read this before choosing numbers:",
         "  * min_clearance_mm is DIAMETRAL: the physical radial gap between",
@@ -252,6 +385,12 @@ _PROGRAM_CONTRACT = """PROGRAM CONTRACT (the sandbox runner enforces it exactly)
   * Derive the cascade parameters from the Design Spec's stated dimensions
     and material. State REAL numbers within the registry ranges — the
     primitive validates and tells you every violation with real numbers.
+  * If the Design Spec needs multiple massing.elements, declare an assembly
+    plan with registry.assembly_plan_from_spec(spec), then call
+    registry.assemble. The model never fuses; registry code does every
+    boolean.
+  * For an assembly, return (solid, manifest, seed), where manifest is the
+    assembly_manifest_v1 dict returned by registry.assemble.
   * seed: use spec["meta"]["seed"].
 """
 

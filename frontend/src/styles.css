@@ -89,6 +89,41 @@ body {
   font-size: 12px;
   margin: 4px 0;
 }
+.assembly-element {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 10px;
+  border: 1px solid #232a32;
+  border-radius: 6px;
+  padding: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.assembly-element small {
+  grid-column: 1 / -1;
+  color: #8b96a3;
+  overflow-wrap: anywhere;
+}
+.export-box {
+  border: 1px solid #232a32;
+  border-radius: 6px;
+  padding: 8px;
+  margin-top: 8px;
+}
+.export-links {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.export-links a {
+  border: 1px solid #2a3138;
+  border-radius: 6px;
+  color: #dde3ea;
+  padding: 6px 8px;
+  text-decoration: none;
+  font-size: 12px;
+}
 .rebuild {
   margin-top: 8px;
   width: 100%;
@@ -138,6 +173,21 @@ td.num {
 .validation-panel {
   overflow-x: auto;
 }
+.gate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.gate-card {
+  border: 1px solid #232a32;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12.5px;
+}
+.gate-card summary {
+  cursor: pointer;
+}
 .pass {
   color: #4cc38a;
   font-weight: 600;
@@ -145,11 +195,6 @@ td.num {
 .fail {
   color: #f16a6a;
   font-weight: 600;
-}
-.badge {
-  border-radius: 4px;
-  padding: 2px 8px;
-  font-size: 12px;
 }
 .badge.pass {
   background: #14332a;
@@ -292,4 +337,71 @@ pre.payload {
   font-size: 13px;
   color: #8b96a3;
   margin: 10px 0 4px;
+}
+
+/* --- Phase 8: four validation statuses ------------------------------------
+   needs_input gets its OWN colour. It is not a warning and it is never a
+   pass — "we could not check" must never look like "we checked and it is
+   fine". Blue-grey reads as informational-but-incomplete, distinct from the
+   amber of a real warning. */
+.badge-needs_input {
+  color: #7f9dc9;
+  border-color: #35496b;
+}
+.verdict.pass { color: #7fb285; }
+.verdict.warn { color: #c9a86a; }
+.verdict.fail { color: #d08a8a; }
+.verdict.needs_input { color: #7f9dc9; }
+
+.validation-panel tr.row-fail { background: rgba(107, 58, 58, 0.16); }
+.validation-panel tr.row-warn { background: rgba(107, 90, 53, 0.14); }
+.validation-panel tr.row-needs_input { background: rgba(53, 73, 107, 0.14); }
+
+/* The provenance of every threshold (Rule 11), kept quiet but present —
+   an operator asking "where did that limit come from?" can read it here. */
+.check-message {
+  color: #8b96a3;
+  font-size: 11px;
+  margin-top: 2px;
+  max-width: 46ch;
+}
+.check-basis {
+  color: #6d7681;
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  margin-top: 2px;
+  max-width: 46ch;
+}
+.unit { color: #6d7681; font-size: 11px; }
+.profile-note { color: #c9a86a; font-size: 11px; font-style: italic; }
+.warn-hint { color: #c9a86a; }
+
+/* --- Phase 9A: export package -------------------------------------------- */
+.export-table {
+  width: 100%;
+  margin-top: 8px;
+  font-size: 12px;
+}
+.export-table td { padding: 2px 4px; }
+.export-table tr.row-included td:nth-child(2) { color: #7fb285; }
+.export-table tr.row-failed td:nth-child(2) { color: #d08a8a; }
+.export-table tr.row-unavailable td:nth-child(2) { color: #7f9dc9; }
+.export-table tr.row-impossible td:nth-child(2) { color: #8b96a3; }
+.rebuild.secondary {
+  background: #1b2027;
+  border: 1px solid #2a3138;
+  margin-top: 6px;
+}
+
+/* A crashed panel must be legible, not a black void. */
+.error-panel { border: 1px solid #6b3a3a; }
+.error-detail {
+  background: #16191d;
+  border: 1px solid #2a3138;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  color: #d08a8a;
 }

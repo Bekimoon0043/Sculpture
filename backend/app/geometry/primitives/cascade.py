@@ -225,6 +225,11 @@ CASCADE_PARAMETERS: dict[str, dict[str, Any]] = {
     },
 }
 
+# Phase 6 primitive protocol compatibility: every primitive module exposes
+# PARAMETERS. Keep CASCADE_PARAMETERS as the long-standing public name for the
+# cascade-specific API, but make registry-wide code safe.
+PARAMETERS = CASCADE_PARAMETERS
+
 
 _CascadeParamsBase = make_params_model("_CascadeParamsBase", CASCADE_PARAMETERS)
 

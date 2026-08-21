@@ -92,13 +92,17 @@ def test_prepatch_v3_file_is_altered_data_preserved(tmp_path):
     patches = con.execute(
         "SELECT table_name, column_name FROM schema_patches ORDER BY 1, 2"
     ).fetchall()
-    assert patches == [
-        ("ai_calls", "cache_write_input_tokens"),
-        ("ai_calls", "cached_input_tokens"),
-        ("council_calls", "cache_write_input_tokens"),
-        ("council_calls", "cached_input_tokens"),
-        ("council_sessions", "corrected"),
-    ]
+    # EVERY declared patch must have been applied and recorded. Deriving the
+    # expectation from the declaration (rather than a hardcoded list) keeps
+    # this honest as later phases add columns — Phase 8 added
+    # validation_reports.status, Phase 9A added six on exports — while still
+    # failing loudly if a declared patch is silently skipped.
+    from app.db.database import _ADDITIVE_COLUMN_PATCHES
+
+    assert patches == sorted(_ADDITIVE_COLUMN_PATCHES)
+    assert ("council_sessions", "corrected") in patches      # ADR-023
+    assert ("validation_reports", "status") in patches       # Phase 8
+    assert ("exports", "sha256") in patches                  # Phase 9A
     con.close()
 
     # idempotent: a second startup applies nothing and does not fail

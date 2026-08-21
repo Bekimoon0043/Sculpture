@@ -13,17 +13,18 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { latestGlbUrl } from "../api/client";
 import { frameCameraToObject } from "./framing";
 
 interface ViewportProps {
   reloadToken: number; // change triggers a GLB reload (cache-busted)
+  glbUrl: (cacheBuster: number) => string;
   onModelRendered: () => void; // fired when the GLB is on screen [ADD-5]
   onLoadError: (message: string) => void;
 }
 
 export default function Viewport({
   reloadToken,
+  glbUrl,
   onModelRendered,
   onLoadError,
 }: ViewportProps) {
@@ -122,7 +123,7 @@ export default function Viewport({
 
     const loader = new GLTFLoader();
     loader.load(
-      latestGlbUrl(reloadToken),
+      glbUrl(reloadToken),
       (gltf) => {
         if (cancelled) return;
         ctx.modelGroup.clear();
@@ -198,7 +199,7 @@ export default function Viewport({
     return () => {
       cancelled = true;
     };
-  }, [reloadToken]);
+  }, [glbUrl, reloadToken]);
 
   return <div ref={containerRef} className="viewport-canvas" />;
 }
