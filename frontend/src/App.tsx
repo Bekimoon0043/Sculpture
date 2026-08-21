@@ -225,7 +225,9 @@ export default function App() {
             ? `Last rebuild: ${Math.round(lastRebuildMs)} ms (server build: ${Math.round(
                 serverBuildMs ?? 0
               )} ms)`
-            : "Last rebuild: — (press Rebuild)"}
+            : view === "assembly"
+              ? "Last build: — (press Build assembly)"
+              : "Last rebuild: — (press Rebuild)"}
         </div>
       </div>
       <div className="side">

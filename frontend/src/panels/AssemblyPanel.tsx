@@ -18,6 +18,16 @@ interface AssemblyPanelProps {
   onFatal: (message: string) => void;
 }
 
+/** Joints read as English, not as the JSON we happen to send the backend. */
+function describeJoint(joint: unknown): string | null {
+  if (!joint || typeof joint !== "object") return null;
+  const { type, parent } = joint as { type?: string; parent?: string };
+  if (!parent) return null;
+  if (type === "stack_on") return `stacked on ${parent}`;
+  if (type === "concentric_insert") return `inserted into ${parent}`;
+  return `${type ?? "joined"} → ${parent}`;
+}
+
 function normalizeIntField(
   e: React.ChangeEvent<HTMLInputElement>,
   n: number
@@ -134,7 +144,7 @@ export default function AssemblyPanel({
         <div className="assembly-element" key={String(el.element_id)}>
           <strong>{String(el.element_id)}</strong>
           <span>{String(el.primitive)}</span>
-          {"joint" in el && <small>{JSON.stringify(el.joint)}</small>}
+          {"joint" in el && <small>{describeJoint(el.joint)}</small>}
         </div>
       ))}
 

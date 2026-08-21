@@ -65,21 +65,37 @@ function formatBytes(bytes: number | null | undefined): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function DownloadIcon() {
+  return (
+    <svg
+      className="file-icon"
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M8 1.5v9m0 0L4.5 7M8 10.5 11.5 7M2 13.5h12"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function FileRow({ row }: { row: ExportEntry }) {
   return (
     <li className="file-row">
-      <a
-        className="file-main"
-        href={row.download_url ?? undefined}
-        aria-disabled={!row.download_url}
-      >
-        <span className="file-format">{row.format}</span>
+      <a className="file-link" href={row.download_url ?? undefined}>
+        <span className="file-name">{row.format}</span>
         <span className="file-size">{formatBytes(row.bytes)}</span>
-        <span className="file-dl" aria-hidden="true">
-          ↓
-        </span>
+        <DownloadIcon />
+        {row.purpose && <span className="file-desc">{row.purpose}</span>}
       </a>
-      {row.purpose && <p className="file-purpose">{row.purpose}</p>}
     </li>
   );
 }
@@ -87,17 +103,18 @@ function FileRow({ row }: { row: ExportEntry }) {
 function MissingRow({ row }: { row: ExportEntry }) {
   const copy = STATUS_COPY[row.status ?? ""] ?? {
     label: row.status ?? "unknown",
-    hint: "",
   };
   return (
     <li className={`file-row missing row-${row.status ?? "unknown"}`}>
-      <div className="file-main static">
-        <span className="file-format">{row.format}</span>
-        <span className="file-status">{copy.label}</span>
+      {/* Deliberately NOT a link. A row that cannot be fetched must not look
+          clickable — a dead link is worse than an honest dead end. */}
+      <div className="file-link static">
+        <span className="file-name">{row.format}</span>
+        <span className="file-size file-status">{copy.label}</span>
+        {(row.error || row.purpose) && (
+          <span className="file-desc">{row.error || row.purpose}</span>
+        )}
       </div>
-      {(row.error || row.purpose) && (
-        <p className="file-purpose">{row.error || row.purpose}</p>
-      )}
     </li>
   );
 }
@@ -223,7 +240,9 @@ export default function ExportPanel({
           if (tierRows.length === 0) return null;
           return (
             <section className="file-group" key={tier}>
-              <h3>{title}</h3>
+              <h3>
+                {title} <span className="group-count">{tierRows.length}</span>
+              </h3>
               <p className="group-blurb">{blurb}</p>
               <ul className="file-list">
                 {tierRows.map((row) => (
@@ -236,7 +255,9 @@ export default function ExportPanel({
 
       {failed.length > 0 && (
         <section className="file-group">
-          <h3 className="group-fail">Failed ({failed.length})</h3>
+          <h3 className="group-fail">
+            Failed <span className="group-count">{failed.length}</span>
+          </h3>
           <p className="group-blurb">
             These threw an error. That is a bug, not a configuration problem —
             the real message is shown.
