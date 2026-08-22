@@ -231,6 +231,18 @@ CREATE TABLE IF NOT EXISTS designdna (
     summary_json    TEXT NOT NULL            -- what was reused / what is new (house style memory)
 );
 
+-- Phase 12 (L1): brief intake. normalized_json = intake_v1, every field
+-- carrying its source (operator | parsed | default | unknown).
+CREATE TABLE IF NOT EXISTS intakes (
+    id              TEXT PRIMARY KEY,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL,
+    brief_text      TEXT NOT NULL,
+    normalized_json TEXT NOT NULL,
+    status          TEXT NOT NULL,           -- draft | confirmed
+    council_session_id TEXT                  -- set when a Council run used it
+);
+
 CREATE TABLE IF NOT EXISTS exports (
     id              TEXT PRIMARY KEY,
     created_at      TEXT NOT NULL,

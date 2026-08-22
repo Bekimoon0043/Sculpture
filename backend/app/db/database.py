@@ -70,6 +70,16 @@ _ADDITIVE_COLUMN_PATCHES: dict[tuple[str, str], str] = {
     ("exports", "status"): "status TEXT",
     ("exports", "error"): "error TEXT",
     ("exports", "job_id"): "job_id TEXT",
+    # Phase 11: designdna grows from a Phase-2 placeholder shape into the
+    # real precedent store (status/authorship/digest/tags).
+    ("designdna", "status"): "status TEXT",
+    ("designdna", "accepted_by"): "accepted_by TEXT",
+    ("designdna", "acceptance_note"): "acceptance_note TEXT",
+    ("designdna", "content_digest"): "content_digest TEXT",
+    ("designdna", "tags_json"): "tags_json TEXT",
+    ("designdna", "archived_at"): "archived_at TEXT",
+    # Phase 11/12: record what was injected into a Council brief.
+    ("council_sessions", "context_json"): "context_json TEXT",
 }
 
 #: Unique indexes added after a schema version shipped. Same idempotent,

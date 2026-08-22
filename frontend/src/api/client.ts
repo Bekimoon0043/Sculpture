@@ -232,7 +232,8 @@ export async function postAssemblyBuild(
   elements: Array<Record<string, unknown>>,
   fabrication: Record<string, number | string> | null,
   seed: number,
-  gateProfileId?: string
+  gateProfileId?: string,
+  intakeId?: string
 ): Promise<AssemblyBuildResponse> {
   return parseOrThrow(
     await fetch("/api/geometry/assembly/build", {
@@ -243,6 +244,7 @@ export async function postAssemblyBuild(
         fabrication,
         seed,
         gate_profile_id: gateProfileId ?? null,
+        intake_id: intakeId ?? null,
       }),
     })
   );
@@ -407,4 +409,216 @@ export async function loadDemoSession(): Promise<{
   return parseOrThrow(
     await fetch("/api/council/demo-session", { method: "POST" })
   );
+}
+
+// ---------------------------------------------------------------------------
+// Brief intake API (Phase 12)
+// ---------------------------------------------------------------------------
+
+export interface SourcedField {
+  value: unknown;
+  source: "operator" | "parsed" | "default" | "unknown";
+  quote?: string | null;
+}
+
+export interface IntakeWire {
+  schema: string;
+  [section: string]: Record<string, SourcedField> | string;
+}
+
+export interface IntakeReadiness {
+  ready_for_council: boolean;
+  missing_by_tier: Record<string, Array<{ field: string; why: string }>>;
+  tier_labels: Record<string, string>;
+  note: string;
+}
+
+export interface IntakeResponse {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  status: "draft" | "confirmed";
+  brief_text: string;
+  council_session_id: string | null;
+  intake: IntakeWire;
+  readiness: IntakeReadiness;
+  summary_block: string;
+  parse?: {
+    applied: number;
+    kept_operator: number;
+    dropped: number;
+    provider: string;
+    model: string;
+    cost_usd: number;
+  };
+}
+
+export async function createIntake(
+  briefText: string,
+  fields: Record<string, unknown> = {}
+): Promise<IntakeResponse> {
+  return parseOrThrow(
+    await fetch("/api/intake", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ brief_text: briefText, fields }),
+    })
+  );
+}
+
+export async function getLatestIntake(): Promise<IntakeResponse | null> {
+  const resp = await fetch("/api/intake/latest");
+  if (resp.status === 404) return null;
+  return parseOrThrow(resp);
+}
+
+export async function updateIntake(
+  id: string,
+  fields: Record<string, unknown>
+): Promise<IntakeResponse> {
+  return parseOrThrow(
+    await fetch(`/api/intake/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fields }),
+    })
+  );
+}
+
+export async function parseIntake(id: string): Promise<IntakeResponse> {
+  return parseOrThrow(
+    await fetch(`/api/intake/${id}/parse`, { method: "POST" })
+  );
+}
+
+export async function confirmIntake(id: string): Promise<IntakeResponse> {
+  return parseOrThrow(
+    await fetch(`/api/intake/${id}/confirm`, { method: "POST" })
+  );
+}
+
+// ---------------------------------------------------------------------------
+// DesignDNA API (Phase 11)
+// ---------------------------------------------------------------------------
+
+export interface PrecedentTags {
+  materials: string[];
+  primitives: string[];
+  height_m: number;
+  footprint_m: number;
+  total_mass_kg: number;
+  has_water: boolean;
+  gate_profile_id: string | null;
+  overall_status: string;
+  total_cost_usd: number | null;
+}
+
+export interface Precedent {
+  id: string;
+  created_at: string;
+  design_id: string;
+  status: "active" | "archived" | "deleted";
+  accepted_by?: string;
+  acceptance_note?: string;
+  content_digest?: string;
+  tags?: PrecedentTags;
+  match_reasons?: string[];
+  detail?: string;
+}
+
+export async function acceptDesign(req: {
+  design_id: string;
+  accepted_by: string;
+  acceptance_note: string;
+}): Promise<Precedent> {
+  return parseOrThrow(
+    await fetch("/api/dna/accept", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    })
+  );
+}
+
+export async function listPrecedents(
+  includeArchived = false
+): Promise<{ precedents: Precedent[]; count: number }> {
+  return parseOrThrow(
+    await fetch(`/api/dna?include_archived=${includeArchived}`)
+  );
+}
+
+export async function searchPrecedents(
+  criteria: Record<string, string | number | boolean>
+): Promise<{ precedents: Precedent[]; count: number }> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(criteria)) {
+    params.set(key, String(value));
+  }
+  return parseOrThrow(await fetch(`/api/dna/search?${params}`));
+}
+
+export async function archivePrecedent(id: string): Promise<Precedent> {
+  return parseOrThrow(await fetch(`/api/dna/${id}/archive`, { method: "POST" }));
+}
+
+export async function deletePrecedent(id: string): Promise<Precedent> {
+  return parseOrThrow(await fetch(`/api/dna/${id}`, { method: "DELETE" }));
+}
+
+// ---------------------------------------------------------------------------
+// Operations API (Phase 13 slice A)
+// ---------------------------------------------------------------------------
+
+export interface OpsJob {
+  id: string;
+  ts: string;
+  job_type: string;
+  status: string;
+  session_id: string;
+  state: Record<string, unknown>;
+  halt_reason: string | null;
+  failure_class: string | null;
+}
+
+export interface OpsCosts {
+  total_usd: number;
+  call_count: number;
+  by_purpose: Record<string, { cost_usd: number; calls: number; errors: number }>;
+  by_provider: Record<string, { cost_usd: number; calls: number; errors: number }>;
+  by_day: Record<string, number>;
+  error_calls: { count: number; cost_usd: number };
+  reconciliation: {
+    checked_sessions: number;
+    mismatches: Array<{
+      session_id: string;
+      calls_usd: number;
+      ledger_usd: number | null;
+      finding: string;
+    }>;
+    clean: boolean;
+  };
+  budget_events: Array<{
+    ts: string;
+    session_id: string;
+    event_type: string;
+    detail: string;
+  }>;
+}
+
+export async function getOpsJobs(): Promise<{ jobs: OpsJob[]; count: number }> {
+  return parseOrThrow(await fetch("/api/ops/jobs"));
+}
+
+export async function getOpsCosts(): Promise<OpsCosts> {
+  return parseOrThrow(await fetch("/api/ops/costs"));
+}
+
+export async function getHealth(): Promise<boolean> {
+  try {
+    const resp = await fetch("/api/health");
+    return resp.ok;
+  } catch {
+    return false;
+  }
 }

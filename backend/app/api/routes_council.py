@@ -307,6 +307,64 @@ def load_demo_session() -> dict:
 
 class RunSessionRequest(BaseModel):
     brief_text: str
+    #: Phase 12: prepend the normalized intake block so the Council receives
+    #: structure, not only prose.
+    intake_id: str | None = None
+    #: Phase 11: retrieve matching precedents (by the intake's structured
+    #: fields) and inject them, quarantined and provenance-marked.
+    use_precedents: bool = False
+
+
+def _compose_brief(req: RunSessionRequest, db) -> tuple[str, dict | None]:
+    """Augment the operator's brief with intake + precedent blocks.
+
+    The AUGMENTED text is what gets stored as the session's brief_text —
+    the transcript shows exactly what the Council saw (Rule 8). Returns
+    (brief, context) where context records what was injected.
+    """
+    brief = req.brief_text.strip()
+    if not req.intake_id and not req.use_precedents:
+        return brief, None
+
+    blocks: list[str] = []
+    context: dict = {"intake_id": None, "precedent_ids": [], "block_chars": 0}
+    intake = None
+
+    if req.intake_id:
+        from app.db.models import IntakeRow
+        from app.intake.models import IntakeV1, summary_block
+
+        with db.get_session() as session:
+            row = session.get(IntakeRow, req.intake_id)
+        if row is None:
+            raise HTTPException(status_code=422,
+                                detail=f"intake {req.intake_id} does not exist")
+        if row.status != "confirmed":
+            raise HTTPException(
+                status_code=409,
+                detail=f"intake {req.intake_id} is not confirmed — confirm it "
+                       "before spending on a Council session",
+            )
+        intake = IntakeV1.model_validate(json.loads(row.normalized_json))
+        blocks.append(summary_block(intake, row.id))
+        context["intake_id"] = row.id
+
+    if req.use_precedents:
+        from app.dna import precedent_block, search_precedents
+        from app.intake.models import to_dna_filters
+
+        filters = to_dna_filters(intake) if intake is not None else {}
+        with db.get_session() as session:
+            matches = search_precedents(session, **filters, limit=3)
+        if matches:
+            blocks.append(precedent_block(matches))
+            context["precedent_ids"] = [m["id"] for m in matches]
+
+    if not blocks:
+        return brief, (context if context["intake_id"] else None)
+    combined = "\n\n".join(blocks)
+    context["block_chars"] = len(combined)
+    return f"{combined}\n\n{brief}", context
 
 
 @router.post("/council/sessions", status_code=201)
@@ -324,6 +382,7 @@ def run_council_session(req: RunSessionRequest) -> dict:
     if not brief:
         raise HTTPException(status_code=422, detail="brief_text is empty")
     db = get_default_db()
+    brief, injected_context = _compose_brief(req, db)
     bundle = load_config_bundle()
     settings = get_settings()
 
@@ -347,6 +406,17 @@ def run_council_session(req: RunSessionRequest) -> dict:
     )
     try:
         orchestrator.run_session(brief, session_id=session_id)
+        if injected_context:
+            with db.get_session() as session:
+                row = session.get(CouncilSessionRow, session_id)
+                if row is not None:
+                    row.context_json = json.dumps(injected_context, sort_keys=True)
+                    if injected_context.get("intake_id"):
+                        from app.db.models import IntakeRow
+
+                        intake_row = session.get(IntakeRow, injected_context["intake_id"])
+                        if intake_row is not None:
+                            intake_row.council_session_id = session_id
     except BudgetHalt as exc:
         raise HTTPException(
             status_code=402,

@@ -1970,3 +1970,230 @@ operator's filesystem layout to whoever receives it.
 * Phase 9B (Blender render worker) remains the only part needing a download,
   in its own image so a failed pull cannot invalidate the expensive OCCT
   layer. Phase 9A closes without it.
+
+---
+
+## ADR-038 — DesignDNA: the package digest is the precedent's identity (2026-08-22)
+
+**Status:** accepted, implemented in Phase 11.
+
+### Context
+
+Phase 11 needed an identity key for an accepted design. The obvious
+candidate was the geometry hash (`step_sha256`), which Rule 5 already
+guarantees is stable for a given spec and seed.
+
+It is the wrong key. Two designs can share a STEP byte-for-byte and still be
+materially different precedents: a different material, a different gate
+profile, a different validation outcome, a different BOM. A geometry hash
+cannot tell them apart, so a memory keyed on it would silently collapse
+distinct precedents into one.
+
+### Decision
+
+A precedent keys on the LUXEXCHANGE **`content_digest`** (ADR-037), which
+covers geometry + Design Spec + validation reports + BOM together.
+
+The consequence is the useful part: **a design must have an export package
+before it can be accepted.** A precedent is the accepted *deliverable*, not
+a half-finished shape, and this enforces the pipeline order
+(build → validate → export → accept) instead of letting unfinished work into
+the house memory.
+
+Two further invariants:
+
+* **Acceptance is an event with an author.** `accepted_by` and
+  `acceptance_note` are required and non-empty. A precedent that cannot say
+  who accepted it and why is not auditable, and it will be injected into
+  paid Council prompts for years.
+* **A failing design cannot be accepted.** If the validation rollup is
+  `fail`, acceptance is refused. Memory must not teach from work that did
+  not pass.
+
+### Retrieval is explainable before it is clever
+
+Deterministic AND-matching over measured tags, with a named reason per
+matched field:
+
+    material basalt_slab · water design · height 2.4 m within 1.20-3.60 m
+
+No embeddings. The operator has no coding background and must be able to see
+WHY a precedent surfaced and argue with it when it is wrong; an
+unexplainable similarity score cannot be debugged. Local embedding search
+stays available as a later additive slice (Rule 7 forbids sending project
+data anywhere), but it is not the first answer.
+
+### Injection is quarantined
+
+Precedents enter a Council prompt inside a delimited block that states their
+numbers describe PRIOR work and explicitly forbids copying a dimension over
+one stated in the brief. Without that framing the Council copies a
+precedent's 2.4 m basin into a brief that asked for 1.2 m. Injection is
+capped at three precedents per session.
+
+### Archive and delete are different operations
+
+* `archive` hides from retrieval, keeps the record — old sessions that cite
+  it stay coherent.
+* `delete` wipes the payload and leaves a **tombstone** carrying the id, so
+  a session that cited it reports "precedent deleted" rather than dangling.
+
+Treating these as one flow, as the original plan did, loses one guarantee or
+the other.
+
+---
+
+## ADR-039 — Intake: every field carries its provenance (2026-08-22)
+
+**Status:** accepted, implemented in Phase 12.
+
+### Context
+
+The Phase 8 hydraulic gate was inert for an entire phase because nothing
+populated its water context, and its inputs were free-form `dict | None`
+fields with no schema. The review named the fix: typed contexts, born at
+intake.
+
+But typing alone is not enough. A value of `15.0` in a form tells you
+nothing about whether the operator chose it, an AI read it out of the brief,
+it is a shipped default nobody looked at, or it is simply absent.
+
+### Decision
+
+Every intake field is a `Sourced[T]`: a value plus a **source** — one of
+`operator | parsed | default | unknown` — plus, for parsed fields, the exact
+brief sentence it came from.
+
+This is the honesty mechanism end to end:
+
+* `unknown` is distinguishable from `default`. A defaulted freeze risk that
+  nobody checked is not a confirmed one.
+* `unknown` propagates to the Phase 8 gates as `needs_input`, never as a
+  guessed number that quietly passes.
+* the operator can check the parser against the client's own words, because
+  the quote travels with the value.
+
+**The parser fills the form; it never decides.** A field sourced `operator`
+is never overwritten by a machine. The parser also cannot invent fields
+outside the schema, cannot coerce a type, and is instructed to OMIT anything
+the brief does not state rather than guess it.
+
+### Requirements are ranked by what a gap blocks
+
+Not all gaps are equal, so they are tiered: 1 blocks geometry, 2 blocks a
+validation gate, 3 blocks costing, 4 affects design quality only. Tiers 1
+and 2 must be answered before paid Council calls; 3 and 4 may stay unknown
+with the downstream consequence stated on screen.
+
+Applicability is part of it: an indoor piece is never asked for a wind
+speed, because there is no wind case to feed.
+
+### Site facts belong to the project, not the profile
+
+`site_altitude_m`, `design_wind_speed_m_s` and `allowable_bearing_kpa` are
+facts about where a specific piece stands. They are supplied per project
+through the intake and applied OVER the gate profile
+(`validate_layered_gates(site_overrides=...)`), with two guarantees:
+
+* the structural report gains a `site_overrides` row naming every replaced
+  threshold, its value AND its source, so a report read a year later never
+  looks like a plain profile run;
+* `signed_off` semantics are unchanged — an unsigned profile still
+  downgrades threshold breaches to `warn`, whoever supplied the number.
+
+The overturning safety factor is deliberately NOT overridable: it is a
+policy value a structural engineer signs, not a site measurement.
+
+### This closes Phase 8b
+
+With a confirmed intake, the hydraulic gate reaches a real
+pass/warn/fail verdict and the structural gate computes real wind pressure
+and bearing — with no hand-injected context and no profile edit. Proven by
+`scripts/gate_phase8b_auto.py`.
+
+---
+
+## ADR-040 — Two ledgers must agree, and the UI shows the disagreement (2026-08-22)
+
+**Status:** accepted, implemented in Phase 13 slice A.
+
+### Context
+
+Rule 8 requires every AI call to be auditable. The system already logged
+calls two ways: per call in `ai_calls`, and as a running total on the
+session row maintained by the budget enforcer.
+
+A cost dashboard that sums one of those books and displays the number proves
+nothing — it is one record agreeing with itself.
+
+### Decision
+
+`/api/ops/costs` **reconciles** the two books and reports the result as a
+first-class finding, not a footnote. Agreement is evidence; disagreement
+names the session ids and the nature of the gap. The status bar carries a
+LEDGER MISMATCH badge on every screen when the books disagree.
+
+Failed calls are reported on their own line. A provider that billed a failed
+attempt still cost money, and a flaky connection must not read as work done.
+
+### Failure classes decide the next action
+
+A job failure records one of four classes — `transient`, `resource`,
+`input`, `defect` — because grouping everything as "error" leaves the
+operator with nothing to do. Only transient failures should be retried:
+retrying a defect burns money and hides the bug; retrying an input error
+burns money and can never succeed.
+
+### Restore must prove itself
+
+Backup uses SQLite's online backup API, never a file copy of a live database
+(which snapshots a torn WAL state and corrupts silently).
+
+Restore then **proves** itself two ways: table row counts against the
+manifest written at backup time, and — the strong one — re-running the
+LUXEXCHANGE package's own shipped stdlib verifier (ADR-037) against the
+newest restored package. "The files are there" is not a restore proof; a
+package that re-verifies is.
+
+A corrupt archive produces a named finding, not a traceback. The operator
+reads that output to decide whether to trust a restore, so it must be
+readable.
+
+---
+
+## ADR-041 — The pipeline is the interface (2026-08-22)
+
+**Status:** accepted, implemented alongside Phases 11-13a.
+
+### Context
+
+The UI had grown to a flat row of tabs — Cascade viewport, Assembly, AI
+Council — with new phases each wanting another. A tab row says what screens
+exist. It does not say what the operator should do next, which is the actual
+question in front of someone running a job.
+
+### Decision
+
+The product is one workflow: **brief → council → build → validate → export →
+accept**. The shell makes that the primary navigation: a persistent stepper
+across the top, with the tool views (Cascade, Operations) grouped
+separately, so "where am I in the job" is never confused with "which tool".
+
+Three rules:
+
+1. **Every step state is DERIVED, never stored.** A stored flag drifts out of
+   sync with reality and starts lying; the stepper reads the same data the
+   panels read. `Validate` shows FAIL because the rollup says fail, not
+   because something set a flag.
+2. **Colour never carries meaning alone.** Each step shows a glyph
+   (`✓ ! ● ○`) and a text detail, so the state survives a screenshot and a
+   colour-blind reader.
+3. **The numbers that must never require a click live in a status bar:**
+   backend reachability (polled, so it is true even when idle), the loaded
+   design, its validation rollup, total spend, ledger health, precedent
+   count.
+
+CSS moved to role-named design tokens (`--bg-panel`, `--ok`,
+`--danger`, `--info`) so a surface is restyled once rather than by hunting
+hex codes. `needs_input` keeps its own colour, distinct from warn — the
+distinction ADR-036 established in the data must survive into the pixels.

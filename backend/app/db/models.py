@@ -125,6 +125,9 @@ class CouncilSessionRow(Base):
     # ADR-025: corrected = a bounded re-ask succeeded (self-correction);
     # degraded above = a provider FAILURE left a seat empty/reduced.
     corrected: Mapped[int] = mapped_column(Integer, default=0)
+    #: Phase 11/12: what was injected into this session's brief —
+    #: {intake_id, precedent_ids, block_chars}. NULL = plain brief.
+    context_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class CouncilCallRow(Base):
@@ -240,6 +243,48 @@ class ValidationReportRow(Base):
     #: before the patch.
     status: Mapped[str | None] = mapped_column(Text, nullable=True)
     numbers_json: Mapped[str] = mapped_column(Text)
+
+
+class DesignDnaRow(Base):
+    """One accepted-design precedent (Phase 11, L8).
+
+    `summary_json` is the full record (request, manifest, validation,
+    costing); `tags_json` is the small queryable surface retrieval filters
+    on. status: active | archived | deleted (deleted = tombstone: payload
+    wiped, identity kept so old sessions that cite it stay coherent)."""
+
+    __tablename__ = "designdna"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    created_at: Mapped[str] = mapped_column(Text)
+    design_id: Mapped[str] = mapped_column(Text, ForeignKey("designs.id"))
+    embedding_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary_json: Mapped[str] = mapped_column(Text)
+    status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    accepted_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    acceptance_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_digest: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tags_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    archived_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class IntakeRow(Base):
+    """One brief-intake record (Phase 12, L1).
+
+    `normalized_json` holds intake_v1: every field wrapped with its source
+    (operator | parsed | default | unknown) so the UI can show what the
+    parser inferred versus what the operator typed, and `unknown` stays
+    distinguishable from a defaulted value all the way to the gates."""
+
+    __tablename__ = "intakes"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    created_at: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[str] = mapped_column(Text)
+    brief_text: Mapped[str] = mapped_column(Text)
+    normalized_json: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)  # draft | confirmed
+    council_session_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class ExportRow(Base):

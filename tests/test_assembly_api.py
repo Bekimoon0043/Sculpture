@@ -575,3 +575,89 @@ def test_export_status_carries_what_the_panel_needs_to_group_files(client):
     # Every row explains what it is for, so the panel never shows a bare code.
     for row in body["exports"]:
         assert row["purpose"], f"{row['format']} has no purpose text"
+
+
+# ---------------------------------------------------------------------------
+# Phase 8b — intake context drives the gates (Phase 12 unblocks Phase 8)
+# ---------------------------------------------------------------------------
+
+def _confirmed_intake(client) -> str:
+    created = client.post("/api/intake", json={
+        "brief_text": "A basalt plaza fountain, 2.4 m, in Addis Ababa.",
+        "fields": {
+            "project.project_type": "fountain",
+            "dimensions.height_m": 2.4, "dimensions.footprint_m": 3.0,
+            "site.indoor": False,
+            "site.design_wind_speed_m_s": 30.0,
+            "site.allowable_bearing_kpa": 150.0,
+            "site.altitude_m": 2355.0,
+            "water.has_water": True,
+            "water.flow_l_per_min": 120.0,
+            "water.operating_depth_mm": 200.0,
+            "water.nozzle_bore_mm": 20.0,
+        },
+    }).json()
+    assert client.post(f"/api/intake/{created['id']}/confirm").status_code == 200
+    return created["id"]
+
+
+def test_phase8b_intake_context_makes_the_gates_evaluate(client):
+    """The Phase 8 closure condition: with a real intake, hydraulics reaches
+    pass/warn/fail (never needs_input) and overturning is EVALUATED from the
+    intake's wind speed — no hand-injected water dict, no profile edit."""
+    intake_id = _confirmed_intake(client)
+    payload = valid_assembly_payload()
+    payload["intake_id"] = intake_id
+
+    body = client.post("/api/geometry/assembly/build", json=payload).json()
+    gates = body["validation_gates"]
+
+    assert gates["hydraulics"]["status"] in {"pass", "warn", "fail"}
+    rows = {r["check"]: r for r in gates["hydraulics"]["rows"]}
+    assert rows["nozzle_bore_mm"]["status"] in {"pass", "warn", "fail"}
+
+    struct = {r["check"]: r for r in gates["structure_static_v1"]["rows"]}
+    # Ground bearing EVALUATES: the allowable pressure is a site fact the
+    # intake supplies (geotech survey), so a real verdict comes back.
+    assert struct["ground_bearing_pressure_kpa"]["status"] in {"pass", "warn", "fail"}
+    # Overturning is COMPUTED from the intake's wind speed — the real safety
+    # factor appears in the message — but its required factor is POLICY an
+    # engineer signs (deliberately not intake-overridable), so the verdict
+    # stays needs_input naming exactly that one remaining field.
+    overturning = struct["overturning_safety_factor"]
+    assert overturning["status"] == "needs_input"
+    assert "overturning_safety_factor" in overturning["message"]
+    assert "computed safety factor is" in overturning["message"]
+    # The wind pressure row proves the intake altitude+wind reached physics.
+    assert struct["design_wind_pressure_pa"]["status"] == "pass"
+    assert struct["design_wind_pressure_pa"]["value"] > 0
+
+    # The overrides are recorded with their provenance, not silent.
+    assert struct["site_overrides"]["status"] == "pass"
+    over = struct["site_overrides"]["value"]
+    assert over["design_wind_speed_m_s"] == {"value": 30.0, "source": "operator"}
+    assert "intake_v1" in struct["site_overrides"]["basis"]
+
+    # And the stored request carries the audit trail.
+    stored = client.get("/api/geometry/assembly/latest/manifest").json()
+    assert stored["request"]["intake_id"] == intake_id
+    assert stored["request"]["site_overrides"]["design_wind_speed_m_s"] == 30.0
+
+
+def test_explicit_request_water_beats_intake_water(client):
+    intake_id = _confirmed_intake(client)
+    payload = valid_assembly_payload()
+    payload["intake_id"] = intake_id
+    payload["water"] = {"has_water": False}
+
+    body = client.post("/api/geometry/assembly/build", json=payload).json()
+    rows = body["validation_gates"]["hydraulics"]["rows"]
+    assert any(r["check"] == "water_designed" and r["value"] is False for r in rows)
+
+
+def test_a_missing_intake_id_is_refused_before_geometry(client):
+    payload = valid_assembly_payload()
+    payload["intake_id"] = "no-such-intake"
+    resp = client.post("/api/geometry/assembly/build", json=payload)
+    assert resp.status_code == 422
+    assert "does not exist" in " ".join(resp.json()["detail"]["violations"])

@@ -3,6 +3,7 @@ import {
   ApiError,
   AssemblyDefaultsResponse,
   type AssemblyBuildResponse,
+  type IntakeResponse,
   getAssemblyDefaults,
   postAssemblyBuild,
 } from "../api/client";
@@ -11,6 +12,8 @@ interface AssemblyPanelProps {
   seed: number;
   busy: boolean;
   violations: string[] | null;
+  /** A confirmed intake supplies water + site context to the gates. */
+  intake: IntakeResponse | null;
   onSeedChange: (seed: number) => void;
   onBusyChange: (busy: boolean) => void;
   onViolationsChange: (violations: string[] | null) => void;
@@ -42,6 +45,7 @@ export default function AssemblyPanel({
   seed,
   busy,
   violations,
+  intake,
   onSeedChange,
   onBusyChange,
   onViolationsChange,
@@ -50,6 +54,10 @@ export default function AssemblyPanel({
 }: AssemblyPanelProps) {
   const [defaults, setDefaults] = useState<AssemblyDefaultsResponse | null>(null);
   const [profileId, setProfileId] = useState<string>("");
+  // A confirmed intake is used by default — it is the audited channel for
+  // site and water facts, and using it is what turns needs_input rows into
+  // real verdicts.
+  const [useIntake, setUseIntake] = useState(true);
 
   useEffect(() => {
     getAssemblyDefaults()
@@ -112,7 +120,8 @@ export default function AssemblyPanel({
       elements,
       { max_lift_kg: 3000, max_module_m: 4.0 },
       seed,
-      profileId || undefined
+      profileId || undefined,
+      useIntake ? intake!.id : undefined
     )
       .then((resp) => {
         onBuilt(resp);
@@ -133,6 +142,7 @@ export default function AssemblyPanel({
   }
 
   const profile = defaults.gate_profiles.profiles[profileId];
+  const intakeReady = Boolean(intake && intake.status === "confirmed");
 
   return (
     <div className="panel cascade-panel">
@@ -147,6 +157,31 @@ export default function AssemblyPanel({
           {"joint" in el && <small>{describeJoint(el.joint)}</small>}
         </div>
       ))}
+
+      {intake && (
+        <label className="param-row intake-toggle">
+          <span className="param-name">site context</span>
+          <span className="toggle-cell">
+            <input
+              type="checkbox"
+              checked={useIntake && intakeReady}
+              disabled={!intakeReady}
+              onChange={(e) => setUseIntake(e.target.checked)}
+            />
+            {intakeReady
+              ? `use intake ${intake.id.slice(0, 8)}`
+              : "intake not confirmed"}
+          </span>
+          <span className="param-unit">validation</span>
+        </label>
+      )}
+      {intake && !intakeReady && (
+        <p className="hint">
+          This intake is still a draft. Confirm it in <strong>Brief</strong> to
+          feed its water and site facts to the gates — without it, hydraulics
+          and overturning report <strong>NEEDS INPUT</strong>.
+        </p>
+      )}
 
       <label className="param-row">
         <span className="param-name">gate profile</span>

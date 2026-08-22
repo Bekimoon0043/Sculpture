@@ -1,8 +1,11 @@
-// App — wires the parameter panel, viewport and validation panel together,
-// including the [ADD-5] rebuild timer: ms from POST start until the new GLB
-// is rendered on screen, shown persistently in the viewport corner.
+// App shell — the pipeline is the product.
+//
+// LuxuryForm is one workflow: brief -> build -> validate -> export -> accept.
+// The shell makes that visible: a persistent stepper whose states are DERIVED
+// from real data (never a stored flag that can drift out of sync), a view per
+// stage, and a status bar carrying the numbers that matter continuously.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   AssemblyBuildResponse,
@@ -12,22 +15,49 @@ import {
   ValidationGate,
   type ExportsResponse,
   type GateStatus,
+  type IntakeResponse,
+  type OpsCosts,
   getDefaults,
   getAssemblyExports,
+  getHealth,
   getLatestAssemblyValidation,
+  getLatestIntake,
+  getOpsCosts,
   latestAssemblyGlbUrl,
   latestGlbUrl,
   getLatestValidation,
+  listPrecedents,
   postAssemblyExports,
   postBuild,
 } from "./api/client";
 import ErrorBoundary from "./ErrorBoundary";
+import PipelineStepper, { type PipelineStep, type StepState } from "./PipelineStepper";
 import AssemblyPanel from "./panels/AssemblyPanel";
 import ExportPanel from "./panels/ExportPanel";
 import CascadePanel from "./panels/CascadePanel";
 import CouncilPanel from "./panels/CouncilPanel";
+import IntakePanel from "./panels/IntakePanel";
+import LibraryPanel from "./panels/LibraryPanel";
+import OpsPanel from "./panels/OpsPanel";
 import ValidationPanel from "./panels/ValidationPanel";
 import Viewport from "./viewport/Viewport";
+
+type View =
+  | "intake" | "council" | "assembly" | "cascade"
+  | "library" | "ops";
+
+const VIEWS: Array<{ key: View; label: string; group: "pipeline" | "tools" }> = [
+  { key: "intake", label: "Brief", group: "pipeline" },
+  { key: "council", label: "AI Council", group: "pipeline" },
+  { key: "assembly", label: "Assembly", group: "pipeline" },
+  { key: "library", label: "Library", group: "pipeline" },
+  { key: "cascade", label: "Cascade", group: "tools" },
+  { key: "ops", label: "Operations", group: "tools" },
+];
+
+const STATUS_LABEL: Record<GateStatus, string> = {
+  pass: "PASS", warn: "WARN", fail: "FAIL", needs_input: "NEEDS INPUT",
+};
 
 export default function App() {
   const [defaults, setDefaults] = useState<DefaultsResponse | null>(null);
@@ -37,21 +67,29 @@ export default function App() {
   const [violations, setViolations] = useState<string[] | null>(null);
   const [fatalError, setFatalError] = useState<string | null>(null);
   const [validation, setValidation] = useState<Validation | null>(null);
-  const [validationGates, setValidationGates] = useState<Record<string, ValidationGate> | null>(null);
-  // Worst status across every gate. Kept separate from `validation.passed`
-  // so a warned or needs_input design can never render a green PASS.
+  const [validationGates, setValidationGates] =
+    useState<Record<string, ValidationGate> | null>(null);
   const [overallStatus, setOverallStatus] = useState<GateStatus | null>(null);
-  // Export state lives here, not in AssemblyPanel: the export panel is a
-  // sibling of the build panel, and rebuilding an assembly must refresh what
-  // the export panel shows.
   const [designId, setDesignId] = useState<string | null>(null);
   const [exports, setExports] = useState<ExportsResponse | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [intake, setIntake] = useState<IntakeResponse | null>(null);
+  const [precedentCount, setPrecedentCount] = useState(0);
+  const [costs, setCosts] = useState<OpsCosts | null>(null);
+  const [online, setOnline] = useState(true);
   const [reloadToken, setReloadToken] = useState(0);
-  const [view, setView] = useState<"cascade" | "assembly" | "council">("cascade");
+  const [view, setView] = useState<View>("assembly");
   const [serverBuildMs, setServerBuildMs] = useState<number | null>(null);
   const [lastRebuildMs, setLastRebuildMs] = useState<number | null>(null);
   const rebuildStartRef = useRef<number | null>(null);
+
+  // --- cross-view state, loaded once and refreshed on the events that
+  // --- change it. The stepper needs all of it to be honest.
+  const refreshPipeline = useCallback(() => {
+    getLatestIntake().then((i) => i && setIntake(i)).catch(() => undefined);
+    listPrecedents().then((b) => setPrecedentCount(b.count)).catch(() => undefined);
+    getOpsCosts().then(setCosts).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     getDefaults()
@@ -68,15 +106,25 @@ export default function App() {
           `Cannot reach the backend (/api/geometry/cascade/defaults): ${e.message}`
         )
       );
-    getLatestValidation()
-      .then((v) => v && setValidation(v.validation))
-      .catch(() => undefined);
+    getLatestValidation().then((v) => v && setValidation(v.validation)).catch(() => undefined);
+    refreshPipeline();
+  }, [refreshPipeline]);
+
+  // A quiet heartbeat: the status bar must tell the truth about the backend
+  // even when the operator is not clicking anything.
+  useEffect(() => {
+    let cancelled = false;
+    const tick = () => getHealth().then((ok) => !cancelled && setOnline(ok));
+    tick();
+    const timer = window.setInterval(tick, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, []);
 
   useEffect(() => {
     if (view !== "assembly") return;
-    // A package built in an earlier session is still on disk — show it
-    // rather than making the operator rebuild to get his own file back.
     getAssemblyExports()
       .then((e) => {
         if (!e) return;
@@ -97,24 +145,21 @@ export default function App() {
   const onRebuild = useCallback(() => {
     setBusy(true);
     setViolations(null);
-    rebuildStartRef.current = performance.now(); // [ADD-5] timer starts
+    rebuildStartRef.current = performance.now();
     postBuild(values, seed)
       .then((resp: BuildResponse) => {
         setValidation(resp.validation);
         setValidationGates(null);
         setOverallStatus(null);
         setServerBuildMs(resp.build_ms);
-        setReloadToken((t) => t + 1); // viewport reloads; timer stops on render
+        setReloadToken((t) => t + 1);
         setBusy(false);
       })
       .catch((e) => {
         rebuildStartRef.current = null;
         setBusy(false);
-        if (e instanceof ApiError && e.violations) {
-          setViolations(e.violations);
-        } else {
-          setFatalError(`Rebuild failed: ${e.message}`);
-        }
+        if (e instanceof ApiError && e.violations) setViolations(e.violations);
+        else setFatalError(`Rebuild failed: ${e.message}`);
       });
   }, [values, seed]);
 
@@ -124,8 +169,6 @@ export default function App() {
     setOverallStatus(resp.overall_status ?? null);
     setServerBuildMs(resp.build_ms);
     setDesignId(resp.design_id);
-    // A new build is a NEW design with no package yet. Clearing this stops
-    // the panel offering the previous design's zip as if it were this one.
     setExports(null);
     getAssemblyExports(resp.design_id).then(setExports).catch(() => undefined);
     setReloadToken((t) => t + 1);
@@ -155,37 +198,79 @@ export default function App() {
 
   const onLoadError = useCallback(
     (message: string) => {
-      // Before the first build, latest.glb 404s — that is expected, not fatal.
       if (reloadToken === 0) return;
       setFatalError(`Viewport could not load the model: ${message}`);
     },
     [reloadToken]
   );
 
-  if (view === "council") {
-    return (
-      <div className="council-wrap">
-        <nav className="view-nav">
-          <button onClick={() => setView("cascade")}>Cascade viewport</button>
-          <button onClick={() => setView("assembly")}>Assembly</button>
-          <button className="active" disabled>
-            AI Council
-          </button>
-        </nav>
-        <CouncilPanel />
-      </div>
+  // --- the stepper: every state DERIVED, never stored ---------------------
+  const steps: PipelineStep[] = useMemo(() => {
+    const intakeState: StepState = !intake
+      ? "pending"
+      : intake.status === "confirmed"
+        ? "done"
+        : intake.readiness.ready_for_council
+          ? "active"
+          : "attention";
+    const intakeDetail = !intake
+      ? "not started"
+      : intake.status === "confirmed"
+        ? "confirmed"
+        : intake.readiness.ready_for_council
+          ? "ready — confirm it"
+          : "missing required fields";
+
+    const councilState: StepState = intake?.council_session_id ? "done" : "pending";
+
+    const buildState: StepState = designId ? "done" : "pending";
+
+    const validationState: StepState = !overallStatus
+      ? "pending"
+      : overallStatus === "pass"
+        ? "done"
+        : overallStatus === "fail"
+          ? "attention"
+          : "active";
+
+    const exportState: StepState = exports?.package_built ? "done" : designId ? "active" : "pending";
+
+    const acceptedThis = Boolean(
+      exports?.content_digest && precedentCount > 0
     );
-  }
+    const libraryState: StepState = precedentCount > 0
+      ? "done"
+      : exports?.package_built ? "active" : "pending";
+
+    return [
+      { key: "brief", label: "Brief", state: intakeState, detail: intakeDetail, view: "intake" },
+      { key: "council", label: "Council", state: councilState,
+        detail: intake?.council_session_id ? "session run" : "not run", view: "council" },
+      { key: "build", label: "Build", state: buildState,
+        detail: designId ? `design ${designId.slice(0, 8)}` : "no design", view: "assembly" },
+      { key: "validate", label: "Validate", state: validationState,
+        detail: overallStatus ? STATUS_LABEL[overallStatus] : "not validated",
+        view: "assembly" },
+      { key: "export", label: "Export", state: exportState,
+        detail: exports?.package_built ? "package sealed" : "no package", view: "assembly" },
+      { key: "accept", label: "Library", state: libraryState,
+        detail: precedentCount > 0
+          ? `${precedentCount} precedent${precedentCount === 1 ? "" : "s"}`
+          : acceptedThis ? "accepted" : "nothing accepted",
+        view: "library" },
+    ];
+  }, [intake, designId, overallStatus, exports, precedentCount]);
 
   if (fatalError) {
     return (
       <div className="fatal">
-        <h1>LuxuryForm Studio — Cascade Viewport</h1>
+        <h1>LuxuryForm Studio</h1>
         <p>{fatalError}</p>
         <p>
-          Is the backend running? Start it with <code>docker compose up</code>{" "}
+          Is the backend running? Start it with <code>docker compose up -d</code>{" "}
           (see docs/operator/02_phase2_viewport.md).
         </p>
+        <button className="rebuild" onClick={() => setFatalError(null)}>Dismiss</button>
       </div>
     );
   }
@@ -193,88 +278,171 @@ export default function App() {
     return <div className="loading">Loading parameter registry…</div>;
   }
 
+  const workspace = view === "assembly" || view === "cascade";
+
   return (
-    <div>
-      <nav className="view-nav">
-        <button
-          className={view === "cascade" ? "active" : ""}
-          disabled={view === "cascade"}
-          onClick={() => setView("cascade")}
-        >
-          Cascade viewport
-        </button>
-        <button
-          className={view === "assembly" ? "active" : ""}
-          disabled={view === "assembly"}
-          onClick={() => setView("assembly")}
-        >
-          Assembly
-        </button>
-        <button onClick={() => setView("council")}>AI Council</button>
-      </nav>
-      <div className="app-grid">
-      <div className="viewport-wrap">
-        <Viewport
-          reloadToken={reloadToken}
-          glbUrl={view === "assembly" ? latestAssemblyGlbUrl : latestGlbUrl}
-          onModelRendered={onModelRendered}
-          onLoadError={onLoadError}
-        />
-        <div className="rebuild-timer">
-          {lastRebuildMs !== null
-            ? `Last rebuild: ${Math.round(lastRebuildMs)} ms (server build: ${Math.round(
-                serverBuildMs ?? 0
-              )} ms)`
-            : view === "assembly"
-              ? "Last build: — (press Build assembly)"
-              : "Last rebuild: — (press Rebuild)"}
+    <div className="shell">
+      <header className="topbar">
+        <div className="brand">
+          <span className="brand-mark">LF</span>
+          <span className="brand-name">LuxuryForm Studio</span>
         </div>
-      </div>
-      <div className="side">
-        {view === "assembly" ? (
-          <ErrorBoundary label="Assembly">
-          <AssemblyPanel
-            seed={seed}
-            busy={busy}
-            violations={violations}
-            onSeedChange={setSeed}
-            onBusyChange={setBusy}
-            onViolationsChange={setViolations}
-            onBuilt={onAssemblyBuilt}
-            onFatal={setFatalError}
-          />
-          </ErrorBoundary>
-        ) : (
-          <CascadePanel
-            defaults={defaults}
-            values={values}
-            seed={seed}
-            busy={busy}
-            violations={violations}
-            onChange={(name, v) => setValues((prev) => ({ ...prev, [name]: v }))}
-            onSeedChange={setSeed}
-            onRebuild={onRebuild}
-          />
-        )}
-        <ErrorBoundary label="Validation">
-          <ValidationPanel
-            validation={validation}
-            gates={validationGates}
-            overallStatus={overallStatus}
-          />
-        </ErrorBoundary>
-        {view === "assembly" && (
-          <ErrorBoundary label="Export">
-            <ExportPanel
-              designId={designId}
-              exports={exports}
-              exporting={exporting}
-              onExport={onExport}
+        <PipelineStepper steps={steps} activeView={view} onNavigate={(v) => setView(v as View)} />
+        <nav className="view-tabs">
+          {VIEWS.filter((v) => v.group === "tools").map((v) => (
+            <button
+              key={v.key}
+              className={view === v.key ? "active" : ""}
+              onClick={() => setView(v.key)}
+            >
+              {v.label}
+            </button>
+          ))}
+        </nav>
+      </header>
+
+      <main className={workspace ? "workspace" : "single"}>
+        {view === "intake" && (
+          <ErrorBoundary label="Brief intake">
+            <IntakePanel
+              onConfirmed={(next) => {
+                setIntake(next);
+                setView("assembly");
+              }}
+              onFatal={setFatalError}
             />
           </ErrorBoundary>
         )}
-      </div>
-      </div>
+
+        {view === "council" && (
+          <ErrorBoundary label="AI Council">
+            <CouncilPanel />
+          </ErrorBoundary>
+        )}
+
+        {view === "library" && (
+          <ErrorBoundary label="Library">
+            <LibraryPanel
+              designId={designId}
+              exports={exports}
+              onAccepted={refreshPipeline}
+              onFatal={setFatalError}
+            />
+          </ErrorBoundary>
+        )}
+
+        {view === "ops" && (
+          <ErrorBoundary label="Operations">
+            <OpsPanel onFatal={setFatalError} />
+          </ErrorBoundary>
+        )}
+
+        {workspace && (
+          <>
+            <div className="viewport-wrap">
+              <Viewport
+                reloadToken={reloadToken}
+                glbUrl={view === "assembly" ? latestAssemblyGlbUrl : latestGlbUrl}
+                onModelRendered={onModelRendered}
+                onLoadError={onLoadError}
+              />
+              <div className="rebuild-timer">
+                {lastRebuildMs !== null
+                  ? `Last build: ${Math.round(lastRebuildMs)} ms (server ${Math.round(serverBuildMs ?? 0)} ms)`
+                  : view === "assembly"
+                    ? "Last build: — (press Build assembly)"
+                    : "Last rebuild: — (press Rebuild)"}
+              </div>
+              <div className="viewport-switch">
+                {VIEWS.filter((v) => v.key === "assembly" || v.key === "cascade").map((v) => (
+                  <button
+                    key={v.key}
+                    className={view === v.key ? "active" : ""}
+                    onClick={() => setView(v.key)}
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="side">
+              {view === "assembly" ? (
+                <ErrorBoundary label="Assembly">
+                  <AssemblyPanel
+                    seed={seed}
+                    busy={busy}
+                    violations={violations}
+                    intake={intake}
+                    onSeedChange={setSeed}
+                    onBusyChange={setBusy}
+                    onViolationsChange={setViolations}
+                    onBuilt={onAssemblyBuilt}
+                    onFatal={setFatalError}
+                  />
+                </ErrorBoundary>
+              ) : (
+                <CascadePanel
+                  defaults={defaults}
+                  values={values}
+                  seed={seed}
+                  busy={busy}
+                  violations={violations}
+                  onChange={(name, v) => setValues((prev) => ({ ...prev, [name]: v }))}
+                  onSeedChange={setSeed}
+                  onRebuild={onRebuild}
+                />
+              )}
+              <ErrorBoundary label="Validation">
+                <ValidationPanel
+                  validation={validation}
+                  gates={validationGates}
+                  overallStatus={overallStatus}
+                />
+              </ErrorBoundary>
+              {view === "assembly" && (
+                <ErrorBoundary label="Export">
+                  <ExportPanel
+                    designId={designId}
+                    exports={exports}
+                    exporting={exporting}
+                    onExport={onExport}
+                  />
+                </ErrorBoundary>
+              )}
+            </div>
+          </>
+        )}
+      </main>
+
+      <footer className="statusbar">
+        <span className={`dot ${online ? "is-online" : "is-offline"}`} />
+        <span>{online ? "backend connected" : "backend unreachable"}</span>
+        <span className="sep" />
+        {designId && <span>design <code>{designId.slice(0, 8)}</code></span>}
+        {overallStatus && (
+          <>
+            <span className="sep" />
+            <span className={`badge badge-${overallStatus}`}>
+              {STATUS_LABEL[overallStatus]}
+            </span>
+          </>
+        )}
+        <span className="spacer" />
+        {costs && (
+          <>
+            <span title="total logged provider spend">
+              spend ${costs.total_usd.toFixed(2)}
+            </span>
+            {!costs.reconciliation.clean && (
+              <span className="badge badge-warn" title="the two cost ledgers disagree">
+                LEDGER MISMATCH
+              </span>
+            )}
+            <span className="sep" />
+          </>
+        )}
+        <span>{precedentCount} precedent{precedentCount === 1 ? "" : "s"}</span>
+      </footer>
     </div>
   );
 }

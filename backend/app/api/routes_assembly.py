@@ -70,6 +70,10 @@ class AssemblyBuildRequest(BaseModel):
     water: WaterContext | None = None
     hydraulic_network: dict[str, Any] | None = None
     gate_profile_id: str | None = None
+    #: Phase 12: a confirmed intake supplies water context and per-project
+    #: site facts (altitude, wind, bearing). Explicit request fields win
+    #: over intake-derived ones.
+    intake_id: str | None = None
     seed: int = 0
     #: ADR-034. False (the default for this operator-facing route) builds the
     #: geometry even when a declared workshop limit is breached, and reports
@@ -132,16 +136,53 @@ def _gate_profiles_public() -> dict[str, Any]:
     }
 
 
-def _canonical_payload(request: AssemblyBuildRequest) -> dict[str, Any]:
+def _canonical_payload(
+    request: AssemblyBuildRequest,
+    water: WaterContext | None,
+    site_overrides: dict[str, Any] | None,
+) -> dict[str, Any]:
     return {
         "schema": "assembly_request_v1",
         "seed": int(request.seed),
         "elements": request.elements,
         "fabrication": request.fabrication or {},
-        "water": request.water.model_dump() if request.water else {},
+        "water": water.model_dump() if water else {},
         "hydraulic_network": request.hydraulic_network or {},
         "gate_profile_id": request.gate_profile_id or DEFAULT_GATE_PROFILE_ID,
+        "intake_id": request.intake_id,
+        "site_overrides": site_overrides or {},
     }
+
+
+def _intake_context(
+    request: AssemblyBuildRequest,
+) -> tuple[WaterContext | None, dict[str, Any] | None]:
+    """Resolve water + site context, intake-aware (Phase 12).
+
+    Explicit request water wins over intake water — a caller who states the
+    context is not silently second-guessed. Site facts only ever come from
+    the intake (there is no request-level site field on purpose: the intake
+    is the audited channel for them).
+    """
+    water = request.water
+    site_overrides: dict[str, Any] | None = None
+    if request.intake_id:
+        from app.db.models import IntakeRow
+        from app.intake.models import IntakeV1, to_site_overrides, to_water_context
+
+        db = get_default_db()
+        with db.get_session() as session:
+            row = session.get(IntakeRow, request.intake_id)
+        if row is None:
+            raise HTTPException(
+                status_code=422,
+                detail={"violations": [f"intake {request.intake_id} does not exist"]},
+            )
+        intake = IntakeV1.model_validate(json.loads(row.normalized_json))
+        if water is None:
+            water = WaterContext.model_validate(to_water_context(intake))
+        site_overrides = to_site_overrides(intake) or None
+    return water, site_overrides
 
 
 def _spec_hash(payload: dict[str, Any]) -> str:
@@ -269,7 +310,8 @@ def post_assembly_build(request: AssemblyBuildRequest) -> dict[str, Any]:
             detail={"violations": exc.violations},
         ) from exc
 
-    request_payload = _canonical_payload(request)
+    water, site_overrides = _intake_context(request)
+    request_payload = _canonical_payload(request, water, site_overrides)
     profile_id = request.gate_profile_id or DEFAULT_GATE_PROFILE_ID
     spec_hash = _spec_hash(request_payload)
     out_dir = data_dir() / "designs" / spec_hash
@@ -281,7 +323,8 @@ def post_assembly_build(request: AssemblyBuildRequest) -> dict[str, Any]:
     mesh_report = validate_assembly(glb_path, manifest)
     try:
         layered_reports = validate_layered_gates(
-            manifest, water=request.water, gate_profile_id=profile_id
+            manifest, water=water, gate_profile_id=profile_id,
+            site_overrides=site_overrides,
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail={"violations": [str(exc)]}) from exc
@@ -588,8 +631,17 @@ def post_design_exports(design_id: str) -> dict[str, Any]:
             strict=False,
         )
     except Exception as exc:
+        # Phase 13 R3: classify the failure so the operator knows the next
+        # action. input = fix the request; resource = free disk/memory;
+        # defect = our bug, do not retry.
+        if isinstance(exc, ConstraintViolation):
+            klass = "input"
+        elif isinstance(exc, (OSError, MemoryError)):
+            klass = "resource"
+        else:
+            klass = "defect"
         _finish("failed", {"design_id": design_id, "step": "rebuild_solid"},
-                halt=f"{type(exc).__name__}: {exc}")
+                halt=f"{klass}: {type(exc).__name__}: {exc}")
         raise HTTPException(
             status_code=500,
             detail=f"could not rebuild geometry for export: {type(exc).__name__}: {exc}",

@@ -55,19 +55,25 @@ persistence) built.
 
 **Phase 8 (L5 layered validation) auto gate PASS 2026-08-21** — four
 statuses, provenanced limits, overturning + ground bearing, derived
-hydraulics (ADR-034, ADR-036, `scripts/gate_phase8_auto.py`).
+hydraulics (ADR-034, ADR-036).
 **Phase 9A (export package) auto gate PASS 2026-08-21** — ten formats,
-byte-reproducible self-verifying LUXEXCHANGE package (ADR-035, ADR-037,
-`scripts/gate_phase9a_auto.py`). Both still need the operator's visual
-gate: `gate_phase8_visual.md`, `gate_phase9a_visual.md`.
+byte-reproducible self-verifying LUXEXCHANGE package (ADR-035, ADR-037).
+**Phase 11 (DesignDNA), Phase 12 (brief intake) and Phase 13 slice A
+(jobs/costs/backup) auto gates PASS 2026-08-22** (ADR-038 … ADR-041).
+**Phase 8b re-gate PASS 2026-08-22** — intake context now drives the
+hydraulic and structural gates to real verdicts, closing the Phase 8
+dependency.
 
-Not started: Phase 9B (Blender render worker — the only part needing a
-download), 10 (vision critique), 11 (DesignDNA), 12 (brief intake), 13
-(recovery). Phase 6 slices B–D and Phase 5 remain open.
+Ten auto gates, all $0 and offline:
+`gate_phase2/3/4/6a1/costing/8/8b/9a/11/13a_auto.py`.
 
-**Phase 8 cannot fully close until Phase 12** supplies water/site context;
-`needs_input` is its accepted terminal hydraulic status, with a Phase 8b
-re-gate after Phase 12 (LIMITATIONS.md §12).
+Awaiting the operator's visual gates: `gate_phase8_visual.md`,
+`gate_phase9a_visual.md`, `gate_phase11_13a_visual.md`.
+
+Not started: **Phase 9B** (Blender render worker — the only remaining part
+that needs a download), **Phase 10** (vision critique, blocked on 9B),
+**Phase 13 slices B+** (resumable job runner — see LIMITATIONS.md §16).
+Phase 6 slices B–D and Phase 5 remain open.
 
 Each closed phase has a `PHASE_N_REPORT.md` with its gate evidence; the
 forward plans are `PHASE_8_VALIDATION_GATE_PLAN.md` through

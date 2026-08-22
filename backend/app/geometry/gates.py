@@ -1013,14 +1013,30 @@ def stored_water_mass_kg(
     return total_l / 1000.0 * constants.water_density_kg_per_m3
 
 
+#: Profile fields intake may override per project (Phase 12). The list is
+#: closed on purpose: freeboard, turnover and tool limits stay policy, but
+#: SITE facts — where the piece stands — belong to the project, not the
+#: profile file.
+SITE_OVERRIDABLE = ("site_altitude_m", "design_wind_speed_m_s", "allowable_bearing_kpa")
+
+
 def validate_layered_gates(
     manifest: dict[str, Any],
     *,
     water: WaterContext | dict[str, Any] | None = None,
     materials: dict[str, Material] | None = None,
     gate_profile_id: str | None = None,
+    site_overrides: dict[str, Any] | None = None,
 ) -> dict[str, LayeredGateReport]:
-    """Run every Phase 8 gate under one profile."""
+    """Run every Phase 8 gate under one profile.
+
+    ``site_overrides`` (Phase 12): per-project site facts from the intake,
+    applied over the profile. Provenance is preserved two ways — each
+    override's source rides in the ``_source`` sub-dict and is recorded as a
+    ``site_overrides`` info row on the structural report, and the
+    ``signed_off`` semantics are UNCHANGED: an unsigned profile still
+    downgrades threshold breaches to warn, whoever supplied the number.
+    """
     bundle = load_config_bundle()
     profiles = bundle.gate_profiles
     profile_id = gate_profile_id or DEFAULT_GATE_PROFILE_ID
@@ -1028,7 +1044,21 @@ def validate_layered_gates(
     constants = profiles.constants
     materials = materials if materials is not None else bundle.materials.materials
 
-    return {
+    applied_overrides: dict[str, Any] = {}
+    override_sources: dict[str, str] = {}
+    if site_overrides:
+        sources = site_overrides.get("_source") or {}
+        for field in SITE_OVERRIDABLE:
+            if field in site_overrides and site_overrides[field] is not None:
+                applied_overrides[field] = float(site_overrides[field])
+                override_sources[field] = str(sources.get(field, "operator"))
+        if applied_overrides:
+            profile = profile.model_copy(update=applied_overrides)
+            # An overridden altitude must still be inside the ISA model —
+            # fail loudly here, not mid-gate.
+            constants.air_density_at_m(profile.site_altitude_m)
+
+    reports = {
         STRUCTURE_GATE: validate_structural_gate(
             manifest, materials, profile=profile, profile_id=profile_id,
             constants=constants, version=profiles.version,
@@ -1043,3 +1073,28 @@ def validate_layered_gates(
             version=profiles.version,
         ),
     }
+
+    if applied_overrides:
+        # One honest info row on the structural report: which profile fields
+        # this run replaced, with the values and where each came from. A
+        # report read a year later must not silently look like a plain
+        # profile run.
+        reports[STRUCTURE_GATE].checks.insert(0, GateCheck(
+            check="site_overrides",
+            status="pass",
+            on_violation="warn",
+            value={
+                field: {"value": value, "source": override_sources.get(field)}
+                for field, value in applied_overrides.items()
+            },
+            limit=None,
+            units=None,
+            basis="intake_v1 site context, applied over "
+                  f"gate_profiles.yaml:{profile_id}",
+            message=(
+                "these profile thresholds were overridden by the project's "
+                "intake site context for this run; signed_off semantics are "
+                "unchanged"
+            ),
+        ))
+    return reports

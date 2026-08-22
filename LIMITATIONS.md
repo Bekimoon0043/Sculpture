@@ -300,14 +300,13 @@ NOT do:
   number nobody has approved. Material limits from `materials.yaml` and
   workshop limits from the Design Spec are always binding.
 
-- **The hydraulic gate depends on Phase 12.** Nothing in the brief → Design
-  Spec → assemble path populates `water_context_v1` yet, so in a live run
-  the hydraulic gate reports `needs_input`. It evaluates real numbers the
-  moment context is supplied (proven in tests and in
-  `gate_phase8_auto.py` section 6), but that supply arrives with Phase 12
-  brief intake. **Phase 8 therefore closes with `needs_input` accepted as a
-  legitimate terminal hydraulic status, and a Phase 8b re-gate after Phase
-  12.**
+- **~~The hydraulic gate depends on Phase 12~~ — RESOLVED 2026-08-22.**
+  Phase 12 brief intake now supplies `water_context_v1` and the site facts,
+  and the Phase 8b re-gate (`scripts/gate_phase8b_auto.py`) proves the
+  hydraulic gate reaches a real pass/warn/fail verdict from a confirmed
+  intake with no hand-injected context. One threshold still reports
+  `needs_input` by design: `overturning_safety_factor` is a policy value a
+  structural engineer signs, deliberately not intake-overridable (ADR-039).
 
 - **Wind is a single static case.** One design wind speed, one drag
   coefficient, one silhouette from the bounding box. No gust dynamics, no
@@ -377,3 +376,127 @@ is NOT there:
 
 - **Renders will never be byte-identical** (§2 still stands). The package
   determinism guarantee covers geometry, drawings and metadata.
+
+## 14. Phase 11 DesignDNA scope limits (2026-08-22)
+
+Accepted designs become searchable, explainable precedent (ADR-038). What it
+does NOT do:
+
+- **Retrieval is structured matching, not semantic search.** Filters are
+  material, primitive, water, gate profile, height band and note text, all
+  AND-ed. A brief phrased differently but describing the same thing will not
+  match on meaning. Local embedding search is a possible later slice; it was
+  deliberately not built first, because an operator must be able to see WHY
+  a precedent surfaced.
+
+- **The height band is a fixed ±50%.** Not tuned, not learned. A blunt
+  instrument that is at least legible.
+
+- **No precedent influences geometry automatically.** Precedents enter
+  Council PROMPTS as context only. Nothing in the geometry engine reads
+  DesignDNA, and no dimension is ever copied from a precedent by machine.
+
+- **Injection is capped at three precedents** with no relevance threshold
+  beyond the filters. A session with many similar precedents gets the three
+  most specific matches, newest first — not necessarily the three best.
+
+- **Precedent quality is not judged.** If the operator accepts a mediocre
+  design with a glowing note, the Council reads that note as written. The
+  library is memory, not taste.
+
+- **Deleting frees the digest.** After a delete, the same deliverable can be
+  accepted again deliberately. That is intended, but it means "delete" is
+  not a permanent ban on a design.
+
+## 15. Phase 12 brief intake scope limits (2026-08-22)
+
+Typed contexts with per-field provenance (ADR-039), feeding the Phase 8
+gates. What it does NOT do:
+
+- **The parser is one call, not a conversation.** It fills what it can find
+  and stops. It does not ask the client follow-up questions, and it does not
+  re-read the brief after you edit the form.
+
+- **The parser can misread.** It carries the quote it took each value from
+  precisely because it can be wrong — check parsed fields against the quote
+  before confirming. Nothing downstream distinguishes a correct parse from a
+  plausible wrong one.
+
+- **Climate normalization is partial.** Freeze risk, dust exposure and water
+  availability are captured, but nothing CONSUMES them yet. No gate reads
+  them; they are recorded for the Council and for later phases. Recorded
+  honestly, not claimed as validated inputs.
+
+- **Budget fields are captured but not bound to costing.** The costing layer
+  still takes its budget separately; wiring the intake budget into the
+  binding budget check is not done.
+
+- **Only three site facts reach the gates** — altitude, design wind speed,
+  allowable bearing. Everything else in the site section is context for the
+  Council, not a gate input.
+
+- **One intake, one design, no project grouping.** Intakes are a flat list;
+  the newest is the default. There is no project entity tying an intake to
+  several designs over time.
+
+- **The Council prompt uses the AUGMENTED brief.** The intake block and any
+  precedent block are prepended and stored as the session's brief text, so
+  the transcript shows exactly what the Council saw. Session brief text is
+  therefore longer than what the operator typed.
+
+## 16. Phase 13 slice A scope limits (2026-08-22)
+
+Jobs, cost reconciliation and proven backup/restore (ADR-040). What is NOT
+built — most of the original Phase 13 plan remains open:
+
+- **There is no resumable job runner.** Export jobs record a checkpoint and
+  a failure class, and re-running an export is byte-equivalent to the first
+  run (proven in the gate), but nothing RESUMES a killed job from its last
+  checkpoint. The kill-and-resume gate the Phase 13 plan describes is not
+  built. Long Council and fabrication runs are still all-or-nothing.
+
+- **Failure classes are assigned at one call site.** Only the export job
+  classifies its failures. Council, fabrication and validation failures are
+  still unclassified.
+
+- **Nothing retries automatically.** The classes tell the operator what to
+  do; no code acts on them.
+
+- **The cost dashboard is read-only and unpaginated.** It sums every logged
+  call every request. Fine for thousands of rows; it will need pagination
+  long before it needs anything cleverer.
+
+- **Backup is manual.** No schedule, no rotation, no off-machine copy. The
+  operator runs the command.
+
+- **Restore verification checks the NEWEST package only.** Table counts
+  cover every table, but only one export package is re-verified. A corrupt
+  older package would not be caught.
+
+- **Restore does not swap the live store.** It unpacks and verifies into a
+  fresh directory; moving it into place is the operator's deliberate step.
+
+## 17. UI scope limits (2026-08-22)
+
+The shell is a pipeline (ADR-041). What it does NOT do:
+
+- **No visual verification was possible in this environment.** Markup is
+  checked by server-rendering every component state and reading the HTML,
+  and by a production build plus typecheck. Nobody has looked at the pixels.
+  The visual gates exist for exactly this reason.
+
+- **The layout is desktop-only.** Fixed three-row shell with a 440 px side
+  column. It is not responsive and has not been tested below about 1100 px.
+
+- **No keyboard shortcuts, no command palette, no undo.**
+
+- **The pipeline stepper does not enforce order.** It reports state and
+  navigates; every view remains reachable at any time. Nothing stops the
+  operator building before confirming an intake — the gates simply report
+  needs_input, which is the honest consequence.
+
+- **Precedent search has no pagination.** Every match renders.
+
+- **The Council view still has no precedent toggle in the UI.** The API
+  supports `use_precedents`, and the Library shows what would be injected,
+  but the Council panel does not yet expose the switch.
