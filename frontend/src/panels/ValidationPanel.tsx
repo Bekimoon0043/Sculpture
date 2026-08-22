@@ -16,6 +16,15 @@ interface ValidationPanelProps {
   validation: Validation | null;
   gates?: Record<string, ValidationGate> | null;
   overallStatus?: GateStatus | null;
+  /**
+   * The AUTHORITATIVE per-gate status, from the persisted status column.
+   *
+   * Not every gate blob carries a status of its own: the mesh report is a
+   * ValidationReport, not a LayeredGateReport, so it has no `status` key.
+   * Falling back to needs_input for it made a PASSING watertight check
+   * render as NEEDS INPUT — the card contradicted the server.
+   */
+  gateStatuses?: Record<string, GateStatus> | null;
 }
 
 const STATUS_RANK: Record<GateStatus, number> = {
@@ -69,8 +78,15 @@ function gateRows(gate: ValidationGate): CheckRow[] {
   return Array.isArray(rows) ? rows : [];
 }
 
-function gateStatus(gate: ValidationGate): GateStatus {
-  return gate.status && gate.status in STATUS_RANK ? gate.status : "needs_input";
+function gateStatus(
+  name: string,
+  gate: ValidationGate,
+  authoritative?: Record<string, GateStatus> | null
+): GateStatus {
+  const fromServer = authoritative?.[name];
+  if (fromServer && fromServer in STATUS_RANK) return fromServer;
+  if (gate.status && gate.status in STATUS_RANK) return gate.status;
+  return "needs_input";
 }
 
 function rowsFrom(validation: Validation): CheckRow[] {
@@ -107,6 +123,7 @@ export default function ValidationPanel({
   validation,
   gates,
   overallStatus,
+  gateStatuses,
 }: ValidationPanelProps) {
   if (!validation) {
     return (
@@ -122,7 +139,7 @@ export default function ValidationPanel({
     overallStatus ??
     worstStatus([
       validation.passed ? "pass" : "fail",
-      ...gateEntries.map(([, gate]) => gateStatus(gate)),
+      ...gateEntries.map(([name, gate]) => gateStatus(name, gate, gateStatuses)),
     ]);
 
   return (
@@ -138,7 +155,7 @@ export default function ValidationPanel({
       {gateEntries.length > 0 && (
         <div className="gate-list">
           {gateEntries.map(([name, gate]) => {
-            const status = gateStatus(gate);
+            const status = gateStatus(name, gate, gateStatuses);
             const rows = gateRows(gate);
             return (
               <details className="gate-card" key={name} open={status === "fail"}>
@@ -156,9 +173,9 @@ export default function ValidationPanel({
                 </summary>
                 {rows.length === 0 ? (
                   <p className="hint">
-                    This report has no check rows — it was stored before the
-                    layered gates existed. Press <strong>Build assembly</strong>{" "}
-                    to re-validate this design.
+                    This report has no per-check rows of its own — its
+                    measurements are in the table below. (The mesh report is
+                    a whole-body watertight check, not a list of thresholds.)
                   </p>
                 ) : (
                   <table>

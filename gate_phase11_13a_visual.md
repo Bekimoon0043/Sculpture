@@ -112,6 +112,26 @@ Re-confirm the intake, then go to **Assembly**.
       shows the **computed** safety factor and names the one remaining field
       (`overturning_safety_factor`), which your engineer signs in
       `config/gate_profiles.yaml`. This is correct, not a bug.
+- [ ] `assembly_mesh` shows **PASS**, not NEEDS INPUT. (It has no threshold
+      rows of its own — it is a whole-body watertight check — but it must
+      still show its real verdict.)
+
+### The profile notice must match what the gates received
+
+With **use intake** on, look at the text under the gate profile dropdown:
+
+- [ ] A green line reads "Supplied by intake <id>:
+      `allowable_bearing_kpa, design_wind_speed_m_s`".
+- [ ] The amber line lists **only** `overturning_safety_factor` as still
+      unset, and explains it is a policy value your engineer signs — not
+      something to enter in the brief.
+- [ ] It does **not** tell you to edit `config/gate_profiles.yaml` for the
+      two values you already typed into the Brief screen.
+
+Uncheck **use intake**:
+
+- [ ] The green line disappears and all three thresholds are listed as
+      unset again. The notice tracks what the build will actually use.
 
 Now uncheck **use intake** and rebuild.
 

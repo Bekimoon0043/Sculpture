@@ -218,3 +218,45 @@ def test_parse_without_keys_fails_honestly_and_form_still_works(client):
     assert client.put(f"/api/intake/{created['id']}", json={
         "fields": {"project.project_type": "fountain"}
     }).status_code == 200
+
+
+def test_intake_reports_which_gate_thresholds_it_supplies(client):
+    """Found live 2026-08-22 from the operator's screenshot.
+
+    The Assembly panel warned "Unset (3): allowable_bearing_kpa,
+    design_wind_speed_m_s, overturning_safety_factor" while a CONFIRMED
+    intake was already supplying the first two — telling the operator to go
+    edit a YAML file for values he had just typed into the Brief screen.
+
+    The panel reads this field, derived by the same function the build path
+    uses, so the warning can never disagree with what the gates receive.
+    """
+    created = client.post("/api/intake", json={"fields": {
+        "site.indoor": False,
+        "site.altitude_m": 2355.0,
+        "site.design_wind_speed_m_s": 30.0,
+        "site.allowable_bearing_kpa": 150.0,
+    }}).json()
+
+    assert created["site_overrides"] == {
+        "site_altitude_m": 2355.0,
+        "design_wind_speed_m_s": 30.0,
+        "allowable_bearing_kpa": 150.0,
+    }
+
+    # The one threshold intake must NOT supply: a policy value an engineer
+    # signs, deliberately not overridable from a brief.
+    assert "overturning_safety_factor" not in created["site_overrides"]
+
+    profiles = client.get("/api/geometry/assembly/defaults").json()["gate_profiles"]
+    unset = profiles["profiles"]["public_plaza"]["unset_thresholds"]
+    supplied = set(created["site_overrides"])
+    still_unset = [f for f in unset if f not in supplied]
+    assert still_unset == ["overturning_safety_factor"], (
+        "the panel would still warn about thresholds the intake supplies"
+    )
+
+
+def test_an_empty_intake_supplies_no_overrides(client):
+    created = client.post("/api/intake", json={"brief_text": "a fountain"}).json()
+    assert created["site_overrides"] == {}

@@ -29,7 +29,13 @@ from app.core.budget import BudgetEnforcer
 from app.core.config import get_settings, load_config_bundle
 from app.db.database import get_default_db
 from app.db.models import IntakeRow
-from app.intake.models import IntakeV1, Sourced, readiness, summary_block
+from app.intake.models import (
+    IntakeV1,
+    Sourced,
+    readiness,
+    summary_block,
+    to_site_overrides,
+)
 
 log = logging.getLogger("luxuryform.api.intake")
 
@@ -72,6 +78,7 @@ def _apply_operator_fields(intake: IntakeV1, fields: dict[str, Any]) -> list[str
 
 def _payload(row: IntakeRow) -> dict[str, Any]:
     intake = IntakeV1.model_validate(json.loads(row.normalized_json))
+    overrides = to_site_overrides(intake)
     return {
         "id": row.id,
         "created_at": row.created_at,
@@ -82,6 +89,11 @@ def _payload(row: IntakeRow) -> dict[str, Any]:
         "intake": intake.dump_wire(),
         "readiness": readiness(intake),
         "summary_block": summary_block(intake, row.id),
+        # Which gate-profile thresholds THIS intake supplies. Derived by the
+        # same function the build path uses, so the UI can never disagree
+        # with what the gates actually receive — the panel used to warn that
+        # a threshold was unset while the intake was already supplying it.
+        "site_overrides": {k: v for k, v in overrides.items() if k != "_source"},
     }
 
 

@@ -1016,3 +1016,8 @@ a.file-link:focus-visible {
   font-size: 11px;
   color: #d08a8a;
 }
+
+/* Profile status: what the gates will actually receive, split into what the
+   intake supplies (green) and what is genuinely still missing (amber). */
+.profile-status { display: flex; flex-direction: column; gap: 5px; margin: 6px 0; }
+.ok-hint { color: var(--ok); }

@@ -143,6 +143,18 @@ export default function AssemblyPanel({
 
   const profile = defaults.gate_profiles.profiles[profileId];
   const intakeReady = Boolean(intake && intake.status === "confirmed");
+  // The yellow warning must describe what the GATES will actually receive,
+  // not what happens to be blank in the YAML. Before this, a confirmed
+  // intake supplying wind speed and bearing still produced "unset (3)" and
+  // told the operator to go edit a file for values he had already entered.
+  const overrideKeys =
+    intakeReady && useIntake ? Object.keys(intake!.site_overrides ?? {}) : [];
+  const suppliedByIntake = (profile?.unset_thresholds ?? []).filter((f) =>
+    overrideKeys.includes(f)
+  );
+  const stillUnset = (profile?.unset_thresholds ?? []).filter(
+    (f) => !overrideKeys.includes(f)
+  );
 
   return (
     <div className="panel cascade-panel">
@@ -194,20 +206,43 @@ export default function AssemblyPanel({
         </select>
         <span className="param-unit">validation</span>
       </label>
-      {profile && !profile.signed_off && (
-        <p className="hint warn-hint">
-          This profile is <strong>not signed off</strong>: threshold breaches
-          report as warnings, not failures.
-          {profile.unset_thresholds.length > 0 && (
-            <>
-              {" "}
-              Unset ({profile.unset_thresholds.length}):{" "}
-              <code>{profile.unset_thresholds.join(", ")}</code> — checks that
-              need these report <strong>NEEDS INPUT</strong>. Fill them in{" "}
-              <code>config/gate_profiles.yaml</code>.
-            </>
+      {profile && (
+        <div className="profile-status">
+          {suppliedByIntake.length > 0 && (
+            <p className="hint ok-hint">
+              Supplied by intake {intake!.id.slice(0, 8)}:{" "}
+              <code>{suppliedByIntake.join(", ")}</code> — these no longer
+              report NEEDS INPUT.
+            </p>
           )}
-        </p>
+          {stillUnset.length > 0 && (
+            <p className="hint warn-hint">
+              Still unset ({stillUnset.length}):{" "}
+              <code>{stillUnset.join(", ")}</code> — checks needing these
+              report <strong>NEEDS INPUT</strong>.{" "}
+              {stillUnset.includes("overturning_safety_factor") ? (
+                <>
+                  <code>overturning_safety_factor</code> is a policy value your
+                  structural engineer signs, so it lives in{" "}
+                  <code>config/gate_profiles.yaml</code>, not in the brief.
+                </>
+              ) : (
+                <>
+                  Enter site facts in <strong>Brief</strong>, or set profile
+                  policy in <code>config/gate_profiles.yaml</code>.
+                </>
+              )}
+            </p>
+          )}
+          {!profile.signed_off && (
+            <p className="hint warn-hint">
+              Profile <strong>not signed off</strong>: a breach of one of its
+              thresholds reports as a <strong>warning</strong>, not a failure.
+              Set <code>signed_off: true</code> once your engineer approves
+              the values.
+            </p>
+          )}
+        </div>
       )}
 
       <label className="param-row">

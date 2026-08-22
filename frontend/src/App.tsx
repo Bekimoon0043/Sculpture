@@ -70,6 +70,11 @@ export default function App() {
   const [validationGates, setValidationGates] =
     useState<Record<string, ValidationGate> | null>(null);
   const [overallStatus, setOverallStatus] = useState<GateStatus | null>(null);
+  // The per-gate statuses the SERVER computed. The gate blobs cannot all
+  // supply this themselves (the mesh report has no status key), so the
+  // authoritative map travels alongside them.
+  const [gateStatuses, setGateStatuses] =
+    useState<Record<string, GateStatus> | null>(null);
   const [designId, setDesignId] = useState<string | null>(null);
   const [exports, setExports] = useState<ExportsResponse | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -137,6 +142,7 @@ export default function App() {
         if (!v) return;
         setValidation(v.validation);
         setValidationGates(v.gates ?? null);
+        setGateStatuses(v.gate_statuses ?? null);
         setOverallStatus(v.overall_status ?? null);
       })
       .catch(() => undefined);
@@ -150,6 +156,7 @@ export default function App() {
       .then((resp: BuildResponse) => {
         setValidation(resp.validation);
         setValidationGates(null);
+        setGateStatuses(null);
         setOverallStatus(null);
         setServerBuildMs(resp.build_ms);
         setReloadToken((t) => t + 1);
@@ -166,6 +173,14 @@ export default function App() {
   const onAssemblyBuilt = useCallback((resp: AssemblyBuildResponse) => {
     setValidation(resp.validation);
     setValidationGates(resp.validation_gates);
+    // The build response reports the layered gates only; the mesh verdict
+    // rides in `validation.passed`, so name it here too.
+    setGateStatuses({
+      ...Object.fromEntries(
+        Object.entries(resp.validation_gates).map(([k, g]) => [k, g.status])
+      ),
+      assembly_mesh: resp.validation.passed ? "pass" : "fail",
+    });
     setOverallStatus(resp.overall_status ?? null);
     setServerBuildMs(resp.build_ms);
     setDesignId(resp.design_id);
@@ -397,6 +412,7 @@ export default function App() {
                   validation={validation}
                   gates={validationGates}
                   overallStatus={overallStatus}
+                  gateStatuses={gateStatuses}
                 />
               </ErrorBoundary>
               {view === "assembly" && (

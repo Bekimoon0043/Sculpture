@@ -661,3 +661,25 @@ def test_a_missing_intake_id_is_refused_before_geometry(client):
     resp = client.post("/api/geometry/assembly/build", json=payload)
     assert resp.status_code == 422
     assert "does not exist" in " ".join(resp.json()["detail"]["violations"])
+
+
+def test_the_mesh_gate_reports_its_real_verdict_not_needs_input(client):
+    """Found live 2026-08-22 from the operator's screenshot.
+
+    `gates` carries each report's stored JSON, and the mesh report is a
+    ValidationReport with no `status` key — so a UI defaulting to
+    needs_input rendered a PASSING watertight check as NEEDS INPUT, directly
+    contradicting the server. The authoritative statuses travel alongside.
+    """
+    client.post("/api/geometry/assembly/build", json=valid_assembly_payload())
+    body = client.get("/api/geometry/assembly/latest/validation").json()
+
+    # The blob genuinely has no status of its own...
+    assert body["gates"]["assembly_mesh"].get("status") is None
+    # ...so the authoritative map must carry the real verdict.
+    assert body["gate_statuses"]["assembly_mesh"] == "pass"
+    assert body["gates"]["assembly_mesh"]["passed"] is True
+
+    # Every gate named in `gates` has an authoritative status, so the UI
+    # never has to guess for any of them.
+    assert set(body["gate_statuses"]) == set(body["gates"])

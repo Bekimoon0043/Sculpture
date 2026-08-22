@@ -443,6 +443,8 @@ export interface IntakeResponse {
   intake: IntakeWire;
   readiness: IntakeReadiness;
   summary_block: string;
+  /** Gate-profile thresholds this intake supplies, keyed by profile field. */
+  site_overrides: Record<string, number>;
   parse?: {
     applied: number;
     kept_operator: number;
