@@ -128,15 +128,14 @@ With **use intake** on, look at the text under the gate profile dropdown:
 - [ ] It does **not** tell you to edit `config/gate_profiles.yaml` for the
       two values you already typed into the Brief screen.
 
-Uncheck **use intake**:
-
-- [ ] The green line disappears and all three thresholds are listed as
-      unset again. The notice tracks what the build will actually use.
-
 Now uncheck **use intake** and rebuild.
 
+- [ ] The green line disappears and all three thresholds are listed as unset
+      again — the notice tracks what the build will actually use.
 - [ ] Hydraulics returns to NEEDS INPUT. The difference the intake makes is
       visible and reversible.
+
+Re-check it and rebuild before continuing.
 
 ## 4. Library — accepting and searching
 
