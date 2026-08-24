@@ -52,6 +52,7 @@ import {
   getRenderJob,
   listDesigns,
   postAssemblyBuild,
+  postAssemblyPreview,
   postAssemblyExports,
   postRenderJob,
   renderViewUrl,
@@ -206,6 +207,13 @@ export default function DesignerWorkspace({
   const [busy, setBusy] = useState(false);
   const [violations, setViolations] = useState<string[] | null>(null);
   const [buildMs, setBuildMs] = useState<number | null>(null);
+  const [draftGlbUrl, setDraftGlbUrl] = useState<string | null>(null);
+  const [draftForJson, setDraftForJson] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewBuildMs, setPreviewBuildMs] = useState<number | null>(null);
+  const draftUrlRef = useRef<string | null>(null);
+  const previewSequence = useRef(0);
 
   // Validation + exports (shown in the right column, reported to the App).
   const [validation, setValidation] = useState<Validation | null>(null);
@@ -250,6 +258,27 @@ export default function DesignerWorkspace({
   const pendingThumbFor = useRef<string | null>(null);
 
   const doc = history?.present ?? null;
+  const docJson = useMemo(() => (doc ? JSON.stringify(doc) : null), [doc]);
+  const dirty = docJson !== null && docJson !== lastBuiltJson;
+  const draftCurrent = Boolean(
+    dirty && draftGlbUrl && draftForJson === docJson
+  );
+  const glbUrl = useMemo(() => {
+    if (draftCurrent && draftGlbUrl) return () => draftGlbUrl;
+    return activeDesignId ? designSceneGlbUrl(activeDesignId) : null;
+  }, [activeDesignId, draftCurrent, draftGlbUrl]);
+
+  const replaceDraftUrl = useCallback((next: string | null) => {
+    if (draftUrlRef.current && draftUrlRef.current !== next) {
+      URL.revokeObjectURL(draftUrlRef.current);
+    }
+    draftUrlRef.current = next;
+    setDraftGlbUrl(next);
+  }, []);
+
+  useEffect(() => () => {
+    if (draftUrlRef.current) URL.revokeObjectURL(draftUrlRef.current);
+  }, []);
 
   // ------------------------------------------------------------------ boot
   useEffect(() => {
@@ -525,7 +554,59 @@ export default function DesignerWorkspace({
 
   // ------------------------------------------------------------- build
   const intakeReady = Boolean(intake && intake.status === "confirmed");
-  const dirty = doc ? JSON.stringify(doc) !== lastBuiltJson : false;
+
+  useEffect(() => {
+    if (!doc || !docJson) return;
+    const needsPreview = dirty || !activeDesignId;
+    if (!needsPreview || busy) {
+      setPreviewing(false);
+      if (!needsPreview) {
+        replaceDraftUrl(null);
+        setDraftForJson(null);
+        setPreviewError(null);
+      }
+      return;
+    }
+
+    const sequence = ++previewSequence.current;
+    const controller = new AbortController();
+    setPreviewing(true);
+    setPreviewError(null);
+    const timer = window.setTimeout(() => {
+      postAssemblyPreview(
+        toBuildElements(doc),
+        doc.fabrication,
+        doc.seed,
+        controller.signal
+      )
+        .then((preview) => {
+          if (sequence !== previewSequence.current) {
+            URL.revokeObjectURL(preview.objectUrl);
+            return;
+          }
+          replaceDraftUrl(preview.objectUrl);
+          setDraftForJson(docJson);
+          setPreviewBuildMs(preview.buildMs);
+          setPreviewing(false);
+        })
+        .catch((error) => {
+          if (controller.signal.aborted || sequence !== previewSequence.current) return;
+          const message =
+            error instanceof ApiError && error.violations?.length
+              ? error.violations[0]
+              : error instanceof Error
+                ? error.message
+                : "Draft preview failed";
+          setPreviewError(message);
+          setPreviewing(false);
+        });
+    }, 550);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [activeDesignId, busy, dirty, doc, docJson, replaceDraftUrl]);
 
   const onBuild = useCallback(() => {
     if (!doc) return;
@@ -719,8 +800,6 @@ export default function DesignerWorkspace({
   if (!defaults || !history || !doc) {
     return <div className="loading">Loading the designer workspace…</div>;
   }
-
-  const glbUrl = activeDesignId ? designSceneGlbUrl(activeDesignId) : null;
 
   return (
     <div className={`designer ${historyCollapsed ? "history-closed" : ""}`}>
@@ -1012,7 +1091,11 @@ export default function DesignerWorkspace({
               ref={viewportRef}
               reloadToken={reloadToken}
               glbUrl={glbUrl}
-              elementIds={builtElements.map((m) => m.element_id)}
+              elementIds={
+                draftCurrent
+                  ? doc.elements.map((element) => element.element_id)
+                  : builtElements.map((element) => element.element_id)
+              }
               selectedId={selectedId}
               onSelect={setSelectedId}
               hiddenIds={hiddenIds}
@@ -1032,6 +1115,17 @@ export default function DesignerWorkspace({
                 No build yet. The document on the left is ready — press{" "}
                 <strong>Build &amp; validate</strong> to see it.
               </p>
+            </div>
+          )}
+          {(dirty || !activeDesignId) && (
+            <div className={`draft-status ${previewError ? "has-error" : ""}`}>
+              {draftCurrent
+                ? `DRAFT · CAD preview · unvalidated${previewBuildMs ? ` · ${Math.round(previewBuildMs)} ms` : ""}`
+                : previewing
+                  ? "Updating CAD preview…"
+                  : previewError
+                    ? `Draft cannot build: ${previewError}`
+                    : "Draft preview waiting"}
             </div>
           )}
           {violations && (

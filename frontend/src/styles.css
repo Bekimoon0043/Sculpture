@@ -1347,6 +1347,27 @@ main.designer-main {
   pointer-events: none;
   z-index: 3;
 }
+.draft-status {
+  position: absolute;
+  top: 14px;
+  right: 112px;
+  max-width: min(440px, calc(100% - 150px));
+  overflow: hidden;
+  padding: 4px 8px;
+  border: 1px solid rgba(201, 168, 106, 0.45);
+  border-radius: 5px;
+  background: rgba(14, 18, 24, 0.86);
+  color: var(--warn);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 3;
+}
+.draft-status.has-error {
+  border-color: rgba(208, 138, 138, 0.55);
+  color: var(--danger);
+}
 .measure-label {
   position: absolute;
   transform: translate(-50%, -130%);

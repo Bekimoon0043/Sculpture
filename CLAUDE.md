@@ -90,10 +90,16 @@ Builds. Frontend auto gate PASS; visual gate pending. Slices B-E remain open.
 **Phase 15 slice B (designer controls) 2026-08-24** (ADR-048, frontend
 only) — semantic parameter groups with full registry fallback, plain-language
 validation summary with element targeting, and package-first Output. Frontend
-auto gate PASS; slices C-E remain open.
+auto gate PASS.
 
-Thirteen auto gates, all $0 and offline:
-`gate_phase2/3/4/5/6a1/costing/8/8b/9a/9b/11/13a/14_auto.py`.
+**Phase 15 slice C (kernel draft preview) 2026-08-24** (ADR-049) — the
+same OpenCASCADE assembly path now returns a non-persisted, unvalidated
+named-node GLB after debounced edits; stale responses cannot replace the
+current document. Dedicated backend/frontend auto gate PASS; slices D-E remain
+open.
+
+Fourteen auto gates, all $0 and offline:
+`gate_phase2/3/4/5/6a1/costing/8/8b/9a/9b/11/13a/14/15_auto.py`.
 Note `gate_phase9b_auto.py` and the Blender-tier sections of
 `gate_phase9a_auto.py` need the render-worker container running
 (`docker compose --profile render up -d render-worker`); both still cost $0 and

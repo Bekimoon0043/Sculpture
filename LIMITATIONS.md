@@ -533,11 +533,13 @@ The shell is a pipeline (ADR-041). What it does NOT do:
   assembler. The inspector therefore offers none. Free-form placement
   beyond stack_on x/y offsets does not exist.
 
-- **No live geometry preview while editing.** The viewport shows the last
-  build; every edit requires *Build & validate* (a full OCCT fuse + gate
-  run, seconds per press on the operator's machine) to become visible.
-  Deliberate — see ADR-044 point 2. The UNBUILT CHANGES badge is the
-  honest indicator.
+- **Draft geometry is not real-time.** Phase 15C now runs the real
+  OpenCASCADE assembler after a 550 ms debounce and shows its named-node GLB
+  without persistence or validation. The three-element gate model took about
+  4.7 seconds on this machine. Superseded responses are ignored, but an OCCT
+  calculation already running in the backend is not interrupted by the
+  browser's aborted HTTP request. Render and export still require a matching
+  full build.
 
 - **Library thumbnails are schematic SVG line art,** drawn by hand per
   primitive, not rendered geometry. Rendering each primitive at startup

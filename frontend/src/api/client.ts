@@ -129,6 +129,12 @@ export interface AssemblyBuildResponse extends BuildResponse {
   validation_gates: Record<string, ValidationGate>;
 }
 
+export interface AssemblyPreview {
+  objectUrl: string;
+  previewHash: string;
+  buildMs: number;
+}
+
 export interface LatestValidationResponse {
   created_at?: string;
   design_id: string;
@@ -249,6 +255,27 @@ export async function postAssemblyBuild(
       }),
     })
   );
+}
+
+export async function postAssemblyPreview(
+  elements: Array<Record<string, unknown>>,
+  fabrication: Record<string, number | string> | null,
+  seed: number,
+  signal?: AbortSignal
+): Promise<AssemblyPreview> {
+  const response = await fetch("/api/geometry/assembly/preview.glb", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ elements, fabrication, seed }),
+    signal,
+  });
+  if (!response.ok) await parseOrThrow(response);
+  const blob = await response.blob();
+  return {
+    objectUrl: URL.createObjectURL(blob),
+    previewHash: response.headers.get("X-LuxuryForm-Preview-Hash") ?? "",
+    buildMs: Number(response.headers.get("X-LuxuryForm-Build-Ms") ?? 0),
+  };
 }
 
 /** Build the export package. POST — this is the only call that writes. */

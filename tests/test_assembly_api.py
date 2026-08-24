@@ -111,6 +111,22 @@ def test_assembly_defaults_expose_live_registry_profiles_and_formats(client):
 # Build + validate
 # ---------------------------------------------------------------------------
 
+def test_preview_returns_named_glb_without_persisting_a_design(client):
+    before = client.get("/api/geometry/assembly/designs").json()["count"]
+    response = client.post(
+        "/api/geometry/assembly/preview.glb",
+        json=valid_assembly_payload(),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("model/gltf-binary")
+    assert response.content[:4] == b"glTF"
+    assert len(response.headers["x-luxuryform-preview-hash"]) == 64
+    assert float(response.headers["x-luxuryform-build-ms"]) > 0
+    assert response.headers["x-luxuryform-element-count"] == "3"
+    assert client.get("/api/geometry/assembly/designs").json()["count"] == before
+
+
 def test_assembly_build_persists_manifest_artifacts_and_gate_statuses(client, tmp_path):
     resp = client.post("/api/geometry/assembly/build", json=valid_assembly_payload())
     assert resp.status_code == 200, resp.text

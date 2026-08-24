@@ -2692,3 +2692,39 @@ navigation. The result was functionally complete and visually unfocused.
 - Frontend only; no range or geometry semantics changed.
 - The presentation map is deliberately incomplete and fallback-safe.
 - Existing Phase 14 frontend gate passes.
+
+## ADR-049 - Phase 15C: a draft is real CAD without a build claim (2026-08-24)
+
+### Context
+
+Phase 14 showed the last full build after every edit. That protected the
+validation contract, but made proportion work blind until the operator paid
+the full STEP, gate and persistence cost. A browser-side approximation would
+be faster but would violate the product's central CAD truth.
+
+### Decision
+
+1. Draft preview calls the same `assemble(..., strict=False)` path as a full
+   assembly and exports its named solids to a temporary GLB. It does not export
+   STEP, run layered validation, or write designs and validation reports.
+2. Draft responses carry a content hash, measured build duration and element
+   count. These are provenance and timing facts, not acceptance evidence.
+3. The client waits 550 ms after the last edit, aborts the prior request and
+   ignores any response whose sequence or request JSON is no longer current.
+4. The viewport labels draft geometry as CAD-derived and unvalidated. Render,
+   fabrication package and individual exports remain blocked until a canonical
+   full build matches the document.
+5. Preview files live only in an OS temporary directory for the duration of the
+   request. Project history is therefore still a history of intentional full
+   builds, not every slider movement.
+
+### Consequences
+
+- Designers can judge form before committing a full validation build without
+  introducing a second geometry implementation.
+- The route is intentionally CPU-heavy. The gate assembly took about 4.7
+  seconds on the operator-class machine; debounce limits churn but does not
+  promise real-time sculpting.
+- `gate_phase15_auto.py` proves named CAD nodes, zero preview persistence,
+  stable request hashing, unchanged deterministic STEP output and frontend
+  production compilation.

@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import platform
+import tempfile
 import time
 import uuid
 from datetime import datetime, timezone
@@ -29,7 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -419,6 +420,54 @@ def post_assembly_build(request: AssemblyBuildRequest) -> dict[str, Any]:
             for name, report in layered_reports.items()
         },
     }
+
+
+@router.post("/preview.glb")
+def post_assembly_preview(request: AssemblyBuildRequest) -> Response:
+    """Return a CAD-kernel draft GLB without persisting or claiming a gate.
+
+    This deliberately runs the same assembler as a full build. It skips STEP
+    export, mesh/layered validation and every database write, so the response
+    is real geometry but remains an explicitly unvalidated draft.
+    """
+    t0 = time.perf_counter()
+    try:
+        _, _, element_solids = assemble(
+            request.elements,
+            seed=request.seed,
+            fabrication=request.fabrication,
+            strict=False,
+            return_solids=True,
+        )
+    except ConstraintViolation as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"violations": exc.violations},
+        ) from exc
+
+    preview_payload = {
+        "schema": "assembly_preview_v1",
+        "elements": request.elements,
+        "fabrication": request.fabrication or {},
+        "seed": int(request.seed),
+    }
+    preview_hash = _spec_hash(preview_payload)
+    with tempfile.TemporaryDirectory(prefix="luxuryform_preview_") as tmp:
+        path = Path(tmp) / "preview.glb"
+        export_scene_glb(element_solids, path)
+        content = path.read_bytes()
+
+    build_ms = (time.perf_counter() - t0) * 1000.0
+    return Response(
+        content=content,
+        media_type="model/gltf-binary",
+        headers={
+            "Cache-Control": "no-store",
+            "X-LuxuryForm-Preview-Hash": preview_hash,
+            "X-LuxuryForm-Build-Ms": f"{build_ms:.3f}",
+            "X-LuxuryForm-Element-Count": str(len(element_solids)),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
