@@ -100,7 +100,12 @@ current document. Dedicated backend/frontend auto gate PASS.
 **Phase 15 slice D (visual judgement) 2026-08-24** (ADR-050) — Studio and
 Technical CAD views, bounded lighting/ground/1.7 m scale cues, one focused real
 kernel primitive preview, and synchronized A/B views with changed build values.
-Auto gate PASS for every registered primitive; Slice E remains open.
+Auto gate PASS for every registered primitive.
+
+**Phase 15 slice E (project lineage) 2026-08-24** (ADR-051) — project-scoped
+variant history, additive nullable project/parent design references, explicit
+root-to-branch persistence and cross-project rejection before CAD work. Existing
+designs remain Ungrouped. Backend/frontend auto gate PASS; visual gate pending.
 
 Fourteen auto gates, all $0 and offline:
 `gate_phase2/3/4/5/6a1/costing/8/8b/9a/9b/11/13a/14/15_auto.py`.

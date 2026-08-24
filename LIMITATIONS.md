@@ -457,9 +457,10 @@ gates. What it does NOT do:
   allowable bearing. Everything else in the site section is context for the
   Council, not a gate input.
 
-- **One intake, one design, no project grouping.** Intakes are a flat list;
-  the newest is the default. There is no project entity tying an intake to
-  several designs over time.
+- **Intakes are not attached to projects.** Phase 15E projects now group
+  assembly designs and preserve their parent lineage, but brief intakes remain
+  a flat list and the newest is still the default. Project-level client/site
+  context therefore has to be selected separately during validation.
 
 - **The Council prompt uses the AUGMENTED brief.** The intake block and any
   precedent block are prepended and stored as the session's brief text, so
@@ -561,11 +562,10 @@ The shell is a pipeline (ADR-041). What it does NOT do:
   design list itself always comes back from the server. Thumbnails exist
   only for builds whose geometry was actually on screen in that browser.
 
-- **Recent Builds lists the newest 50 designs**, un-paginated, and
-  "restore" replays the stored request — it does not diff or branch.
-  Lineage between designs is still not modelled (a restored-then-edited
-  design has no recorded parent). Phase 15A stopped calling these records
-  variants; project and parent lineage is Phase 15E.
+- **Variants lists the newest 50 builds in one project**, un-paginated.
+  Restoring and rebuilding records a real parent branch, but the compact tray
+  is not a node graph and does not visualize grandchildren as a tree. Legacy
+  records remain in a separate Ungrouped scope with NULL project and parent.
 
 - **Measurement snaps to the tessellated surface** (the 1 mm-deflection
   preview mesh), not the exact B-rep — good to about a millimetre at

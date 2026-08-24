@@ -33,6 +33,11 @@ _CACHE_FRAGMENTS = [
     "    cache_write_input_tokens INTEGER NOT NULL DEFAULT 0, -- cache-WRITE class (anthropic only)\n",
 ]
 
+_LINEAGE_FRAGMENTS = [
+    "    project_id      TEXT REFERENCES projects(id), -- NULL = legacy/ungrouped\n",
+    "    parent_design_id TEXT REFERENCES designs(id)  -- NULL = root variant\n",
+]
+
 # ADR-025: the corrected column postdates the operator's live database too.
 _CORRECTED_BLOCK = (
     "    degraded           INTEGER NOT NULL DEFAULT 0, -- 1 = provider failure left a seat empty/reduced\n"
@@ -50,6 +55,13 @@ def _old_v3_script() -> str:
     for frag in _CACHE_FRAGMENTS:
         assert frag in script, "schema.sql changed — update this test"
         script = script.replace(frag, "")
+    for frag in _LINEAGE_FRAGMENTS:
+        assert frag in script, "schema.sql changed — update this test"
+        script = script.replace(frag, "")
+    script = script.replace(
+        "    step_path       TEXT,                    -- canonical STEP artifact\n",
+        "    step_path       TEXT                     -- canonical STEP artifact\n",
+    )
     assert _CORRECTED_BLOCK in script, "schema.sql changed — update this test"
     script = script.replace(_CORRECTED_BLOCK, _CORRECTED_ORIGINAL)
     return script
@@ -103,6 +115,8 @@ def test_prepatch_v3_file_is_altered_data_preserved(tmp_path):
     assert ("council_sessions", "corrected") in patches      # ADR-023
     assert ("validation_reports", "status") in patches       # Phase 8
     assert ("exports", "sha256") in patches                  # Phase 9A
+    assert ("designs", "project_id") in patches              # Phase 15E
+    assert ("designs", "parent_design_id") in patches        # Phase 15E
     con.close()
 
     # idempotent: a second startup applies nothing and does not fail

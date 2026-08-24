@@ -20,6 +20,7 @@ import {
   Box,
   Copy,
   DraftingCompass,
+  FolderPlus,
   Focus,
   Hammer,
   KeyRound,
@@ -42,17 +43,19 @@ import {
   type IntakeResponse,
   type LatestValidationResponse,
   type ManifestElement,
+  type ProjectSummary,
   type RenderJob,
   type Validation,
   type ValidationGate,
   designSceneGlbUrl,
+  createProject,
   getAssemblyDefaults,
   getAssemblyExports,
   getDesignManifest,
   getDesignValidation,
-  getLatestAssemblyValidation,
   getRenderJob,
   listDesigns,
+  listProjects,
   postAssemblyBuild,
   postAssemblyPreview,
   postAssemblyExports,
@@ -230,6 +233,11 @@ export default function DesignerWorkspace({
   // History strip.
   const [variants, setVariants] = useState<VariantEntry[]>([]);
   const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [projectBusy, setProjectBusy] = useState(false);
 
   // Render drawer.
   const [renderOpen, setRenderOpen] = useState(false);
@@ -301,9 +309,26 @@ export default function DesignerWorkspace({
       if (cancelled) return;
       setDefaults(d);
 
-      // Continuity: reopen on the latest built design when there is one —
-      // its stored request IS the document. Otherwise the starter document.
-      const list = await listDesigns(50).catch(() => null);
+      const projectList = await listProjects().catch(() => null);
+      if (cancelled) return;
+      const availableProjects = projectList?.projects ?? [];
+      setProjects(availableProjects);
+      const savedScope = localStorage.getItem("lf_project_scope");
+      const selectedProject = availableProjects.find(
+        (project) => project.project_id === savedScope && project.status === "open"
+      ) ?? (savedScope === "ungrouped"
+        ? null
+        : availableProjects.find((project) => project.status === "open") ?? null);
+      const selectedProjectId = selectedProject?.project_id ?? null;
+      setProjectId(selectedProjectId);
+
+      // Continuity is project-scoped. Existing pre-Phase-15E designs remain
+      // visible in Ungrouped and are never silently assigned.
+      const list = await listDesigns(
+        50,
+        selectedProjectId,
+        selectedProjectId === null
+      ).catch(() => null);
       if (cancelled) return;
       const thumbs = loadThumbs();
       if (list && list.designs.length > 0) {
@@ -317,6 +342,8 @@ export default function DesignerWorkspace({
             total_mass_kg: s.total_mass_kg,
             thumbnail: thumbs[s.design_id] ?? null,
             element_ids: s.element_ids,
+            project_id: s.project_id,
+            parent_design_id: s.parent_design_id,
           }))
         );
         const newest = list.designs[0];
@@ -331,7 +358,7 @@ export default function DesignerWorkspace({
         } catch {
           setHistory(historyOf(starterDoc(d)));
         }
-        const v = await getLatestAssemblyValidation().catch(() => null);
+        const v = await getDesignValidation(newest.design_id).catch(() => null);
         if (!cancelled && v) applyValidation(v);
         const e = await getAssemblyExports(newest.design_id).catch(() => null);
         if (!cancelled && e) setExports(e);
@@ -351,6 +378,89 @@ export default function DesignerWorkspace({
     setGateStatuses(v.gate_statuses ?? null);
     setOverallStatus(v.overall_status ?? null);
   };
+
+  const onSwitchProject = useCallback(async (
+    nextProjectId: string | null,
+    force = false
+  ) => {
+    if (!defaults || nextProjectId === projectId) return;
+    if (!force && dirty && !window.confirm(
+      "Switch projects and discard the current unbuilt changes?"
+    )) return;
+    setProjectBusy(true);
+    setCompareIds([]);
+    try {
+      const list = await listDesigns(50, nextProjectId, nextProjectId === null);
+      const thumbs = loadThumbs();
+      const entries: VariantEntry[] = list.designs.map((summary) => ({
+        design_id: summary.design_id,
+        created_at: summary.created_at,
+        label: variantLabel(summary.primitives),
+        seed: summary.seed,
+        overall_status: summary.overall_status,
+        total_mass_kg: summary.total_mass_kg,
+        thumbnail: thumbs[summary.design_id] ?? null,
+        element_ids: summary.element_ids,
+        project_id: summary.project_id,
+        parent_design_id: summary.parent_design_id,
+      }));
+      setVariants(entries);
+      setProjectId(nextProjectId);
+      localStorage.setItem("lf_project_scope", nextProjectId ?? "ungrouped");
+      replaceDraftUrl(null);
+      setSelectedId(null);
+      setHiddenIds(new Set());
+      setSoloId(null);
+      setExports(null);
+      setValidation(null);
+      setGates(null);
+      setGateStatuses(null);
+      setOverallStatus(null);
+      const newest = list.designs[0];
+      if (!newest) {
+        setHistory(historyOf(starterDoc(defaults)));
+        setActiveDesignId(null);
+        setBuiltElements([]);
+        setLastBuiltJson(null);
+        return;
+      }
+      const manifest = await getDesignManifest(newest.design_id);
+      const restored = docFromRequest(manifest.request);
+      setHistory(historyOf(restored));
+      setActiveDesignId(newest.design_id);
+      setBuiltElements(manifest.manifest.elements);
+      setLastBuiltJson(JSON.stringify(restored));
+      setReloadToken((token) => token + 1);
+      getDesignValidation(newest.design_id)
+        .then((value) => value && applyValidation(value))
+        .catch(() => undefined);
+      getAssemblyExports(newest.design_id).then(setExports).catch(() => undefined);
+    } catch (error: any) {
+      onFatal(`Could not switch project: ${error.message}`);
+    } finally {
+      setProjectBusy(false);
+    }
+  }, [defaults, dirty, onFatal, projectId, replaceDraftUrl]);
+
+  const onCreateProject = useCallback(async () => {
+    const name = newProjectName.trim();
+    if (!name) return;
+    if (dirty && !window.confirm(
+      "Create this project and discard the current unbuilt changes?"
+    )) return;
+    setProjectBusy(true);
+    try {
+      const project = await createProject(name);
+      setProjects((current) => [project, ...current]);
+      setNewProjectName("");
+      setNewProjectOpen(false);
+      await onSwitchProject(project.project_id, true);
+    } catch (error: any) {
+      onFatal(`Could not create project: ${error.message}`);
+    } finally {
+      setProjectBusy(false);
+    }
+  }, [dirty, newProjectName, onFatal, onSwitchProject]);
 
   // Report pipeline facts upward whenever they change.
   useEffect(() => {
@@ -624,7 +734,9 @@ export default function DesignerWorkspace({
       doc.fabrication,
       doc.seed,
       doc.gateProfileId || undefined,
-      useIntake && intakeReady ? intake!.id : undefined
+      useIntake && intakeReady ? intake!.id : undefined,
+      projectId ?? undefined,
+      activeDesignId ?? undefined
     )
       .then((resp: AssemblyBuildResponse) => {
         setBusy(false);
@@ -660,16 +772,25 @@ export default function DesignerWorkspace({
               (resp.manifest as { total_mass_kg?: number }).total_mass_kg ?? null,
             thumbnail: null,
             element_ids: doc.elements.map((e) => e.element_id),
+            project_id: resp.project_id,
+            parent_design_id: resp.parent_design_id,
           },
           ...prev,
         ]);
+        if (resp.project_id) {
+          setProjects((current) => current.map((project) =>
+            project.project_id === resp.project_id
+              ? { ...project, variant_count: project.variant_count + 1 }
+              : project
+          ));
+        }
       })
       .catch((e) => {
         setBusy(false);
         if (e instanceof ApiError && e.violations) setViolations(e.violations);
         else onFatal(`Assembly build failed: ${e.message}`);
       });
-  }, [doc, useIntake, intakeReady, intake, onFatal]);
+  }, [activeDesignId, doc, useIntake, intakeReady, intake, onFatal, projectId]);
 
   // Thumbnail: captured only when the new geometry is actually on screen.
   const onModelRendered = useCallback(() => {
@@ -803,6 +924,9 @@ export default function DesignerWorkspace({
   const compareEntries = compareIds
     .map((id) => variants.find((v) => v.design_id === id))
     .filter((v): v is VariantEntry => Boolean(v));
+  const activeProject = projects.find(
+    (project) => project.project_id === projectId
+  ) ?? null;
 
   if (!defaults || !history || !doc) {
     return <div className="loading">Loading the designer workspace…</div>;
@@ -812,6 +936,32 @@ export default function DesignerWorkspace({
     <div className={`designer ${historyCollapsed ? "history-closed" : ""}`}>
       {/* ---------------------------------------------------- toolbar --- */}
       <div className="ws-toolbar">
+        <div className="ws-group ws-project">
+          <select
+            value={projectId ?? ""}
+            disabled={projectBusy || busy}
+            onChange={(event) => onSwitchProject(event.target.value || null)}
+            title="Current design project"
+            aria-label="Current project"
+          >
+            <option value="">Ungrouped builds</option>
+            {projects.filter((project) => project.status === "open").map((project) => (
+              <option key={project.project_id} value={project.project_id}>
+                {project.name} ({project.variant_count})
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className={`icon-button ${newProjectOpen ? "is-on" : ""}`}
+            onClick={() => setNewProjectOpen((open) => !open)}
+            disabled={projectBusy || busy}
+            title="Create a design project"
+            aria-label="Create project"
+          >
+            <FolderPlus size={16} />
+          </button>
+        </div>
         <div className="ws-group">
           <button
             type="button"
@@ -1006,6 +1156,37 @@ export default function DesignerWorkspace({
           </button>
         </div>
       </div>
+
+      {newProjectOpen && (
+        <form
+          className="project-popover"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void onCreateProject();
+          }}
+        >
+          <label htmlFor="new-project-name">Project name</label>
+          <input
+            id="new-project-name"
+            value={newProjectName}
+            onChange={(event) => setNewProjectName(event.target.value)}
+            maxLength={120}
+            autoFocus
+          />
+          <div>
+            <button type="button" onClick={() => setNewProjectOpen(false)}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="rebuild"
+              disabled={!newProjectName.trim() || projectBusy}
+            >
+              Create
+            </button>
+          </div>
+        </form>
+      )}
 
       {addOpen && (
         <div className="ws-add-popover">
@@ -1305,6 +1486,7 @@ export default function DesignerWorkspace({
           }
           collapsed={historyCollapsed}
           onToggleCollapsed={() => setHistoryCollapsed((collapsed) => !collapsed)}
+          scopeLabel={activeProject ? "Variants" : "Ungrouped builds"}
         />
       </ErrorBoundary>
 

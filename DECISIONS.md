@@ -2757,3 +2757,36 @@ be faster but would violate the product's central CAD truth.
   registry as a named GLB and proves the operation remains non-persistent.
 - Shadows add one 1024 px map only in Studio mode; Technical mode and its
   common editing loop retain the lower GPU cost.
+
+## ADR-051 - Phase 15E: projects scope variants; parents record branches (2026-08-24)
+
+### Context
+
+The schema has carried an unused `projects` table since Phase 1, while every
+assembly build lived in one newest-first global list. Calling that list
+Variants would be false: restoring an older build and editing it recorded no
+relationship to its source.
+
+### Decision
+
+1. Activate the existing projects table instead of creating a competing model.
+   Project names are operator-authored; status is `open` or `archived`.
+2. Add nullable `project_id` and self-referencing `parent_design_id` columns to
+   designs through the idempotent startup patch system. NULL means Ungrouped or
+   root, preserving all old rows without inference.
+3. A parent must be an assembly build with exactly the same project ID as its
+   child. Unknown, archived and cross-project relationships fail before CAD
+   generation.
+4. Project and parent are provenance, not geometry inputs. They stay outside
+   `assembly_request_v1` and its spec hash, preserving deterministic STEP for
+   identical design parameters.
+5. The workspace scopes history to one project. Building from the active design
+   records that design as parent; reopening an ancestor before Build creates a
+   branch rather than rewriting history.
+
+### Consequences
+
+- Existing records appear under Ungrouped and remain fully usable.
+- Project lists and parent lookups are indexed additively.
+- Lineage is explicit but the UI remains a compact horizontal tray, not a full
+  graph editor. That honest display limit remains documented.

@@ -201,7 +201,9 @@ CREATE TABLE IF NOT EXISTS designs (
     spec_hash       TEXT,                    -- sha256 of canonical {parameters, seed} JSON
     build_ms        REAL,                    -- measured server-side build time
     glb_path        TEXT,                    -- exported preview/validation mesh
-    step_path       TEXT                     -- canonical STEP artifact
+    step_path       TEXT,                    -- canonical STEP artifact
+    project_id      TEXT REFERENCES projects(id), -- NULL = legacy/ungrouped
+    parent_design_id TEXT REFERENCES designs(id)  -- NULL = root variant
 );
 
 CREATE TABLE IF NOT EXISTS validation_reports (

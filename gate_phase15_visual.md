@@ -42,4 +42,14 @@ three elements.
 - [ ] Studio mode remains responsive on the operator's integrated GPU.
 - [ ] Material colors read as identification aids, never photoreal output.
 
+## E. Projects and branches
+
+- [ ] Creating a project switches to a clean project scope without changing
+      or assigning any Ungrouped build.
+- [ ] Two consecutive builds appear as Root then Branch under Variants.
+- [ ] Reopening Root, changing a parameter and building creates another Branch
+      while the first child remains present.
+- [ ] Switching to Ungrouped restores the legacy build list and never labels
+      those records as belonging to the project.
+
 Record PASS/FAIL and notes below. A failure keeps Phase 15 visually open.

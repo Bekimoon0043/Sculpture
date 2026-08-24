@@ -107,6 +107,29 @@ def test_assembly_defaults_expose_live_registry_profiles_and_formats(client):
     assert {"STEP", "DXF", "STL", "OBJ", "DWG"} <= formats
 
 
+def test_projects_can_be_created_renamed_and_listed(client):
+    created = client.post(
+        "/api/geometry/assembly/projects",
+        json={"name": "  Entoto civic fountain  ", "brief_text": "Public plaza"},
+    )
+    assert created.status_code == 201, created.text
+    project = created.json()
+    assert project["name"] == "Entoto civic fountain"
+    assert project["variant_count"] == 0
+    assert project["status"] == "open"
+
+    renamed = client.patch(
+        f"/api/geometry/assembly/projects/{project['project_id']}",
+        json={"name": "Entoto arrival fountain"},
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Entoto arrival fountain"
+
+    listed = client.get("/api/geometry/assembly/projects").json()
+    assert listed["count"] == 1
+    assert listed["projects"][0]["project_id"] == project["project_id"]
+
+
 # ---------------------------------------------------------------------------
 # Build + validate
 # ---------------------------------------------------------------------------
@@ -128,10 +151,17 @@ def test_preview_returns_named_glb_without_persisting_a_design(client):
 
 
 def test_assembly_build_persists_manifest_artifacts_and_gate_statuses(client, tmp_path):
-    resp = client.post("/api/geometry/assembly/build", json=valid_assembly_payload())
+    project = client.post(
+        "/api/geometry/assembly/projects", json={"name": "Gate project"}
+    ).json()
+    payload = valid_assembly_payload()
+    payload["project_id"] = project["project_id"]
+    resp = client.post("/api/geometry/assembly/build", json=payload)
     assert resp.status_code == 200, resp.text
     body = resp.json()
     design_id = body["design_id"]
+    assert body["project_id"] == project["project_id"]
+    assert body["parent_design_id"] is None
 
     assert body["manifest"]["schema"] == "assembly_manifest_v1"
     assert body["manifest"]["body_count_brep"] == 1
@@ -157,7 +187,17 @@ def test_assembly_build_persists_manifest_artifacts_and_gate_statuses(client, tm
 
     latest = client.get("/api/geometry/assembly/latest/manifest").json()
     assert latest["design_id"] == design_id
+    assert latest["project_id"] == project["project_id"]
     assert latest["artifacts"]["step_sha256"] == body["step_sha256"]
+
+    scoped = client.get(
+        f"/api/geometry/assembly/designs?project_id={project['project_id']}"
+    ).json()
+    assert scoped["count"] == 1
+    assert scoped["designs"][0]["project_id"] == project["project_id"]
+    assert client.get(
+        "/api/geometry/assembly/designs?ungrouped=true"
+    ).json()["count"] == 0
 
     glb = client.get("/api/geometry/assembly/latest.glb")
     assert glb.status_code == 200 and glb.content[:4] == b"glTF"

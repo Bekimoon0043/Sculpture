@@ -27,12 +27,12 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.config import (
     DEFAULT_GATE_PROFILE_ID,
@@ -40,7 +40,13 @@ from app.core.config import (
     load_config_bundle,
 )
 from app.db.database import get_default_db
-from app.db.models import DesignRow, ExportRow, JobRow, ValidationReportRow
+from app.db.models import (
+    DesignRow,
+    ExportRow,
+    JobRow,
+    ProjectRow,
+    ValidationReportRow,
+)
 from app.geometry import ConstraintViolation, PRIMITIVES, assemble
 from app.geometry.export_formats import (
     FORMAT_REGISTRY,
@@ -76,12 +82,26 @@ class AssemblyBuildRequest(BaseModel):
     #: site facts (altitude, wind, bearing). Explicit request fields win
     #: over intake-derived ones.
     intake_id: str | None = None
+    #: Phase 15E: grouping and explicit branch ancestry. Both are metadata,
+    #: never part of the canonical geometry payload/spec hash.
+    project_id: str | None = None
+    parent_design_id: str | None = None
     seed: int = 0
     #: ADR-034. False (the default for this operator-facing route) builds the
     #: geometry even when a declared workshop limit is breached, and reports
     #: the breach through the fabrication gate. The AI fabrication loop calls
     #: assemble(strict=True) directly and is unaffected.
     strict: bool = False
+
+
+class ProjectCreateRequest(BaseModel):
+    name: str
+    brief_text: str = ""
+
+
+class ProjectUpdateRequest(BaseModel):
+    name: str | None = None
+    status: Literal["open", "archived"] | None = None
 
 
 def _materials_public() -> dict[str, dict[str, Any]]:
@@ -299,6 +319,7 @@ def get_assembly_defaults() -> dict[str, Any]:
 def post_assembly_build(request: AssemblyBuildRequest) -> dict[str, Any]:
     """Assemble -> export STEP/GLB -> validate -> persist -> respond."""
     t0 = time.perf_counter()
+    _validate_lineage(request)
     try:
         solid, manifest, element_solids = assemble(
             request.elements,
@@ -369,6 +390,8 @@ def post_assembly_build(request: AssemblyBuildRequest) -> dict[str, Any]:
                 build_ms=build_ms,
                 glb_path=str(glb_path),
                 step_path=str(step_path),
+                project_id=request.project_id,
+                parent_design_id=request.parent_design_id,
             )
         )
         session.flush()
@@ -399,6 +422,8 @@ def post_assembly_build(request: AssemblyBuildRequest) -> dict[str, Any]:
     )
     return {
         "design_id": design_id,
+        "project_id": request.project_id,
+        "parent_design_id": request.parent_design_id,
         "spec_hash": spec_hash,
         "seed": request.seed,
         "strict": request.strict,
@@ -504,6 +529,8 @@ def get_latest_manifest() -> dict[str, Any]:
     return {
         "created_at": row.created_at,
         "design_id": row.id,
+        "project_id": row.project_id,
+        "parent_design_id": row.parent_design_id,
         "spec_hash": row.spec_hash,
         "seed": row.seed,
         "manifest": stored["manifest"],
@@ -614,7 +641,11 @@ def get_latest_scene_glb() -> FileResponse:
 
 
 @router.get("/designs")
-def list_designs(limit: int = 50) -> dict[str, Any]:
+def list_designs(
+    limit: int = 50,
+    project_id: str | None = None,
+    ungrouped: bool = False,
+) -> dict[str, Any]:
     """Newest-first assembly builds — the history strip's persistence.
 
     Summary only (the full manifest rides on /{design_id}/manifest): what a
@@ -623,12 +654,18 @@ def list_designs(limit: int = 50) -> dict[str, Any]:
     """
     limit = max(1, min(int(limit), 200))
     db = get_default_db()
+    if project_id and ungrouped:
+        raise HTTPException(status_code=422, detail="choose project_id or ungrouped, not both")
+    query = select(DesignRow).where(DesignRow.status == "assembly_built")
+    if project_id:
+        query = query.where(DesignRow.project_id == project_id)
+    elif ungrouped:
+        query = query.where(DesignRow.project_id.is_(None))
     with db.get_session() as session:
+        if project_id and session.get(ProjectRow, project_id) is None:
+            raise HTTPException(status_code=404, detail=f"no project {project_id}")
         rows = session.execute(
-            select(DesignRow)
-            .where(DesignRow.status == "assembly_built")
-            .order_by(DesignRow.created_at.desc())
-            .limit(limit)
+            query.order_by(DesignRow.created_at.desc()).limit(limit)
         ).scalars().all()
     designs = []
     for row in rows:
@@ -641,6 +678,8 @@ def list_designs(limit: int = 50) -> dict[str, Any]:
         statuses = _validation_statuses(row.id)
         designs.append({
             "design_id": row.id,
+            "project_id": row.project_id,
+            "parent_design_id": row.parent_design_id,
             "created_at": row.created_at,
             "spec_hash": row.spec_hash,
             "seed": row.seed,
@@ -676,6 +715,8 @@ def get_design_manifest(design_id: str) -> dict[str, Any]:
     return {
         "created_at": row.created_at,
         "design_id": row.id,
+        "project_id": row.project_id,
+        "parent_design_id": row.parent_design_id,
         "spec_hash": row.spec_hash,
         "seed": row.seed,
         "manifest": stored["manifest"],
@@ -946,6 +987,129 @@ def _exports_status(row: DesignRow) -> dict[str, Any]:
             for f in FORMAT_REGISTRY
         ],
     }
+
+
+def _project_payload(row: ProjectRow, variant_count: int) -> dict[str, Any]:
+    return {
+        "project_id": row.id,
+        "created_at": row.created_at,
+        "name": row.name,
+        "brief_text": row.brief_text,
+        "status": row.status,
+        "variant_count": variant_count,
+    }
+
+
+@router.get("/projects")
+def list_projects() -> dict[str, Any]:
+    """Project selector data, newest first, including archived projects."""
+    db = get_default_db()
+    with db.get_session() as session:
+        rows = session.execute(
+            select(ProjectRow).order_by(ProjectRow.created_at.desc())
+        ).scalars().all()
+        counts = {
+            row.id: session.scalar(
+                select(func.count())
+                .select_from(DesignRow)
+                .where(
+                    DesignRow.project_id == row.id,
+                    DesignRow.status == "assembly_built",
+                )
+            ) or 0
+            for row in rows
+        }
+    return {
+        "count": len(rows),
+        "projects": [_project_payload(row, counts[row.id]) for row in rows],
+    }
+
+
+@router.post("/projects", status_code=201)
+def create_project(request: ProjectCreateRequest) -> dict[str, Any]:
+    name = request.name.strip()
+    if not name or len(name) > 120:
+        raise HTTPException(
+            status_code=422,
+            detail="project name must contain 1 to 120 characters",
+        )
+    row = ProjectRow(
+        id=str(uuid.uuid4()),
+        created_at=datetime.now(timezone.utc).isoformat(),
+        name=name,
+        brief_text=request.brief_text.strip(),
+        status="open",
+    )
+    db = get_default_db()
+    with db.get_session() as session:
+        session.add(row)
+    return _project_payload(row, 0)
+
+
+@router.patch("/projects/{project_id}")
+def update_project(project_id: str, request: ProjectUpdateRequest) -> dict[str, Any]:
+    db = get_default_db()
+    with db.get_session() as session:
+        row = session.get(ProjectRow, project_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"no project {project_id}")
+        if request.name is not None:
+            name = request.name.strip()
+            if not name or len(name) > 120:
+                raise HTTPException(
+                    status_code=422,
+                    detail="project name must contain 1 to 120 characters",
+                )
+            row.name = name
+        if request.status is not None:
+            row.status = request.status
+        count = session.scalar(
+            select(func.count())
+            .select_from(DesignRow)
+            .where(
+                DesignRow.project_id == row.id,
+                DesignRow.status == "assembly_built",
+            )
+        ) or 0
+    return _project_payload(row, count)
+
+
+def _validate_lineage(request: AssemblyBuildRequest) -> None:
+    """Reject unknown, archived or cross-project lineage before CAD work."""
+    db = get_default_db()
+    with db.get_session() as session:
+        if request.project_id:
+            project = session.get(ProjectRow, request.project_id)
+            if project is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail={"violations": [f"project {request.project_id} does not exist"]},
+                )
+            if project.status != "open":
+                raise HTTPException(
+                    status_code=422,
+                    detail={"violations": [f"project {request.project_id} is archived"]},
+                )
+        if request.parent_design_id:
+            parent = session.get(DesignRow, request.parent_design_id)
+            if parent is None or parent.status != "assembly_built":
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "violations": [
+                            f"parent design {request.parent_design_id} does not exist"
+                        ]
+                    },
+                )
+            if parent.project_id != request.project_id:
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "violations": [
+                            "parent design and new design must belong to the same project"
+                        ]
+                    },
+                )
 
 
 def _status_counts(rows: list[dict[str, Any]]) -> dict[str, int]:

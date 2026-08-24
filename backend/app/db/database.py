@@ -80,6 +80,11 @@ _ADDITIVE_COLUMN_PATCHES: dict[tuple[str, str], str] = {
     ("designdna", "archived_at"): "archived_at TEXT",
     # Phase 11/12: record what was injected into a Council brief.
     ("council_sessions", "context_json"): "context_json TEXT",
+    # Phase 15E: explicit grouping and lineage. Existing designs remain NULL
+    # (Ungrouped roots); startup never guesses a project or parent.
+    ("designs", "project_id"): "project_id TEXT REFERENCES projects(id)",
+    ("designs", "parent_design_id"):
+        "parent_design_id TEXT REFERENCES designs(id)",
 }
 
 #: Unique indexes added after a schema version shipped. Same idempotent,
@@ -90,6 +95,12 @@ _ADDITIVE_INDEX_PATCHES: dict[str, str] = {
     "ux_exports_design_format":
         "CREATE UNIQUE INDEX IF NOT EXISTS ux_exports_design_format "
         "ON exports (design_id, format)",
+    "ix_designs_project_created":
+        "CREATE INDEX IF NOT EXISTS ix_designs_project_created "
+        "ON designs (project_id, created_at DESC)",
+    "ix_designs_parent":
+        "CREATE INDEX IF NOT EXISTS ix_designs_parent "
+        "ON designs (parent_design_id)",
 }
 
 

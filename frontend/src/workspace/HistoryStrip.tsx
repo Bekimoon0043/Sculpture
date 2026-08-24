@@ -12,7 +12,7 @@
 // cards -> side-by-side compare.
 
 import type { GateStatus } from "../api/client";
-import { ChevronDown, ChevronUp, Images } from "lucide-react";
+import { ChevronDown, ChevronUp, GitBranch, Images } from "lucide-react";
 
 export interface VariantEntry {
   design_id: string;
@@ -24,6 +24,8 @@ export interface VariantEntry {
   total_mass_kg: number | null;
   thumbnail: string | null;
   element_ids: string[];
+  project_id: string | null;
+  parent_design_id: string | null;
 }
 
 const STATUS_SHORT: Record<GateStatus, string> = {
@@ -41,6 +43,7 @@ interface HistoryStripProps {
   onToggleCompare: (designId: string) => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  scopeLabel: string;
 }
 
 export default function HistoryStrip({
@@ -51,6 +54,7 @@ export default function HistoryStrip({
   onToggleCompare,
   collapsed,
   onToggleCollapsed,
+  scopeLabel,
 }: HistoryStripProps) {
   return (
     <section className={`history-strip ${collapsed ? "is-collapsed" : ""}`}>
@@ -58,11 +62,11 @@ export default function HistoryStrip({
         type="button"
         className="history-toggle"
         onClick={onToggleCollapsed}
-        title={collapsed ? "Open recent builds" : "Collapse recent builds"}
+        title={collapsed ? `Open ${scopeLabel}` : `Collapse ${scopeLabel}`}
         aria-expanded={!collapsed}
       >
         <Images size={15} aria-hidden="true" />
-        <span>Recent builds</span>
+        <span>{scopeLabel}</span>
         <span className="history-count">{entries.length}</span>
         {collapsed ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
       </button>
@@ -117,6 +121,13 @@ export default function HistoryStrip({
                   {Math.round(v.total_mass_kg)} kg
                 </span>
               )}
+              <span
+                className="variant-lineage"
+                title={v.parent_design_id ? `Branch of ${v.parent_design_id}` : "Project root"}
+              >
+                <GitBranch size={10} />
+                {v.parent_design_id ? "Branch" : "Root"}
+              </span>
               <label
                 className="variant-compare"
                 title="select two variants to compare side by side"

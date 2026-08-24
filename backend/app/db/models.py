@@ -75,9 +75,7 @@ class JobRow(Base):
 
 
 class ProjectRow(Base):
-    """Minimal mapping — projects is not populated yet (the Phase 3 Council
-    keys design_specs on council_sessions, not projects; project grouping
-    arrives with the project-management phase)."""
+    """Operator-created design project (activated in Phase 15E)."""
 
     __tablename__ = "projects"
 
@@ -227,6 +225,12 @@ class DesignRow(Base):
     build_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
     glb_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     step_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    project_id: Mapped[str | None] = mapped_column(
+        Text, ForeignKey("projects.id"), nullable=True
+    )
+    parent_design_id: Mapped[str | None] = mapped_column(
+        Text, ForeignKey("designs.id"), nullable=True
+    )
 
 
 class ValidationReportRow(Base):

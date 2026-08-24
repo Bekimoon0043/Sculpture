@@ -158,17 +158,54 @@ def run_backend() -> None:
         print("all registry previews named; still no database writes")
 
         section("[4/4] FULL BUILD - canonical contract still persists")
-        build_a = client.post("/api/geometry/assembly/build", json=PAYLOAD)
-        build_b = client.post("/api/geometry/assembly/build", json=PAYLOAD)
+        project = client.post(
+            "/api/geometry/assembly/projects",
+            json={"name": "Phase 15 lineage gate"},
+        )
+        assert project.status_code == 201, project.text
+        project_id = project.json()["project_id"]
+        root_payload = {**PAYLOAD, "project_id": project_id}
+        build_a = client.post("/api/geometry/assembly/build", json=root_payload)
+        assert build_a.status_code == 200, build_a.text
+        branch_payload = {
+            **root_payload,
+            "parent_design_id": build_a.json()["design_id"],
+        }
+        build_b = client.post("/api/geometry/assembly/build", json=branch_payload)
         assert build_a.status_code == 200, build_a.text
         assert build_b.status_code == 200, build_b.text
         body_a, body_b = build_a.json(), build_b.json()
         assert body_a["step_sha256"] == body_b["step_sha256"]
+        assert body_a["project_id"] == project_id
+        assert body_a["parent_design_id"] is None
+        assert body_b["parent_design_id"] == body_a["design_id"]
         design_count, validation_count = counts()
         assert design_count == before[0] + 2
         assert validation_count > before[1]
+        scoped = client.get(
+            f"/api/geometry/assembly/designs?project_id={project_id}"
+        ).json()
+        assert scoped["count"] == 2
+        assert scoped["designs"][0]["parent_design_id"] == body_a["design_id"]
+        assert client.get(
+            "/api/geometry/assembly/designs?ungrouped=true"
+        ).json()["count"] == 0
+        other = client.post(
+            "/api/geometry/assembly/projects", json={"name": "Other project"}
+        ).json()
+        rejected = client.post(
+            "/api/geometry/assembly/build",
+            json={
+                **PAYLOAD,
+                "project_id": other["project_id"],
+                "parent_design_id": body_a["design_id"],
+            },
+        )
+        assert rejected.status_code == 422
+        assert counts()[0] == design_count
         print(f"STEP sha256: {body_a['step_sha256'][:20]}...")
         print(f"persisted designs={design_count}, validation rows={validation_count}")
+        print("project root -> branch recorded; cross-project parent rejected")
 
     reset_default_db()
 

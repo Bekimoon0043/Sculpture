@@ -116,6 +116,8 @@ export interface ValidationGate {
 
 export interface AssemblyBuildResponse extends BuildResponse {
   design_id: string;
+  project_id: string | null;
+  parent_design_id: string | null;
   overall_status: GateStatus;
   passed: boolean;
   gate_profile_id: string;
@@ -240,7 +242,9 @@ export async function postAssemblyBuild(
   fabrication: Record<string, number | string> | null,
   seed: number,
   gateProfileId?: string,
-  intakeId?: string
+  intakeId?: string,
+  projectId?: string,
+  parentDesignId?: string
 ): Promise<AssemblyBuildResponse> {
   return parseOrThrow(
     await fetch("/api/geometry/assembly/build", {
@@ -252,6 +256,8 @@ export async function postAssemblyBuild(
         seed,
         gate_profile_id: gateProfileId ?? null,
         intake_id: intakeId ?? null,
+        project_id: projectId ?? null,
+        parent_design_id: parentDesignId ?? null,
       }),
     })
   );
@@ -337,6 +343,8 @@ export function designSceneGlbUrl(designId: string): (cacheBuster: number) => st
 
 export interface DesignSummary {
   design_id: string;
+  project_id: string | null;
+  parent_design_id: string | null;
   created_at: string;
   spec_hash: string;
   seed: number;
@@ -350,10 +358,44 @@ export interface DesignSummary {
 }
 
 export async function listDesigns(
-  limit = 50
+  limit = 50,
+  projectId?: string | null,
+  ungrouped = false
 ): Promise<{ count: number; designs: DesignSummary[] }> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (projectId) query.set("project_id", projectId);
+  if (ungrouped) query.set("ungrouped", "true");
   return parseOrThrow(
-    await fetch(`/api/geometry/assembly/designs?limit=${limit}`)
+    await fetch(`/api/geometry/assembly/designs?${query}`)
+  );
+}
+
+export interface ProjectSummary {
+  project_id: string;
+  created_at: string;
+  name: string;
+  brief_text: string;
+  status: "open" | "archived";
+  variant_count: number;
+}
+
+export async function listProjects(): Promise<{
+  count: number;
+  projects: ProjectSummary[];
+}> {
+  return parseOrThrow(await fetch("/api/geometry/assembly/projects"));
+}
+
+export async function createProject(
+  name: string,
+  briefText = ""
+): Promise<ProjectSummary> {
+  return parseOrThrow(
+    await fetch("/api/geometry/assembly/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, brief_text: briefText }),
+    })
   );
 }
 
@@ -374,6 +416,8 @@ export interface ManifestElement {
 export interface DesignManifestResponse {
   created_at: string;
   design_id: string;
+  project_id: string | null;
+  parent_design_id: string | null;
   spec_hash: string;
   seed: number;
   manifest: {

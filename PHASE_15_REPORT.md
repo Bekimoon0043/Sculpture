@@ -1,6 +1,6 @@
 # Phase 15 report - Designer UX correction
 
-**Status: IN PROGRESS. Slices A-D auto gate PASS 2026-08-24; visual gate pending.**
+**Status: IMPLEMENTED. Slices A-E auto gate PASS 2026-08-24; visual gate pending.**
 
 Plan: `PHASE_15_DESIGNER_UX_PLAN.md`. Decision: ADR-047.
 
@@ -124,3 +124,37 @@ PASS - TypeScript and Vite production build
 The visual acceptance checklist is `gate_phase15_visual.md`; operator pixel
 review remains pending because no inspectable browser is connected to this
 agent environment.
+
+## Slice E - project and variant lineage
+
+- The existing dormant `projects` table is now active through create, list,
+  rename and archive-capable API routes. No replacement project model was
+  introduced.
+- `designs.project_id` and `designs.parent_design_id` are nullable foreign-key
+  columns applied idempotently at startup. Every existing design remains NULL
+  and appears under Ungrouped; no migration guesses ownership or ancestry.
+- A build validates that its project exists and is open and that its parent is
+  an assembly design in the same project before starting OpenCASCADE work.
+  Project and parent metadata do not enter the canonical geometry payload, so
+  identical geometry still produces identical STEP bytes.
+- The workspace opens one project scope at a time. A new project begins with a
+  root document; each subsequent build records the currently opened design as
+  its parent. Reopening an earlier variant and building creates a real branch.
+- The lower tray is named Variants inside a project and Ungrouped builds for
+  legacy records. Root and branch records carry explicit lineage indicators.
+
+Gate evidence:
+
+```text
+docker compose exec backend pytest tests/test_schema_patches.py \
+  tests/test_assembly_api.py::test_projects_can_be_created_renamed_and_listed \
+  tests/test_assembly_api.py::test_assembly_build_persists_manifest_artifacts_and_gate_statuses -q
+5 passed in 25.30s
+
+docker compose exec backend python scripts/gate_phase15_auto.py
+project root -> branch recorded; cross-project parent rejected
+PASS - Phase 15 sections: backend ($0, offline)
+
+python scripts\gate_phase15_auto.py --frontend-only
+PASS - Phase 15 sections: frontend ($0, offline)
+```
