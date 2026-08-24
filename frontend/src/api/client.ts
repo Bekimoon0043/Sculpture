@@ -7,6 +7,7 @@ export interface ParameterSpec {
   min: number | null;
   max: number | null;
   type: "int" | "float" | "str";
+  optional?: boolean;
   notes?: string;
 }
 

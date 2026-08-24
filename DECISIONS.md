@@ -2667,3 +2667,28 @@ navigation. The result was functionally complete and visually unfocused.
 - Phase 14's frontend gate remains the auto gate for this slice and passes.
 - Pixel judgement remains a visual gate because no browser is connected in the
   agent environment.
+
+## ADR-048 - Phase 15B: presentation may interpret names, never limits (2026-08-24)
+
+### Decision
+
+1. The primitive registry remains authoritative for parameter existence,
+   type, unit, default, range and engineering note. A frontend presentation
+   layer may supply a human label, group and prominence only.
+2. Unknown future parameters always fall back to a generated label and the
+   Advanced group. Presentation metadata can never hide a registry field.
+3. Form, water/service and material controls are primary. Construction fields
+   are disclosed as Advanced because they are necessary but not the first
+   question a designer asks while judging silhouette.
+4. Validation leads with the worst authoritative status and its non-pass rows.
+   Full measured tables remain available in the same panel; simplification may
+   change reading order, never suppress evidence.
+5. The LUXEXCHANGE package is the primary output. Individual formats are
+   secondary, still grouped by exact CAD versus triangulated mesh and still
+   show unavailable/impossible formats honestly.
+
+### Consequences
+
+- Frontend only; no range or geometry semantics changed.
+- The presentation map is deliberately incomplete and fallback-safe.
+- Existing Phase 14 frontend gate passes.

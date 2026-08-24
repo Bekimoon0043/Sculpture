@@ -11,6 +11,7 @@ import type {
   Validation,
   ValidationGate,
 } from "../api/client";
+import { CircleAlert, CircleCheck, CircleHelp, CircleX, LocateFixed } from "lucide-react";
 
 interface ValidationPanelProps {
   validation: Validation | null;
@@ -25,6 +26,8 @@ interface ValidationPanelProps {
    * render as NEEDS INPUT — the card contradicted the server.
    */
   gateStatuses?: Record<string, GateStatus> | null;
+  elementIds?: string[];
+  onSelectElement?: (elementId: string) => void;
 }
 
 const STATUS_RANK: Record<GateStatus, number> = {
@@ -49,6 +52,25 @@ const STATUS_HINT: Record<GateStatus, string> = {
   needs_input: "At least one check could NOT be evaluated — a required input "
     + "is missing. This is not a pass. See the rows below for what to supply.",
 };
+
+const STATUS_HEADLINE: Record<GateStatus, string> = {
+  pass: "Ready to progress",
+  warn: "Review before fabrication",
+  fail: "Changes required",
+  needs_input: "Project input required",
+};
+
+const STATUS_ICON = {
+  pass: CircleCheck,
+  warn: CircleAlert,
+  fail: CircleX,
+  needs_input: CircleHelp,
+};
+
+function humanize(value: string): string {
+  const words = value.replace(/_/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
 
 function worstStatus(statuses: GateStatus[]): GateStatus {
   return statuses.reduce<GateStatus>(
@@ -124,12 +146,14 @@ export default function ValidationPanel({
   gates,
   overallStatus,
   gateStatuses,
+  elementIds = [],
+  onSelectElement,
 }: ValidationPanelProps) {
   if (!validation) {
     return (
       <div className="panel validation-panel">
-        <h2>Validation</h2>
-        <p>No build yet — press Rebuild.</p>
+        <h2>Checks</h2>
+        <p className="hint">Build the design to run fabrication and site checks.</p>
       </div>
     );
   }
@@ -141,17 +165,58 @@ export default function ValidationPanel({
       validation.passed ? "pass" : "fail",
       ...gateEntries.map(([name, gate]) => gateStatus(name, gate, gateStatuses)),
     ]);
+  const StatusIcon = STATUS_ICON[headerStatus];
+  const issues = gateEntries.flatMap(([gateName, gate]) =>
+    gateRows(gate)
+      .filter((row) => rowStatus(row) !== "pass")
+      .map((row) => {
+        const searchable = `${row.check} ${row.message ?? ""} ${JSON.stringify(row.value)}`;
+        return {
+          gateName,
+          row,
+          status: rowStatus(row),
+          elementId: elementIds.find((id) => searchable.includes(id)) ?? null,
+        };
+      })
+  );
 
   return (
     <div className="panel validation-panel">
-      <h2>
-        Validation{" "}
+      <div className={`check-summary status-${headerStatus}`}>
+        <StatusIcon size={22} aria-hidden="true" />
+        <div>
+          <strong>{STATUS_HEADLINE[headerStatus]}</strong>
+          <p>{STATUS_HINT[headerStatus]}</p>
+        </div>
         <span className={`badge badge-${headerStatus}`}>
           {STATUS_LABEL[headerStatus]}
         </span>
-      </h2>
-      <p className="hint">{STATUS_HINT[headerStatus]}</p>
+      </div>
 
+      {issues.length > 0 && (
+        <div className="issue-list">
+          <h3>What needs attention</h3>
+          {issues.slice(0, 6).map(({ gateName, row, status, elementId }, index) => (
+            <div className={`issue-row issue-${status}`} key={`${gateName}:${row.check}:${index}`}>
+              <div>
+                <strong>{humanize(row.check)}</strong>
+                <small>{row.message || `${humanize(gateName)} requires review.`}</small>
+              </div>
+              {elementId && onSelectElement && (
+                <button type="button" onClick={() => onSelectElement(elementId)}>
+                  <LocateFixed size={13} /> {elementId}
+                </button>
+              )}
+            </div>
+          ))}
+          {issues.length > 6 && (
+            <p className="hint">{issues.length - 6} more items are listed in all checks.</p>
+          )}
+        </div>
+      )}
+
+      <details className="validation-details" open={headerStatus === "fail"}>
+        <summary>All measured checks</summary>
       {gateEntries.length > 0 && (
         <div className="gate-list">
           {gateEntries.map(([name, gate]) => {
@@ -241,6 +306,7 @@ export default function ValidationPanel({
           ))}
         </tbody>
       </table>
+      </details>
     </div>
   );
 }

@@ -1133,6 +1133,11 @@ export default function DesignerWorkspace({
                   gates={gates}
                   overallStatus={overallStatus}
                   gateStatuses={gateStatuses}
+                  elementIds={doc.elements.map((element) => element.element_id)}
+                  onSelectElement={(elementId) => {
+                    setSelectedId(elementId);
+                    setRightTab("design");
+                  }}
                 />
               </ErrorBoundary>
             )}

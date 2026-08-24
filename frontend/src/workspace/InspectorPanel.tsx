@@ -15,8 +15,13 @@ import type {
   ManifestElement,
   ParameterSpec,
 } from "../api/client";
+import { Copy, Trash2 } from "lucide-react";
 import { swatchFor } from "./appearance";
 import type { DesignDoc, ElementDoc, JointDoc } from "./document";
+import {
+  type PresentedParameter,
+  presentParameters,
+} from "./parameterPresentation";
 
 interface InspectorPanelProps {
   doc: DesignDoc;
@@ -39,6 +44,90 @@ function rangeText(spec: ParameterSpec): string {
   if (spec.min !== null) return `≥ ${spec.min}`;
   if (spec.max !== null) return `≤ ${spec.max}`;
   return "";
+}
+
+interface ParameterFieldProps {
+  parameter: PresentedParameter;
+  element: ElementDoc;
+  defaults: AssemblyDefaultsResponse;
+  onSetParam: InspectorPanelProps["onSetParam"];
+}
+
+function ParameterField({
+  parameter: { name, spec, label },
+  element,
+  defaults,
+  onSetParam,
+}: ParameterFieldProps) {
+  const value = element.parameters[name];
+  if (name === "material_id") {
+    return (
+      <div className="designer-field material-field">
+        <div className="field-heading">
+          <span>{label}</span>
+          <small>{typeof value === "string" ? swatchFor(value).label : "-"}</small>
+        </div>
+        <div className="swatches">
+          {Object.entries(defaults.materials).map(([mid, material]) => {
+            const swatch = swatchFor(mid);
+            return (
+              <button
+                key={mid}
+                type="button"
+                className={`swatch ${value === mid ? "is-active" : ""}`}
+                style={{ background: swatch.hex }}
+                title={`${material.name} - ${material.density_kg_per_m3} kg/m3 (identification color only)`}
+                aria-label={material.name}
+                onClick={() => onSetParam(element.element_id, name, mid)}
+              />
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  const commitText = (raw: string) => {
+    if (raw !== String(value ?? "")) onSetParam(element.element_id, name, raw);
+  };
+  const commitNumber = (raw: string) => {
+    if (raw === "") {
+      if (spec.optional && value !== null) onSetParam(element.element_id, name, null);
+      return;
+    }
+    const number = spec.type === "int" ? Math.trunc(Number(raw)) : Number(raw);
+    if (!Number.isNaN(number) && number !== value) {
+      onSetParam(element.element_id, name, number);
+    }
+  };
+
+  return (
+    <label className="designer-field">
+      <span className="field-heading" title={spec.notes}>
+        <span>{label}</span>
+        <small>{rangeText(spec)}</small>
+      </span>
+      <span className="field-control">
+        <input
+          key={`${element.element_id}:${name}:${String(value)}`}
+          type={spec.type === "str" ? "text" : "number"}
+          step={spec.type === "int" ? 1 : "any"}
+          min={spec.min ?? undefined}
+          max={spec.max ?? undefined}
+          defaultValue={value === null ? "" : value}
+          onBlur={(event) =>
+            spec.type === "str"
+              ? commitText(event.target.value)
+              : commitNumber(event.target.value)
+          }
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+          }}
+        />
+        <span className="field-unit">{spec.unit}</span>
+      </span>
+    </label>
+  );
 }
 
 export default function InspectorPanel({
@@ -64,6 +153,9 @@ export default function InspectorPanel({
 
   const info = defaults.primitives[element.primitive];
   const params = info?.parameters ?? {};
+  const presented = presentParameters(params);
+  const primaryGroups = ["Form", "Water & services", "Material"] as const;
+  const advanced = presented.filter((parameter) => parameter.advanced);
 
   // Valid parents per joint type: registry capability minus self minus the
   // element's own descendants (an obvious cycle the backend would reject —
@@ -120,104 +212,54 @@ export default function InspectorPanel({
 
       <div className="inspector-actions">
         <button type="button" onClick={() => onDuplicate(element.element_id)}>
-          Duplicate
+          <Copy size={14} /> Duplicate
         </button>
         <button
           type="button"
           className="danger"
           onClick={() => onRemove(element.element_id)}
         >
-          Delete
+          <Trash2 size={14} /> Delete
         </button>
       </div>
 
-      <h4>Parameters</h4>
-      {Object.entries(params).map(([name, spec]) => {
-        const value = element.parameters[name];
-        if (name === "material_id") {
-          return (
-            <div className="param-row swatch-row" key={name}>
-              <span className="param-name">material</span>
-              <span className="swatches">
-                {Object.entries(defaults.materials).map(([mid, m]) => {
-                  const sw = swatchFor(mid);
-                  return (
-                    <button
-                      key={mid}
-                      type="button"
-                      className={`swatch ${value === mid ? "is-active" : ""}`}
-                      style={{ background: sw.hex }}
-                      title={`${m.name} — ${m.density_kg_per_m3} kg/m³ (colour is identification only)`}
-                      onClick={() =>
-                        onSetParam(element.element_id, name, mid)
-                      }
-                    />
-                  );
-                })}
-              </span>
-              <span className="param-unit">
-                {typeof value === "string" ? swatchFor(value).label : "—"}
-              </span>
-            </div>
-          );
-        }
-        if (spec.type === "str") {
-          return (
-            <label className="param-row" key={name}>
-              <span className="param-name" title={spec.notes}>
-                {name.replace(/_/g, " ")}
-              </span>
-              <input
-                // Remount on external change (undo/redo) so the field shows
-                // the document's value without being controlled per keystroke.
-                key={`${element.element_id}:${name}:${String(value)}`}
-                type="text"
-                defaultValue={value === null ? "" : String(value)}
-                onBlur={(e) => {
-                  if (e.target.value !== String(value ?? "")) {
-                    onSetParam(element.element_id, name, e.target.value);
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                }}
-              />
-              <span className="param-unit">{spec.unit}</span>
-            </label>
-          );
-        }
+      {primaryGroups.map((group) => {
+        const groupParameters = presented.filter(
+          (parameter) => parameter.group === group && !parameter.advanced
+        );
+        if (groupParameters.length === 0) return null;
         return (
-          <label className="param-row" key={name}>
-            <span className="param-name" title={spec.notes}>
-              {name.replace(/_/g, " ")}
-              {rangeText(spec) && (
-                <small className="param-range">{rangeText(spec)}</small>
-              )}
-            </span>
-            <input
-              key={`${element.element_id}:${name}:${String(value)}`}
-              type="number"
-              step={spec.type === "int" ? 1 : "any"}
-              defaultValue={value === null ? "" : Number(value)}
-              onBlur={(e) => {
-                const raw = e.target.value;
-                if (raw === "") return;
-                const n =
-                  spec.type === "int" ? Math.trunc(Number(raw)) : Number(raw);
-                if (!Number.isNaN(n) && n !== value) {
-                  onSetParam(element.element_id, name, n);
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-              }}
-            />
-            <span className="param-unit">{spec.unit}</span>
-          </label>
+          <section className="parameter-group" key={group}>
+            <h4>{group}</h4>
+            {groupParameters.map((parameter) => (
+              <ParameterField
+                key={parameter.name}
+                parameter={parameter}
+                element={element}
+                defaults={defaults}
+                onSetParam={onSetParam}
+              />
+            ))}
+          </section>
         );
       })}
 
-      <h4>Joint</h4>
+      {advanced.length > 0 && (
+        <details className="advanced-params">
+          <summary>Advanced construction ({advanced.length})</summary>
+          {advanced.map((parameter) => (
+            <ParameterField
+              key={parameter.name}
+              parameter={parameter}
+              element={element}
+              defaults={defaults}
+              onSetParam={onSetParam}
+            />
+          ))}
+        </details>
+      )}
+
+      <h4>Placement</h4>
       <label className="param-row">
         <span className="param-name">attachment</span>
         <select
@@ -277,7 +319,7 @@ export default function InspectorPanel({
         <>
           {(["x_offset_mm", "y_offset_mm"] as const).map((k) => (
             <label className="param-row" key={k}>
-              <span className="param-name">{k.replace(/_/g, " ")}</span>
+              <span className="param-name">{k === "x_offset_mm" ? "Left / right" : "Forward / back"}</span>
               <input
                 key={`${element.element_id}:${k}:${String(joint[k] ?? 0)}`}
                 type="number"

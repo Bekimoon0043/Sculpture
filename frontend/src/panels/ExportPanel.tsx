@@ -18,6 +18,7 @@
 
 import { useCallback, useState } from "react";
 import type { ExportEntry, ExportsResponse } from "../api/client";
+import { Copy, Download, PackageCheck } from "lucide-react";
 
 interface ExportPanelProps {
   designId: string | null;
@@ -65,35 +66,13 @@ function formatBytes(bytes: number | null | undefined): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function DownloadIcon() {
-  return (
-    <svg
-      className="file-icon"
-      viewBox="0 0 16 16"
-      width="14"
-      height="14"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path
-        d="M8 1.5v9m0 0L4.5 7M8 10.5 11.5 7M2 13.5h12"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function FileRow({ row }: { row: ExportEntry }) {
   return (
     <li className="file-row">
       <a className="file-link" href={row.download_url ?? undefined}>
         <span className="file-name">{row.format}</span>
         <span className="file-size">{formatBytes(row.bytes)}</span>
-        <DownloadIcon />
+        <Download className="file-icon" size={14} aria-hidden="true" />
         {row.purpose && <span className="file-desc">{row.purpose}</span>}
       </a>
     </li>
@@ -142,7 +121,7 @@ export default function ExportPanel({
   if (!designId) {
     return (
       <div className="panel export-panel">
-        <h2>Export</h2>
+        <h2>Fabrication package</h2>
         <p className="hint">
           Build an assembly first — there is nothing to export yet.
         </p>
@@ -165,7 +144,7 @@ export default function ExportPanel({
   return (
     <div className="panel export-panel">
       <h2>
-        Export{" "}
+        Fabrication package{" "}
         {built && (
           <span className="badge badge-pass">{fileCount} files</span>
         )}
@@ -195,6 +174,7 @@ export default function ExportPanel({
       ) : (
         <>
           <a className="package-card" href={exports!.luxexchange_url}>
+            <PackageCheck size={20} aria-hidden="true" />
             <span className="package-title">Download LUXEXCHANGE package</span>
             <span className="package-meta">
               .zip · {formatBytes(exports!.package_bytes)} · {fileCount} files ·
@@ -214,7 +194,7 @@ export default function ExportPanel({
                 onClick={copyDigest}
                 title="Copy the full digest"
               >
-                {copied ? "copied" : "copy"}
+                <Copy size={13} /> {copied ? "copied" : "copy"}
               </button>
             </div>
           )}
@@ -234,8 +214,10 @@ export default function ExportPanel({
         </>
       )}
 
-      {built &&
-        TIERS.map(({ tier, title, blurb }) => {
+      {built && (
+        <details className="individual-files">
+          <summary>Individual files ({fileCount})</summary>
+          {TIERS.map(({ tier, title, blurb }) => {
           const tierRows = included.filter((r) => r.tier === tier);
           if (tierRows.length === 0) return null;
           return (
@@ -251,7 +233,9 @@ export default function ExportPanel({
               </ul>
             </section>
           );
-        })}
+          })}
+        </details>
+      )}
 
       {failed.length > 0 && (
         <section className="file-group">
