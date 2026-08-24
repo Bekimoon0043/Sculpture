@@ -82,6 +82,11 @@ recorded in ADR-043 §2.
 
 ---
 
+## PHASE 5 GATE: PASS (auto, offline, $0 — 2026-08-24)
+
+The operator's visual gate (`gate_phase5_visual.md`) is still outstanding and
+requires live API spend; this verdict covers the automated gate only.
+
 ## Gate evidence
 
 ```
