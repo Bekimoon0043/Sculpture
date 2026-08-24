@@ -2633,3 +2633,37 @@ deliberate-or-wrong in a year.
   `gate_phase14b_visual.md` covers the behaviour.
 - The workspace keyboard map is inert unless the Designer view is active —
   it must never swallow keys under the Brief or Council forms.
+
+## ADR-047 - Phase 15A: visual hierarchy before more capability (2026-08-24)
+
+### Context
+
+Phase 14 added the requested tools, but every tool became permanent chrome:
+Library above Scene, Inspector above Checks above Export, a full-width history
+strip, and a toolbar containing editing, building, rendering, exporting and
+navigation. The result was functionally complete and visually unfocused.
+
+### Decision
+
+1. **The viewport owns the workspace.** Rails narrow to 220/330 px and Recent
+   Builds starts collapsed. Both rails retain keyboard toggles and gain visible
+   controls.
+2. **Frequency determines permanence.** Scene remains visible; the occasional
+   primitive catalog becomes an Add palette. Design, Checks and Output become
+   mutually exclusive right-rail tabs.
+3. **Build is the primary command.** Render and Export move to Output. Viewport
+   tools use one pinned icon system (`lucide-react==1.34.0`, live npm registry
+   checked 2026-08-24) rather than operating-system-dependent emoji glyphs.
+4. **Do not claim lineage before it exists.** The global newest-design list is
+   labelled Recent Builds, not Variants. Slice E will restore the variant name
+   only for records with explicit project and parent relationships.
+5. **Borrow interactions, not another product's identity.** Existing familiar
+   navigation keys remain, but the keymap is named Workspace shortcuts rather
+   than advertising a Blender-style product model LuxuryForm does not have.
+
+### Consequences
+
+- Frontend only; geometry and persistence contracts are unchanged.
+- Phase 14's frontend gate remains the auto gate for this slice and passes.
+- Pixel judgement remains a visual gate because no browser is connected in the
+  agent environment.

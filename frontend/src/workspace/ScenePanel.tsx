@@ -7,6 +7,7 @@
 // because there is no geometry of it to show or hide yet.
 
 import { useEffect, useRef, useState } from "react";
+import { CircleDot, Eye, EyeOff } from "lucide-react";
 import type { ElementDoc } from "./document";
 
 interface ScenePanelProps {
@@ -69,7 +70,7 @@ export default function ScenePanel({
     <div className="scene-panel">
       <h3>Scene</h3>
       {elements.length === 0 && (
-        <p className="hint">No elements — add one from the library above.</p>
+        <p className="hint">No elements yet. Use Add in the command bar.</p>
       )}
       <ul className="scene-list">
         {elements.map((el) => {
@@ -118,7 +119,7 @@ export default function ScenePanel({
                 title={hidden ? "show" : "hide"}
                 aria-label={`${hidden ? "show" : "hide"} ${el.element_id}`}
               >
-                {hidden ? "◌" : "👁"}
+                {hidden ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
               <button
                 type="button"
@@ -128,7 +129,7 @@ export default function ScenePanel({
                 title={solo ? "end solo" : "solo — show only this"}
                 aria-label={`solo ${el.element_id}`}
               >
-                ◎
+                <CircleDot size={15} />
               </button>
             </li>
           );

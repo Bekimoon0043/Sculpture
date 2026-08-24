@@ -16,6 +16,21 @@ import {
   useState,
 } from "react";
 import {
+  BookmarkPlus,
+  Box,
+  Copy,
+  Focus,
+  Hammer,
+  KeyRound,
+  PanelLeft,
+  PanelRight,
+  Plus,
+  Redo2,
+  Ruler,
+  ScanLine,
+  Undo2,
+} from "lucide-react";
+import {
   ApiError,
   type AssemblyBuildResponse,
   type AssemblyDefaultsResponse,
@@ -112,6 +127,8 @@ interface SavedView {
   pose: CameraPose;
 }
 
+type RightTab = "design" | "checks" | "output";
+
 function loadSavedViews(): SavedView[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(VIEWS_KEY) ?? "[]");
@@ -177,6 +194,9 @@ export default function DesignerWorkspace({
   const [section, setSection] = useState<SectionState>({ axis: "y", offset: 1 });
   const [savedViews, setSavedViews] = useState<SavedView[]>(loadSavedViews);
   const [useIntake, setUseIntake] = useState(true);
+  const [addOpen, setAddOpen] = useState(false);
+  const [rightTab, setRightTab] = useState<RightTab>("design");
+  const [historyCollapsed, setHistoryCollapsed] = useState(true);
 
   // What the viewport shows.
   const [activeDesignId, setActiveDesignId] = useState<string | null>(null);
@@ -703,125 +723,105 @@ export default function DesignerWorkspace({
   const glbUrl = activeDesignId ? designSceneGlbUrl(activeDesignId) : null;
 
   return (
-    <div className="designer">
+    <div className={`designer ${historyCollapsed ? "history-closed" : ""}`}>
       {/* ---------------------------------------------------- toolbar --- */}
       <div className="ws-toolbar">
         <div className="ws-group">
           <button
             type="button"
+            className="icon-button"
             title="Undo (Ctrl+Z)"
+            aria-label="Undo"
             disabled={!canUndo(history)}
             onClick={() => setHistory((h) => (h ? undo(h) : h))}
           >
-            ↶
+            <Undo2 size={16} />
           </button>
           <button
             type="button"
+            className="icon-button"
             title="Redo (Ctrl+Y)"
+            aria-label="Redo"
             disabled={!canRedo(history)}
             onClick={() => setHistory((h) => (h ? redo(h) : h))}
           >
-            ↷
+            <Redo2 size={16} />
           </button>
         </div>
-        <div className="ws-group">
+        <div className="ws-group ws-authoring">
           <button
             type="button"
+            className={addOpen ? "is-on" : ""}
+            onClick={() => setAddOpen((open) => !open)}
+            title="Add an element"
+          >
+            <Plus size={16} />
+            <span>Add</span>
+          </button>
+          <button
+            type="button"
+            className="icon-button"
             disabled={!selectedId}
             onClick={() => selectedId && onDuplicate(selectedId)}
             title="Duplicate the selected element (Shift+D)"
+            aria-label="Duplicate selected element"
           >
-            Duplicate
+            <Copy size={16} />
           </button>
           <button
             type="button"
             className="rebuild ws-build"
             disabled={busy}
             onClick={onBuild}
-            title="Build the document through the CAD kernel and run every gate"
+            title="Build through the CAD kernel and run every validation gate"
           >
-            {busy ? "Building…" : dirty ? "Build & validate ●" : "Build & validate"}
-          </button>
-          <button
-            type="button"
-            disabled={!activeDesignId || dirty}
-            title={
-              dirty
-                ? "The document has unbuilt changes — build first, render what you built"
-                : "Four Cycles views via the render worker"
-            }
-            onClick={onRender}
-          >
-            Render
-          </button>
-          <button
-            type="button"
-            disabled={!activeDesignId || exporting}
-            onClick={onExport}
-            title="Build the LUXEXCHANGE export package for the active design"
-          >
-            {exporting ? "Exporting…" : "Export"}
+            <Hammer size={16} />
+            <span>{busy ? "Building…" : "Build"}</span>
+            {dirty && <span className="dirty-dot" aria-label="unbuilt changes" />}
           </button>
         </div>
         <div className="ws-group ws-tools">
           <button
             type="button"
-            className={measureMode ? "is-on" : ""}
+            className={`icon-button ${measureMode ? "is-on" : ""}`}
             onClick={() => setMeasureMode((m) => !m)}
             title="Measure: two clicks on the model, distance in mm (Esc to exit)"
+            aria-label="Measure"
           >
-            📐 {measure ? formatMm(measure.distance_mm) : "Measure"}
+            <Ruler size={16} />
           </button>
           <button
             type="button"
-            className={sectionOn ? "is-on" : ""}
+            className={`icon-button ${sectionOn ? "is-on" : ""}`}
             onClick={() => setSectionOn((s) => !s)}
             title="Section plane"
+            aria-label="Section plane"
           >
-            ⬓ Section
+            <ScanLine size={16} />
           </button>
-          {sectionOn && (
-            <span className="section-controls">
-              {(["x", "y", "z"] as const).map((axis) => (
-                <button
-                  key={axis}
-                  type="button"
-                  className={section.axis === axis ? "is-on" : ""}
-                  onClick={() => setSection((s) => ({ ...s, axis }))}
-                >
-                  {axis.toUpperCase()}
-                </button>
-              ))}
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={Math.round(section.offset * 100)}
-                onChange={(e) =>
-                  setSection((s) => ({ ...s, offset: Number(e.target.value) / 100 }))
-                }
-                title="cut position across the model"
-              />
-            </span>
-          )}
           <button
             type="button"
+            className="icon-button"
             onClick={() => viewportRef.current?.frameAll()}
             title="Frame the whole model (Home) · frame selected (.)"
+            aria-label="Frame model"
           >
-            ⛶ Frame
+            <Focus size={16} />
           </button>
           <button
             type="button"
-            className={projection === "ortho" ? "is-on" : ""}
+            className={`projection-button ${projection === "ortho" ? "is-on" : ""}`}
             onClick={() => {
               const mode = viewportRef.current?.toggleProjection();
               if (mode) setProjection(mode);
             }}
             title="Orthographic ⇄ perspective (5) — judge proportions in ortho, depth in perspective"
           >
-            {projection === "ortho" ? "Ortho" : "Persp"}
+            <Box size={16} />
+            <span>{projection === "ortho" ? "Ortho" : "Perspective"}</span>
           </button>
+        </div>
+        <div className="ws-group ws-views">
           <select
             value=""
             onChange={(e) => {
@@ -841,7 +841,9 @@ export default function DesignerWorkspace({
           </select>
           <button
             type="button"
+            className="icon-button"
             title="Save the current camera as a named view"
+            aria-label="Save current view"
             onClick={() => {
               const pose = viewportRef.current?.getCameraPose();
               if (!pose) return;
@@ -858,26 +860,59 @@ export default function DesignerWorkspace({
               });
             }}
           >
-            + view
+            <BookmarkPlus size={16} />
           </button>
         </div>
         <div className="ws-status">
-          {buildMs !== null && <span>server build {Math.round(buildMs)} ms</span>}
+          {measure && <span>{formatMm(measure.distance_mm)}</span>}
+          {buildMs !== null && <span>{Math.round(buildMs)} ms</span>}
           {dirty && (
             <span className="badge badge-warn" title="the viewport shows the last build, not these edits">
-              UNBUILT CHANGES
+              UNBUILT
             </span>
           )}
           <button
             type="button"
-            className={keymapOpen ? "is-on" : ""}
+            className={`icon-button ${keymapOpen ? "is-on" : ""}`}
             onClick={() => setKeymapOpen((k) => !k)}
-            title="Keymap (?)"
+            title="Navigation and editing shortcuts (?)"
+            aria-label="Keyboard shortcuts"
           >
-            ⌨ Keys
+            <KeyRound size={16} />
+          </button>
+          <button
+            type="button"
+            className={`icon-button ${leftOpen ? "is-on" : ""}`}
+            onClick={() => setLeftOpen((open) => !open)}
+            title="Toggle scene rail (T)"
+            aria-label="Toggle scene rail"
+          >
+            <PanelLeft size={16} />
+          </button>
+          <button
+            type="button"
+            className={`icon-button ${rightOpen ? "is-on" : ""}`}
+            onClick={() => setRightOpen((open) => !open)}
+            title="Toggle properties rail (N)"
+            aria-label="Toggle properties rail"
+          >
+            <PanelRight size={16} />
           </button>
         </div>
       </div>
+
+      {addOpen && (
+        <div className="ws-add-popover">
+          <PrimitiveLibrary
+            defaults={defaults}
+            disabled={busy}
+            onAdd={(primitive) => {
+              onAdd(primitive);
+              setAddOpen(false);
+            }}
+          />
+        </div>
+      )}
 
       {/* ------------------------------------------------------ body ---- */}
       <div
@@ -889,9 +924,6 @@ export default function DesignerWorkspace({
       >
         {leftOpen && (
         <aside className="ws-left">
-          <ErrorBoundary label="Library">
-            <PrimitiveLibrary defaults={defaults} onAdd={onAdd} disabled={busy} />
-          </ErrorBoundary>
           <ErrorBoundary label="Scene">
             <ScenePanel
               elements={doc.elements}
@@ -1020,6 +1052,33 @@ export default function DesignerWorkspace({
               Measure: click two points on the model — Esc to exit
             </div>
           )}
+          {sectionOn && (
+            <div className="section-popover">
+              <span>Section</span>
+              <div className="segmented" aria-label="Section axis">
+                {(["x", "y", "z"] as const).map((axis) => (
+                  <button
+                    key={axis}
+                    type="button"
+                    className={section.axis === axis ? "is-on" : ""}
+                    onClick={() => setSection((s) => ({ ...s, axis }))}
+                  >
+                    {axis.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(section.offset * 100)}
+                onChange={(e) =>
+                  setSection((s) => ({ ...s, offset: Number(e.target.value) / 100 }))
+                }
+                title="Section position across the model"
+              />
+            </div>
+          )}
           {compareEntries.length !== 2 && glbUrl && (
             <div className="ws-mouse-hints" aria-hidden="true">
               {measureMode
@@ -1031,38 +1090,74 @@ export default function DesignerWorkspace({
 
         {rightOpen && (
         <aside className="ws-right">
-          <ErrorBoundary label="Inspector">
-            <InspectorPanel
-              doc={doc}
-              element={selected}
-              defaults={defaults}
-              manifestElement={manifestSelected}
-              onSetParam={(id, name, value) =>
-                dispatch({ kind: "set-param", elementId: id, name, value })
-              }
-              onSetJoint={(id, joint) =>
-                dispatch({ kind: "set-joint", elementId: id, joint })
-              }
-              onDuplicate={onDuplicate}
-              onRemove={onRemove}
-            />
-          </ErrorBoundary>
-          <ErrorBoundary label="Validation">
-            <ValidationPanel
-              validation={validation}
-              gates={gates}
-              overallStatus={overallStatus}
-              gateStatuses={gateStatuses}
-            />
-          </ErrorBoundary>
-          <ErrorBoundary label="Export">
-            <ExportPanel
-              designId={activeDesignId}
-              exports={exports}
-              exporting={exporting}
-              onExport={onExport}
-            />
-          </ErrorBoundary>
+          <div className="right-tabs" role="tablist" aria-label="Workspace properties">
+            {(["design", "checks", "output"] as RightTab[]).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                aria-selected={rightTab === tab}
+                className={rightTab === tab ? "is-active" : ""}
+                onClick={() => setRightTab(tab)}
+              >
+                {tab[0].toUpperCase() + tab.slice(1)}
+                {tab === "checks" && overallStatus && (
+                  <span className={`tab-dot badge-${overallStatus}`} />
+                )}
+              </button>
+            ))}
+          </div>
+          <div className="right-tab-content">
+            {rightTab === "design" && (
+              <ErrorBoundary label="Inspector">
+                <InspectorPanel
+                  doc={doc}
+                  element={selected}
+                  defaults={defaults}
+                  manifestElement={manifestSelected}
+                  onSetParam={(id, name, value) =>
+                    dispatch({ kind: "set-param", elementId: id, name, value })
+                  }
+                  onSetJoint={(id, joint) =>
+                    dispatch({ kind: "set-joint", elementId: id, joint })
+                  }
+                  onDuplicate={onDuplicate}
+                  onRemove={onRemove}
+                />
+              </ErrorBoundary>
+            )}
+            {rightTab === "checks" && (
+              <ErrorBoundary label="Validation">
+                <ValidationPanel
+                  validation={validation}
+                  gates={gates}
+                  overallStatus={overallStatus}
+                  gateStatuses={gateStatuses}
+                />
+              </ErrorBoundary>
+            )}
+            {rightTab === "output" && (
+              <div className="output-tab">
+                <button
+                  type="button"
+                  className="output-render"
+                  disabled={!activeDesignId || dirty}
+                  title={dirty ? "Build changes before rendering" : "Create four Cycles views"}
+                  onClick={onRender}
+                >
+                  Render presentation views
+                </button>
+                <ErrorBoundary label="Export">
+                  <ExportPanel
+                    designId={activeDesignId}
+                    exports={exports}
+                    exporting={exporting}
+                    onExport={onExport}
+                  />
+                </ErrorBoundary>
+              </div>
+            )}
+          </div>
         </aside>
         )}
       </div>
@@ -1083,6 +1178,8 @@ export default function DesignerWorkspace({
                   : prev
             )
           }
+          collapsed={historyCollapsed}
+          onToggleCollapsed={() => setHistoryCollapsed((collapsed) => !collapsed)}
         />
       </ErrorBoundary>
 
@@ -1091,7 +1188,7 @@ export default function DesignerWorkspace({
         <div className="keymap-overlay" onClick={() => setKeymapOpen(false)}>
           <div className="keymap-card" onClick={(e) => e.stopPropagation()}>
             <div className="keymap-head">
-              <h3>Keymap — Blender-style</h3>
+                <h3>Workspace shortcuts</h3>
               <button type="button" onClick={() => setKeymapOpen(false)}>
                 Close (Esc)
               </button>

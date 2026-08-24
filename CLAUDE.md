@@ -82,6 +82,11 @@ Shift+MMB pan, frame-selected, outliner rename, T/N rail collapse, `?`
 keymap card; no G/R/S by design (joints + parameters are the only editing
 path).
 
+**Phase 15 slice A (Designer UX hierarchy) 2026-08-24** (ADR-047,
+frontend only) — viewport-first layout, Scene-first Add palette, compact
+Lucide command bar, tabbed Design/Checks/Output rail and collapsible Recent
+Builds. Frontend auto gate PASS; visual gate pending. Slices B-E remain open.
+
 Thirteen auto gates, all $0 and offline:
 `gate_phase2/3/4/5/6a1/costing/8/8b/9a/9b/11/13a/14_auto.py`.
 Note `gate_phase9b_auto.py` and the Blender-tier sections of

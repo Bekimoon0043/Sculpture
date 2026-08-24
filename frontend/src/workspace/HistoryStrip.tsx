@@ -1,4 +1,4 @@
-// History strip — every build is a variant a designer can go back to.
+// Recent builds — persisted design snapshots a designer can reopen or compare.
 //
 // Entries come from two honest sources, merged: builds made THIS session
 // (which carry a real viewport snapshot taken when their geometry was on
@@ -12,6 +12,7 @@
 // cards -> side-by-side compare.
 
 import type { GateStatus } from "../api/client";
+import { ChevronDown, ChevronUp, Images } from "lucide-react";
 
 export interface VariantEntry {
   design_id: string;
@@ -38,6 +39,8 @@ interface HistoryStripProps {
   compareIds: string[];
   onRestore: (entry: VariantEntry) => void;
   onToggleCompare: (designId: string) => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }
 
 export default function HistoryStrip({
@@ -46,19 +49,31 @@ export default function HistoryStrip({
   compareIds,
   onRestore,
   onToggleCompare,
+  collapsed,
+  onToggleCollapsed,
 }: HistoryStripProps) {
-  if (entries.length === 0) {
-    return (
-      <div className="history-strip is-empty">
-        <span className="hint">
-          Variants appear here after the first build — every build is kept.
-        </span>
-      </div>
-    );
-  }
   return (
-    <div className="history-strip" role="list" aria-label="design variants">
-      {entries.map((v) => {
+    <section className={`history-strip ${collapsed ? "is-collapsed" : ""}`}>
+      <button
+        type="button"
+        className="history-toggle"
+        onClick={onToggleCollapsed}
+        title={collapsed ? "Open recent builds" : "Collapse recent builds"}
+        aria-expanded={!collapsed}
+      >
+        <Images size={15} aria-hidden="true" />
+        <span>Recent builds</span>
+        <span className="history-count">{entries.length}</span>
+        {collapsed ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+      </button>
+      {!collapsed && entries.length === 0 && (
+        <div className="history-empty">
+          <span className="hint">Saved builds appear here after the first build.</span>
+        </div>
+      )}
+      {!collapsed && (
+        <div className="history-items" role="list" aria-label="recent design builds">
+          {entries.map((v) => {
         const active = v.design_id === activeDesignId;
         const comparing = compareIds.includes(v.design_id);
         return (
@@ -81,7 +96,7 @@ export default function HistoryStrip({
                 <img src={v.thumbnail} alt={v.label} />
               ) : (
                 <span className="variant-thumb-placeholder" aria-hidden="true">
-                  ◧
+                  <Images size={22} />
                 </span>
               )}
             </button>
@@ -117,7 +132,9 @@ export default function HistoryStrip({
             </div>
           </div>
         );
-      })}
-    </div>
+          })}
+        </div>
+      )}
+    </section>
   );
 }

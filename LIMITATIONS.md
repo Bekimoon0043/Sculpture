@@ -507,8 +507,9 @@ The shell is a pipeline (ADR-041). What it does NOT do:
   and by a production build plus typecheck. Nobody has looked at the pixels.
   The visual gates exist for exactly this reason.
 
-- **The layout is desktop-only.** Fixed three-row shell with a 440 px side
-  column. It is not responsive and has not been tested below about 1100 px.
+- **The layout is desktop-first.** Phase 15A reduced the Designer rails to
+  220/330 px, made both collapsible and collapsed Recent Builds by default,
+  but the other pipeline views remain unverified below about 1100 px.
 
 - **No command palette.** (Phase 14 added undo/redo and Ctrl+Z / Ctrl+Y /
   Delete / Esc in the Designer Workspace; other views still have no
@@ -558,10 +559,11 @@ The shell is a pipeline (ADR-041). What it does NOT do:
   design list itself always comes back from the server. Thumbnails exist
   only for builds whose geometry was actually on screen in that browser.
 
-- **The history strip lists the newest 50 designs**, un-paginated, and
+- **Recent Builds lists the newest 50 designs**, un-paginated, and
   "restore" replays the stored request — it does not diff or branch.
   Lineage between designs is still not modelled (a restored-then-edited
-  design has no recorded parent).
+  design has no recorded parent). Phase 15A stopped calling these records
+  variants; project and parent lineage is Phase 15E.
 
 - **Measurement snaps to the tessellated surface** (the 1 mm-deflection
   preview mesh), not the exact B-rep — good to about a millimetre at
