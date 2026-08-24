@@ -1,6 +1,6 @@
 # Phase 15 report - Designer UX correction
 
-**Status: IN PROGRESS. Slices A-C auto gate PASS 2026-08-24; visual gate pending.**
+**Status: IN PROGRESS. Slices A-D auto gate PASS 2026-08-24; visual gate pending.**
 
 Plan: `PHASE_15_DESIGNER_UX_PLAN.md`. Decision: ADR-047.
 
@@ -92,3 +92,35 @@ docker compose exec backend pytest tests/test_assembly_api.py -q
 The gate assembly measured about 4.7 seconds on this machine. Debouncing makes
 editing coherent but does not make OpenCASCADE interactive; this remains a
 documented performance limit rather than a hidden spinner.
+
+## Slice D - visual judgement
+
+- Studio and Technical are explicit viewport modes. Studio adds a neutral
+  ground, soft filmic lighting, model-derived shadows and a literal 1.7 m scale
+  staff. Technical keeps the dark adaptive grid used for selection, measuring
+  and section work.
+- All lighting positions, ground dimensions and shadow bounds derive from the
+  loaded model bounds. The scale staff is the sole fixed world measurement.
+- The Add palette no longer presents hand-drawn primitive thumbnails. It runs
+  one focused registry primitive through the preview route and shows the real
+  CAD GLB with measured build time. Hover or keyboard focus changes the
+  preview; only one kernel request is active.
+- A/B comparison now synchronizes both cameras and reads both persisted build
+  manifests. A scrollable table shows only changed seed, fabrication, primitive,
+  joint and parameter values under the paired CAD views.
+
+Gate evidence:
+
+```text
+docker compose exec backend python scripts/gate_phase15_auto.py
+kernel previews: ['basin_round', 'plinth', 'sculptural_column', 'tiered_cascade']
+all registry previews named; still no database writes
+PASS - Phase 15 sections: backend ($0, offline)
+
+npm run build
+PASS - TypeScript and Vite production build
+```
+
+The visual acceptance checklist is `gate_phase15_visual.md`; operator pixel
+review remains pending because no inspectable browser is connected to this
+agent environment.

@@ -95,8 +95,12 @@ auto gate PASS.
 **Phase 15 slice C (kernel draft preview) 2026-08-24** (ADR-049) — the
 same OpenCASCADE assembly path now returns a non-persisted, unvalidated
 named-node GLB after debounced edits; stale responses cannot replace the
-current document. Dedicated backend/frontend auto gate PASS; slices D-E remain
-open.
+current document. Dedicated backend/frontend auto gate PASS.
+
+**Phase 15 slice D (visual judgement) 2026-08-24** (ADR-050) — Studio and
+Technical CAD views, bounded lighting/ground/1.7 m scale cues, one focused real
+kernel primitive preview, and synchronized A/B views with changed build values.
+Auto gate PASS for every registered primitive; Slice E remains open.
 
 Fourteen auto gates, all $0 and offline:
 `gate_phase2/3/4/5/6a1/costing/8/8b/9a/9b/11/13a/14/15_auto.py`.

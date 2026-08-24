@@ -107,7 +107,7 @@ def run_backend() -> None:
             )
 
     with TestClient(app) as client:
-        section("[1/3] DRAFT GLB - real named CAD geometry")
+        section("[1/4] DRAFT GLB - real named CAD geometry")
         before = counts()
         first = client.post("/api/geometry/assembly/preview.glb", json=PAYLOAD)
         assert first.status_code == 200, first.text
@@ -119,7 +119,7 @@ def run_backend() -> None:
         print(f"preview: {len(first.content)} bytes, nodes={nodes}")
         print(f"kernel time: {float(first.headers['x-luxuryform-build-ms']):.0f} ms")
 
-        section("[2/3] ISOLATION - no design or validation persistence")
+        section("[2/4] ISOLATION - no design or validation persistence")
         after = counts()
         assert after == before, (before, after)
         second = client.post("/api/geometry/assembly/preview.glb", json=PAYLOAD)
@@ -129,7 +129,35 @@ def run_backend() -> None:
         print(f"rows before={before}, after two previews={counts()}")
         print("stable request hash; no database writes")
 
-        section("[3/3] FULL BUILD - canonical contract still persists")
+        section("[3/4] LIBRARY - every registry primitive has a CAD preview")
+        defaults = client.get("/api/geometry/assembly/defaults")
+        assert defaults.status_code == 200, defaults.text
+        previewed: list[str] = []
+        for primitive, info in defaults.json()["primitives"].items():
+            parameters = {
+                name: spec["default"]
+                for name, spec in info["parameters"].items()
+            }
+            primitive_payload = {
+                "elements": [{
+                    "element_id": "primitive_preview",
+                    "primitive": primitive,
+                    "parameters": parameters,
+                }],
+                "seed": 0,
+                "fabrication": None,
+            }
+            response = client.post(
+                "/api/geometry/assembly/preview.glb", json=primitive_payload
+            )
+            assert response.status_code == 200, (primitive, response.text)
+            assert glb_node_names(response.content) == ["primitive_preview"]
+            previewed.append(primitive)
+        assert counts() == before
+        print(f"kernel previews: {previewed}")
+        print("all registry previews named; still no database writes")
+
+        section("[4/4] FULL BUILD - canonical contract still persists")
         build_a = client.post("/api/geometry/assembly/build", json=PAYLOAD)
         build_b = client.post("/api/geometry/assembly/build", json=PAYLOAD)
         assert build_a.status_code == 200, build_a.text

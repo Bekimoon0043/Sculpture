@@ -541,10 +541,10 @@ The shell is a pipeline (ADR-041). What it does NOT do:
   browser's aborted HTTP request. Render and export still require a matching
   full build.
 
-- **Library thumbnails are schematic SVG line art,** drawn by hand per
-  primitive, not rendered geometry. Rendering each primitive at startup
-  would cost a full build per card. Unknown future primitives get a
-  generic glyph.
+- **The primitive library previews one item at a time.** The highlighted item
+  is real kernel geometry built from live registry defaults, not a cached
+  thumbnail. Moving focus starts another CPU-bound preview, so opening the
+  palette does not pre-render every primitive concurrently.
 
 - **Material swatch colours are identification only.** materials.yaml has
   no appearance data (colour/roughness/texture); the mapping lives in
@@ -576,8 +576,9 @@ The shell is a pipeline (ADR-041). What it does NOT do:
   it does not produce a drawing (DXF/SVG sections remain the export
   package's job).
 
-- **Compare is two variants,** not N, and compares as-built geometry with
-  verdict and mass — it does not diff parameters side by side.
+- **Compare is two builds, not N.** Phase 15D synchronizes their cameras and
+  lists changed stored request values, but it does not perform geometric
+  deviation analysis, overlay meshes, or calculate surface-to-surface deltas.
 
 - **Undo history is in-memory** (capped at 100 steps) and lost on reload;
   the durable history is the builds themselves in the strip.

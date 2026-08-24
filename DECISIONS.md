@@ -2728,3 +2728,32 @@ be faster but would violate the product's central CAD truth.
 - `gate_phase15_auto.py` proves named CAD nodes, zero preview persistence,
   stable request hashing, unchanged deterministic STEP output and frontend
   production compilation.
+
+## ADR-050 - Phase 15D: separate form judgement from technical inspection (2026-08-24)
+
+### Decision
+
+1. Studio and Technical are presentation modes over the same loaded CAD scene.
+   Studio uses a neutral ground, ACES tone mapping, one bounded shadow light and
+   a measured 1.7 m staff. Technical uses the adaptive grid and flatter light.
+2. The ground, light and shadow camera derive from model bounds. The staff is
+   fixed at 1.7 scene units because the GLB unit contract converts metres on
+   import; it is a dimension reference, not a decorative human silhouette.
+3. The Add palette previews one focused primitive at a time through the Phase
+   15C kernel route. Starting every registry primitive concurrently would turn
+   opening a palette into several seconds of avoidable CPU contention.
+4. A/B cameras mirror orbit changes. The comparison also loads both immutable
+   build requests and lists changed values, because silhouette alone cannot
+   explain which design decision produced it.
+5. Studio lighting and identification tints remain viewport aids. Only the
+   Phase 9B Blender output may be described as a material or presentation
+   render.
+
+### Consequences
+
+- Designers can switch quickly between proportion judgement and exact working
+  inspection without changing the design or rebuilding geometry.
+- `gate_phase15_auto.py` builds every primitive currently returned by the live
+  registry as a named GLB and proves the operation remains non-persistent.
+- Shadows add one 1024 px map only in Studio mode; Technical mode and its
+  common editing loop retain the lower GPU cost.

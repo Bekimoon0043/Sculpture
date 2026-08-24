@@ -1,14 +1,14 @@
-// Primitive library — the left rail's catalog, driven by the LIVE registry
-// (/api/geometry/assembly/defaults), never a hardcoded list: a primitive
-// added to the backend appears here with no frontend change.
-//
-// Thumbnails are SCHEMATIC line art (drawn SVG, labelled as such in the
-// visual gate), not rendered geometry — rendering every primitive at
-// startup would cost a full OCCT build per card on a machine where each
-// build is seconds (LIMITATIONS.md, Phase 14). Unknown primitives get a
-// generic solid glyph, so the card is never blank.
+// Primitive catalog driven by the live registry. The focused item is rendered
+// from a real kernel GLB; only one preview request runs at a time.
 
-import type { AssemblyDefaultsResponse } from "../api/client";
+import { useEffect, useMemo, useState } from "react";
+import { Box, LoaderCircle, Plus } from "lucide-react";
+import {
+  postAssemblyPreview,
+  type AssemblyDefaultsResponse,
+} from "../api/client";
+import { defaultParams } from "./document";
+import WorkspaceViewport from "./WorkspaceViewport";
 
 interface PrimitiveLibraryProps {
   defaults: AssemblyDefaultsResponse;
@@ -16,92 +16,141 @@ interface PrimitiveLibraryProps {
   disabled: boolean;
 }
 
-const S = {
-  stroke: "var(--text-dim)",
-  accent: "var(--accent)",
-  fill: "none",
-  w: 1.6,
-};
-
-function Glyph({ primitive }: { primitive: string }) {
-  const common = {
-    fill: S.fill,
-    stroke: S.stroke,
-    strokeWidth: S.w,
-    strokeLinejoin: "round" as const,
-  };
-  switch (primitive) {
-    case "plinth":
-      return (
-        <svg viewBox="0 0 64 64" className="lib-glyph" aria-hidden="true">
-          {/* squat truncated cone: wide stable base */}
-          <ellipse cx="32" cy="46" rx="24" ry="7" {...common} />
-          <ellipse cx="32" cy="30" rx="19" ry="6" {...common} />
-          <path d="M8 46 L13 30 M56 46 L51 30" {...common} />
-        </svg>
-      );
-    case "basin_round":
-      return (
-        <svg viewBox="0 0 64 64" className="lib-glyph" aria-hidden="true">
-          {/* open bowl with a water line */}
-          <ellipse cx="32" cy="24" rx="24" ry="8" {...common} />
-          <path d="M8 24 C10 44, 22 50, 32 50 C42 50, 54 44, 56 24" {...common} />
-          <path d="M16 27 C22 31, 42 31, 48 27" stroke={S.accent} strokeWidth={S.w} fill="none" />
-        </svg>
-      );
-    case "sculptural_column":
-      return (
-        <svg viewBox="0 0 64 64" className="lib-glyph" aria-hidden="true">
-          {/* slender column with a bore */}
-          <ellipse cx="32" cy="10" rx="9" ry="4" {...common} />
-          <path d="M23 10 L23 52 M41 10 L41 52" {...common} />
-          <ellipse cx="32" cy="52" rx="9" ry="4" {...common} />
-          <path d="M29 10 L29 52 M35 10 L35 52" stroke={S.stroke} strokeWidth={0.9} strokeDasharray="2 2.5" fill="none" />
-        </svg>
-      );
-    case "cascade":
-      return (
-        <svg viewBox="0 0 64 64" className="lib-glyph" aria-hidden="true">
-          {/* stepped tiers */}
-          <path d="M10 52 H54 M14 52 V40 H50 V52 M20 40 V28 H44 V40 M26 28 V16 H38 V28" {...common} />
-          <path d="M32 16 V10" stroke={S.accent} strokeWidth={S.w} fill="none" />
-        </svg>
-      );
-    default:
-      return (
-        <svg viewBox="0 0 64 64" className="lib-glyph" aria-hidden="true">
-          <path d="M16 22 L32 14 L48 22 L48 44 L32 52 L16 44 Z M16 22 L32 30 L48 22 M32 30 V52" {...common} />
-        </svg>
-      );
-  }
-}
+const NO_TINTS: Record<string, string> = {};
+const NO_HIDDEN = new Set<string>();
 
 export default function PrimitiveLibrary({
   defaults,
   onAdd,
   disabled,
 }: PrimitiveLibraryProps) {
+  const ids = Object.keys(defaults.primitives);
+  const [focused, setFocused] = useState(ids[0] ?? "");
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewMs, setPreviewMs] = useState<number | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const info = defaults.primitives[focused];
+    if (!focused || !info) return;
+    const abort = new AbortController();
+    let nextUrl: string | null = null;
+    setLoading(true);
+    setPreviewError(null);
+    postAssemblyPreview(
+      [{
+        element_id: "primitive_preview",
+        primitive: focused,
+        parameters: defaultParams(info.parameters),
+      }],
+      null,
+      0,
+      abort.signal
+    )
+      .then((preview) => {
+        nextUrl = preview.objectUrl;
+        setPreviewUrl((previous) => {
+          if (previous) URL.revokeObjectURL(previous);
+          return preview.objectUrl;
+        });
+        setPreviewMs(preview.buildMs);
+        setLoading(false);
+      })
+      .catch((error: Error) => {
+        if (error.name === "AbortError") return;
+        setLoading(false);
+        setPreviewError(error.message);
+      });
+    return () => {
+      abort.abort();
+      const completedUrl = nextUrl;
+      if (completedUrl) {
+        setPreviewUrl((current) => {
+          if (current === completedUrl) {
+            URL.revokeObjectURL(completedUrl);
+            return null;
+          }
+          return current;
+        });
+      }
+    };
+  }, [defaults, focused]);
+
+  useEffect(() => () => {
+    setPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+  }, []);
+
+  const glbUrl = useMemo(
+    () => previewUrl ? () => previewUrl : null,
+    [previewUrl]
+  );
+  const focusedInfo = defaults.primitives[focused];
+
   return (
     <div className="lib-panel">
-      <h3>Library</h3>
-      <p className="hint">Click to add to the assembly.</p>
-      {Object.entries(defaults.primitives).map(([id, info]) => (
-        <button
-          key={id}
-          type="button"
-          className="lib-card"
-          disabled={disabled}
-          onClick={() => onAdd(id)}
-          title={info.purpose}
-        >
-          <Glyph primitive={id} />
-          <span className="lib-card-text">
-            <span className="lib-card-name">{id.replace(/_/g, " ")}</span>
-            <span className="lib-card-purpose">{info.purpose}</span>
-          </span>
-          <span className="lib-card-add" aria-hidden="true">+</span>
-        </button>
-      ))}
+      <div className="library-heading">
+        <div>
+          <h3>Add element</h3>
+          <p className="hint">Registry defaults / kernel geometry</p>
+        </div>
+        {previewMs !== null && <span>{Math.round(previewMs)} ms</span>}
+      </div>
+      <div className="primitive-preview">
+        {glbUrl ? (
+          <WorkspaceViewport
+            reloadToken={ids.indexOf(focused)}
+            glbUrl={glbUrl}
+            elementIds={["primitive_preview"]}
+            selectedId={null}
+            onSelect={() => undefined}
+            hiddenIds={NO_HIDDEN}
+            soloId={null}
+            tints={NO_TINTS}
+            measureMode={false}
+            onMeasure={() => undefined}
+            section={null}
+            onModelRendered={() => undefined}
+            onLoadError={(message) => setPreviewError(message)}
+            visualMode="studio"
+            compact
+          />
+        ) : (
+          <div className="primitive-preview-state">
+            {loading ? <LoaderCircle className="spin" size={20} /> : <Box size={20} />}
+            <span>{previewError ? "Preview unavailable" : "Building CAD preview"}</span>
+          </div>
+        )}
+        <div className="primitive-preview-label">
+          <strong>{focused.replace(/_/g, " ")}</strong>
+          <span>{previewError ?? focusedInfo?.purpose}</span>
+        </div>
+      </div>
+      <div className="primitive-options" role="listbox" aria-label="primitive type">
+        {Object.entries(defaults.primitives).map(([id, info]) => (
+          <button
+            key={id}
+            type="button"
+            role="option"
+            aria-selected={focused === id}
+            className={`lib-card ${focused === id ? "is-focused" : ""}`}
+            disabled={disabled}
+            onMouseEnter={() => setFocused(id)}
+            onFocus={() => setFocused(id)}
+            onClick={() => onAdd(id)}
+            title={`Add ${id.replace(/_/g, " ")}: ${info.purpose}`}
+          >
+            <span className="lib-card-text">
+              <span className="lib-card-name">{id.replace(/_/g, " ")}</span>
+              <span className="lib-card-purpose">{info.purpose}</span>
+            </span>
+            <Plus className="lib-card-add" size={16} aria-hidden="true" />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

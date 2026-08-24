@@ -49,6 +49,8 @@ export interface MeasureResult {
 export type StandardView =
   | "front" | "back" | "right" | "left" | "top" | "bottom";
 
+export type ViewportVisualMode = "studio" | "technical";
+
 export interface WorkspaceViewportHandle {
   getCameraPose(): CameraPose | null;
   applyCameraPose(pose: CameraPose): void;
@@ -105,6 +107,9 @@ interface WorkspaceViewportProps {
   section: SectionState | null;
   onModelRendered: () => void;
   onLoadError: (message: string) => void;
+  visualMode?: ViewportVisualMode;
+  compact?: boolean;
+  onCameraChange?: (pose: CameraPose) => void;
 }
 
 /** Ancestor-walking element lookup. Exporters may suffix node names
@@ -143,6 +148,9 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
       section,
       onModelRendered,
       onLoadError,
+      visualMode = "technical",
+      compact = false,
+      onCameraChange,
     },
     ref
   ) {
@@ -159,8 +167,11 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
       renderer: THREE.WebGLRenderer;
       controls: OrbitControls;
       modelGroup: THREE.Group;
+      hemi: THREE.HemisphereLight;
       sun: THREE.DirectionalLight;
       grid: THREE.GridHelper;
+      ground: THREE.Mesh;
+      scaleCue: THREE.Group;
       /** element id -> the meshes that belong to it (cloned materials). */
       byElement: Map<string, THREE.Mesh[]>;
       modelBox: THREE.Box3 | null;
@@ -171,6 +182,8 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
     // Latest interaction props, readable from long-lived event handlers.
     const propsRef = useRef({ measureMode, elementIds, onSelect, onMeasure });
     propsRef.current = { measureMode, elementIds, onSelect, onMeasure };
+    const cameraChangeRef = useRef(onCameraChange);
+    cameraChangeRef.current = onCameraChange;
 
     // ------------------------------------------------------------------ setup
     useEffect(() => {
@@ -198,13 +211,25 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
       renderer.localClippingEnabled = true; // section plane
       container.appendChild(renderer.domElement);
 
-      scene.add(new THREE.HemisphereLight(0xffffff, 0x30363d, 1.1));
+      const hemi = new THREE.HemisphereLight(0xffffff, 0x30363d, 1.1);
+      scene.add(hemi);
       const sun = new THREE.DirectionalLight(0xffffff, 2.0);
       sun.position.set(4000, 6000, 2500);
       scene.add(sun);
       scene.add(sun.target);
       const grid = new THREE.GridHelper(6000, 12, 0x2a3138, 0x1c2229);
       scene.add(grid);
+      const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(1, 1),
+        new THREE.MeshStandardMaterial({ color: 0x8f918c, roughness: 0.96 })
+      );
+      ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      ground.visible = false;
+      scene.add(ground);
+      const scaleCue = makeScaleCue();
+      scaleCue.visible = false;
+      scene.add(scaleCue);
 
       const controls = new OrbitControls(camera, renderer.domElement);
       controls.target.set(0, 900, 0);
@@ -222,6 +247,16 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
       window.addEventListener("keydown", onShift);
       window.addEventListener("keyup", onShift);
       controls.update();
+      const reportCamera = () => {
+        const ctx = ctxRef.current;
+        if (!ctx || !cameraChangeRef.current) return;
+        const active = ctx.projection === "ortho" ? ctx.ortho : ctx.camera;
+        cameraChangeRef.current({
+          position: active.position.toArray() as [number, number, number],
+          target: ctx.controls.target.toArray() as [number, number, number],
+        });
+      };
+      controls.addEventListener("change", reportCamera);
 
       const modelGroup = new THREE.Group();
       scene.add(modelGroup);
@@ -236,8 +271,11 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
         renderer,
         controls,
         modelGroup,
+        hemi,
         sun,
         grid,
+        ground,
+        scaleCue,
         byElement: new Map(),
         modelBox: null,
         measureGroup,
@@ -357,6 +395,7 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
         renderer.domElement.removeEventListener("pointerdown", onPointerDown);
         renderer.domElement.removeEventListener("pointerup", onPointerUp);
         controls.dispose();
+        controls.removeEventListener("change", reportCamera);
         renderer.dispose();
         container.removeChild(renderer.domElement);
         ctxRef.current = null;
@@ -393,6 +432,8 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
               ? mesh.material[0]
               : mesh.material) as THREE.MeshStandardMaterial;
             mesh.material = mat.clone();
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
             if (id) {
               const list = ctx.byElement.get(id) ?? [];
               list.push(mesh);
@@ -415,8 +456,27 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
           (ctx.grid.material as THREE.Material).dispose();
           const grid = new THREE.GridHelper(radius * 6, 12, 0x2a3138, 0x1c2229);
           grid.position.y = box.min.y - radius * 0.02;
+          grid.visible = !ctx.ground.visible;
           ctx.scene.add(grid);
           ctx.grid = grid;
+
+          ctx.ground.position.set(centre.x, box.min.y - radius * 0.022, centre.z);
+          ctx.ground.scale.set(radius * 7, radius * 7, 1);
+          ctx.scaleCue.position.set(
+            box.min.x - radius * 0.32,
+            box.min.y,
+            box.min.z - radius * 0.12
+          );
+
+          const shadowExtent = Math.max(radius * 2.2, 2);
+          ctx.sun.shadow.mapSize.set(1024, 1024);
+          ctx.sun.shadow.camera.left = -shadowExtent;
+          ctx.sun.shadow.camera.right = shadowExtent;
+          ctx.sun.shadow.camera.top = shadowExtent;
+          ctx.sun.shadow.camera.bottom = -shadowExtent;
+          ctx.sun.shadow.camera.near = Math.max(radius * 0.01, 0.01);
+          ctx.sun.shadow.camera.far = radius * 14;
+          ctx.sun.shadow.camera.updateProjectionMatrix();
 
           ctx.sun.position.set(
             centre.x + radius * 4,
@@ -467,6 +527,27 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
       }
     };
     useEffect(restyle, [selectedId, hiddenIds, soloId, tints, reloadToken]);
+
+    // Studio is a judgement surface: neutral ground, soft light and one
+    // fixed 1.7 m reference. Technical keeps the dark grid and flat clarity.
+    useEffect(() => {
+      const ctx = ctxRef.current;
+      if (!ctx) return;
+      const studio = visualMode === "studio";
+      ctx.scene.background = new THREE.Color(studio ? 0x343632 : 0x101418);
+      ctx.grid.visible = !studio;
+      ctx.ground.visible = studio;
+      ctx.scaleCue.visible = studio;
+      ctx.hemi.intensity = studio ? 1.8 : 1.1;
+      ctx.hemi.groundColor.set(studio ? 0x5f625c : 0x30363d);
+      ctx.sun.intensity = studio ? 2.7 : 2.0;
+      ctx.sun.castShadow = studio;
+      ctx.renderer.shadowMap.enabled = studio;
+      ctx.renderer.toneMapping = studio
+        ? THREE.ACESFilmicToneMapping
+        : THREE.NoToneMapping;
+      ctx.renderer.toneMappingExposure = studio ? 1.05 : 1;
+    }, [visualMode, reloadToken]);
 
     // ------------------------------------------------------------- section
     const applySection = () => {
@@ -618,7 +699,7 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
     return (
       <div ref={containerRef} className="viewport-canvas">
         <div ref={labelRef} className="measure-label" style={{ display: "none" }} />
-        <div
+        {!compact && <div
           ref={gizmoRef}
           className="axis-gizmo"
           title="Click an axis to snap the view (1/3/7 front-right-top, Shift for opposites)"
@@ -634,7 +715,7 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
               {a.label}
             </button>
           ))}
-        </div>
+        </div>}
       </div>
     );
   }
@@ -687,6 +768,22 @@ function disposeGroup(group: THREE.Group) {
       for (const m of mats) m.dispose();
     }
   });
+}
+
+/** A literal 1.7 m scale staff. It is intentionally a measured cue rather
+ * than a decorative person silhouette whose implied dimensions could drift. */
+function makeScaleCue(): THREE.Group {
+  const group = new THREE.Group();
+  const material = new THREE.MeshBasicMaterial({ color: 0xe7e4dc });
+  const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 1.7, 10), material);
+  staff.position.y = 0.85;
+  group.add(staff);
+  for (const height of [0, 0.5, 1, 1.5, 1.7]) {
+    const tick = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.018, 0.018), material.clone());
+    tick.position.y = height;
+    group.add(tick);
+  }
+  return group;
 }
 
 function addMeasurePoint(

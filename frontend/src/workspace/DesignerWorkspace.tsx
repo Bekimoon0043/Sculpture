@@ -19,6 +19,7 @@ import {
   BookmarkPlus,
   Box,
   Copy,
+  DraftingCompass,
   Focus,
   Hammer,
   KeyRound,
@@ -28,6 +29,7 @@ import {
   Redo2,
   Ruler,
   ScanLine,
+  Sun,
   Undo2,
 } from "lucide-react";
 import {
@@ -70,6 +72,7 @@ import WorkspaceViewport, {
   type MeasureResult,
   type SectionState,
   type StandardView,
+  type ViewportVisualMode,
   type WorkspaceViewportHandle,
   formatMm,
 } from "./WorkspaceViewport";
@@ -244,15 +247,19 @@ export default function DesignerWorkspace({
   );
   const [keymapOpen, setKeymapOpen] = useState(false);
   const [projection, setProjection] = useState<"persp" | "ortho">("persp");
+  const [visualMode, setVisualMode] = useState<ViewportVisualMode>(() =>
+    localStorage.getItem("lf_viewport_mode") === "studio" ? "studio" : "technical"
+  );
   const [renameRequestId, setRenameRequestId] = useState<string | null>(null);
   useEffect(() => {
     try {
       localStorage.setItem("lf_rail_left", leftOpen ? "open" : "closed");
       localStorage.setItem("lf_rail_right", rightOpen ? "open" : "closed");
+      localStorage.setItem("lf_viewport_mode", visualMode);
     } catch {
       /* convenience only */
     }
-  }, [leftOpen, rightOpen]);
+  }, [leftOpen, rightOpen, visualMode]);
 
   const viewportRef = useRef<WorkspaceViewportHandle>(null);
   const pendingThumbFor = useRef<string | null>(null);
@@ -901,6 +908,26 @@ export default function DesignerWorkspace({
           </button>
         </div>
         <div className="ws-group ws-views">
+          <div className="view-mode segmented" aria-label="Viewport appearance">
+            <button
+              type="button"
+              className={visualMode === "studio" ? "is-on" : ""}
+              onClick={() => setVisualMode("studio")}
+              title="Studio: neutral ground, lighting and 1.7 m scale reference"
+            >
+              <Sun size={14} />
+              <span>Studio</span>
+            </button>
+            <button
+              type="button"
+              className={visualMode === "technical" ? "is-on" : ""}
+              onClick={() => setVisualMode("technical")}
+              title="Technical: dark grid for selection, measure and section work"
+            >
+              <DraftingCompass size={14} />
+              <span>Technical</span>
+            </button>
+          </div>
           <select
             value=""
             onChange={(e) => {
@@ -1084,6 +1111,7 @@ export default function DesignerWorkspace({
             <CompareView
               a={compareEntries[0]}
               b={compareEntries[1]}
+              visualMode={visualMode}
               onClose={() => setCompareIds([])}
             />
           ) : glbUrl ? (
@@ -1108,13 +1136,11 @@ export default function DesignerWorkspace({
               onLoadError={(m) =>
                 onFatal(`Viewport could not load the scene: ${m}`)
               }
+              visualMode={visualMode}
             />
           ) : (
             <div className="ws-empty">
-              <p>
-                No build yet. The document on the left is ready — press{" "}
-                <strong>Build &amp; validate</strong> to see it.
-              </p>
+              <p>Preparing the first CAD draft preview.</p>
             </div>
           )}
           {(dirty || !activeDesignId) && (
