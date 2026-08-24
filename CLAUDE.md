@@ -76,6 +76,11 @@ dependency is now closed; what remains is the operator's live-spend gate.
 library / selectable viewport / inspector / history strip, undo-redo,
 hide-solo, swatches, measure, section plane, saved views, 2-up compare;
 per-element named-node `scene.glb` + per-design read routes backend-side.
+**Phase 14b (Blender-familiar controls) 2026-08-24** (ADR-046, frontend
+only) — 1/3/7/5 view keys, ortho toggle, axis gizmo, MMB orbit +
+Shift+MMB pan, frame-selected, outliner rename, T/N rail collapse, `?`
+keymap card; no G/R/S by design (joints + parameters are the only editing
+path).
 
 Thirteen auto gates, all $0 and offline:
 `gate_phase2/3/4/5/6a1/costing/8/8b/9a/9b/11/13a/14_auto.py`.
@@ -91,7 +96,8 @@ which sections it covered.
 
 Awaiting the operator's visual gates: `gate_phase8_visual.md`,
 `gate_phase9a_visual.md`, `gate_phase11_13a_visual.md`,
-`gate_phase9b_visual.md`, `gate_phase5_visual.md`, `gate_phase14_visual.md`.
+`gate_phase9b_visual.md`, `gate_phase5_visual.md`, `gate_phase14_visual.md`,
+`gate_phase14b_visual.md`.
 
 **Phase 9B.5 + Phase 5 live run 2026-08-24 (ADR-045)** — USD/USDZ/FBX/ABC
 are produced by the render worker (not sealed into LUXEXCHANGE: they are not

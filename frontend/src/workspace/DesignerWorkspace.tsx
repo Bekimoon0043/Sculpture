@@ -53,6 +53,7 @@ import WorkspaceViewport, {
   type CameraPose,
   type MeasureResult,
   type SectionState,
+  type StandardView,
   type WorkspaceViewportHandle,
   formatMm,
 } from "./WorkspaceViewport";
@@ -147,6 +148,9 @@ function variantLabel(primitives: string[]): string {
 
 interface DesignerWorkspaceProps {
   intake: IntakeResponse | null;
+  /** False while another view is shown — the workspace stays mounted but
+   *  its keyboard map must not swallow keys meant for that view. */
+  active: boolean;
   onFatal: (message: string) => void;
   /** Pipeline facts the App shell derives the stepper/status bar from. */
   onPipelineChange: (facts: {
@@ -158,6 +162,7 @@ interface DesignerWorkspaceProps {
 
 export default function DesignerWorkspace({
   intake,
+  active,
   onFatal,
   onPipelineChange,
 }: DesignerWorkspaceProps) {
@@ -200,6 +205,26 @@ export default function DesignerWorkspace({
   const [renderJob, setRenderJob] = useState<RenderJob | null>(null);
   const [renderNote, setRenderNote] = useState<string | null>(null);
   const renderAbort = useRef(false);
+
+  // Blender-familiar chrome (Phase 14b): collapsible rails (T/N), keymap
+  // overlay (?), projection indicator (5), outliner rename (F2).
+  const [leftOpen, setLeftOpen] = useState(
+    () => localStorage.getItem("lf_rail_left") !== "closed"
+  );
+  const [rightOpen, setRightOpen] = useState(
+    () => localStorage.getItem("lf_rail_right") !== "closed"
+  );
+  const [keymapOpen, setKeymapOpen] = useState(false);
+  const [projection, setProjection] = useState<"persp" | "ortho">("persp");
+  const [renameRequestId, setRenameRequestId] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      localStorage.setItem("lf_rail_left", leftOpen ? "open" : "closed");
+      localStorage.setItem("lf_rail_right", rightOpen ? "open" : "closed");
+    } catch {
+      /* convenience only */
+    }
+  }, [leftOpen, rightOpen]);
 
   const viewportRef = useRef<WorkspaceViewportHandle>(null);
   const pendingThumbFor = useRef<string | null>(null);
@@ -327,31 +352,156 @@ export default function DesignerWorkspace({
     [dispatch]
   );
 
-  // Keyboard: undo/redo/delete — never while typing in a field.
+  const onRename = useCallback(
+    (oldId: string, rawNewId: string) => {
+      // Mirror the reducer's validity rules BEFORE remapping UI state, so a
+      // rejected rename (taken/invalid name) never leaves selection or
+      // hide/solo pointing at an id that does not exist.
+      const newId = rawNewId.trim();
+      if (
+        !doc ||
+        !newId ||
+        newId === oldId ||
+        !/^[a-z0-9_]+$/i.test(newId) ||
+        doc.elements.some((e) => e.element_id === newId) ||
+        !doc.elements.some((e) => e.element_id === oldId)
+      ) {
+        return;
+      }
+      dispatch({ kind: "rename", elementId: oldId, newId });
+      setSelectedId((s) => (s === oldId ? newId : s));
+      setSoloId((s) => (s === oldId ? newId : s));
+      setHiddenIds((prev) => {
+        if (!prev.has(oldId)) return prev;
+        const next = new Set(prev);
+        next.delete(oldId);
+        next.add(newId);
+        return next;
+      });
+    },
+    [doc, dispatch]
+  );
+
+  // Keyboard — the Blender-derived map (Phase 14b). Top-row digits, not
+  // numpad-only: the operator's laptop has no numpad. Never fires while
+  // typing in a field; Ctrl+digit is left to the browser (tab switching).
   useEffect(() => {
+    if (!active) return;
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      const vp = viewportRef.current;
+
+      // --- history ------------------------------------------------------
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
         e.preventDefault();
         setHistory((h) => (h ? undo(h) : h));
-      } else if (
+        return;
+      }
+      if (
         ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") ||
         ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "z")
       ) {
         e.preventDefault();
         setHistory((h) => (h ? redo(h) : h));
-      } else if (e.key === "Delete" && selectedId) {
+        return;
+      }
+      if (e.ctrlKey || e.metaKey) return; // everything below is unmodified keys
+
+      // --- views (1/3/7 + Shift opposites, 5 ortho, ./Home framing) ------
+      const viewByCode: Record<string, [string, string]> = {
+        Digit1: ["front", "back"],
+        Numpad1: ["front", "back"],
+        Digit3: ["right", "left"],
+        Numpad3: ["right", "left"],
+        Digit7: ["top", "bottom"],
+        Numpad7: ["top", "bottom"],
+      };
+      if (viewByCode[e.code]) {
+        e.preventDefault();
+        const [plain, shifted] = viewByCode[e.code];
+        vp?.applyStandardView((e.shiftKey ? shifted : plain) as StandardView);
+        return;
+      }
+      if (e.code === "Digit5" || e.code === "Numpad5") {
+        e.preventDefault();
+        const mode = vp?.toggleProjection();
+        if (mode) setProjection(mode);
+        return;
+      }
+      if (e.code === "Home") {
+        e.preventDefault();
+        vp?.frameAll();
+        return;
+      }
+      if (e.code === "Period" || e.code === "NumpadDecimal") {
+        e.preventDefault();
+        if (selectedId) vp?.frameSelected(selectedId);
+        else vp?.frameAll();
+        return;
+      }
+
+      // --- selection-centric --------------------------------------------
+      if (e.shiftKey && e.code === "KeyD" && selectedId) {
+        e.preventDefault();
+        onDuplicate(selectedId);
+        return;
+      }
+      if (e.code === "KeyH") {
+        e.preventDefault();
+        if (e.altKey) {
+          setHiddenIds(new Set());
+          setSoloId(null);
+        } else if (selectedId) {
+          setHiddenIds((prev) => {
+            const next = new Set(prev);
+            next.add(selectedId);
+            return next;
+          });
+        }
+        return;
+      }
+      if (e.key === "/" && !e.shiftKey) {
+        e.preventDefault();
+        if (selectedId) setSoloId((s) => (s === selectedId ? null : selectedId));
+        return;
+      }
+      if (e.key === "?") {
+        e.preventDefault();
+        setKeymapOpen((k) => !k);
+        return;
+      }
+      if (e.code === "F2" && selectedId) {
+        e.preventDefault();
+        setRenameRequestId(selectedId);
+        return;
+      }
+      if ((e.key === "Delete" || e.code === "KeyX") && selectedId) {
         e.preventDefault();
         onRemove(selectedId);
-      } else if (e.key === "Escape") {
+        return;
+      }
+
+      // --- chrome --------------------------------------------------------
+      if (e.code === "KeyT") {
+        e.preventDefault();
+        setLeftOpen((v) => !v);
+        return;
+      }
+      if (e.code === "KeyN") {
+        e.preventDefault();
+        setRightOpen((v) => !v);
+        return;
+      }
+      if (e.key === "Escape") {
+        setKeymapOpen(false);
         setMeasureMode(false);
         setSelectedId(null);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, onRemove]);
+  }, [active, selectedId, onRemove, onDuplicate]);
 
   // ------------------------------------------------------------- build
   const intakeReady = Boolean(intake && intake.status === "confirmed");
@@ -579,6 +729,7 @@ export default function DesignerWorkspace({
             type="button"
             disabled={!selectedId}
             onClick={() => selectedId && onDuplicate(selectedId)}
+            title="Duplicate the selected element (Shift+D)"
           >
             Duplicate
           </button>
@@ -656,9 +807,20 @@ export default function DesignerWorkspace({
           <button
             type="button"
             onClick={() => viewportRef.current?.frameAll()}
-            title="Frame the whole model"
+            title="Frame the whole model (Home) · frame selected (.)"
           >
             ⛶ Frame
+          </button>
+          <button
+            type="button"
+            className={projection === "ortho" ? "is-on" : ""}
+            onClick={() => {
+              const mode = viewportRef.current?.toggleProjection();
+              if (mode) setProjection(mode);
+            }}
+            title="Orthographic ⇄ perspective (5) — judge proportions in ortho, depth in perspective"
+          >
+            {projection === "ortho" ? "Ortho" : "Persp"}
           </button>
           <select
             value=""
@@ -706,11 +868,26 @@ export default function DesignerWorkspace({
               UNBUILT CHANGES
             </span>
           )}
+          <button
+            type="button"
+            className={keymapOpen ? "is-on" : ""}
+            onClick={() => setKeymapOpen((k) => !k)}
+            title="Keymap (?)"
+          >
+            ⌨ Keys
+          </button>
         </div>
       </div>
 
       {/* ------------------------------------------------------ body ---- */}
-      <div className="ws-body">
+      <div
+        className={[
+          "ws-body",
+          leftOpen ? "" : "left-closed",
+          rightOpen ? "" : "right-closed",
+        ].join(" ")}
+      >
+        {leftOpen && (
         <aside className="ws-left">
           <ErrorBoundary label="Library">
             <PrimitiveLibrary defaults={defaults} onAdd={onAdd} disabled={busy} />
@@ -732,6 +909,9 @@ export default function DesignerWorkspace({
                 })
               }
               onToggleSolo={(id) => setSoloId((s) => (s === id ? null : id))}
+              onRename={onRename}
+              renameRequestId={renameRequestId}
+              onRenameRequestHandled={() => setRenameRequestId(null)}
             />
           </ErrorBoundary>
           <div className="ws-buildopts">
@@ -786,6 +966,7 @@ export default function DesignerWorkspace({
             )}
           </div>
         </aside>
+        )}
 
         <div className="ws-center">
           {compareEntries.length === 2 ? (
@@ -839,8 +1020,16 @@ export default function DesignerWorkspace({
               Measure: click two points on the model — Esc to exit
             </div>
           )}
+          {compareEntries.length !== 2 && glbUrl && (
+            <div className="ws-mouse-hints" aria-hidden="true">
+              {measureMode
+                ? "LMB pick point · Esc cancel"
+                : "LMB select / orbit · MMB orbit · Shift+MMB pan · wheel zoom · 1/3/7 views · 5 ortho · ? keys"}
+            </div>
+          )}
         </div>
 
+        {rightOpen && (
         <aside className="ws-right">
           <ErrorBoundary label="Inspector">
             <InspectorPanel
@@ -875,6 +1064,7 @@ export default function DesignerWorkspace({
             />
           </ErrorBoundary>
         </aside>
+        )}
       </div>
 
       {/* ------------------------------------------------- history ------ */}
@@ -895,6 +1085,51 @@ export default function DesignerWorkspace({
           }
         />
       </ErrorBoundary>
+
+      {/* ------------------------------------------------- keymap ------- */}
+      {keymapOpen && (
+        <div className="keymap-overlay" onClick={() => setKeymapOpen(false)}>
+          <div className="keymap-card" onClick={(e) => e.stopPropagation()}>
+            <div className="keymap-head">
+              <h3>Keymap — Blender-style</h3>
+              <button type="button" onClick={() => setKeymapOpen(false)}>
+                Close (Esc)
+              </button>
+            </div>
+            <div className="keymap-cols">
+              <dl>
+                <dt>Views</dt>
+                <dd><kbd>1</kbd>/<kbd>3</kbd>/<kbd>7</kbd> front / right / top</dd>
+                <dd><kbd>Shift</kbd>+<kbd>1</kbd>/<kbd>3</kbd>/<kbd>7</kbd> back / left / bottom</dd>
+                <dd><kbd>5</kbd> orthographic ⇄ perspective</dd>
+                <dd><kbd>.</kbd> frame selected · <kbd>Home</kbd> frame all</dd>
+                <dd>Axis gizmo (top right): click a dot to snap</dd>
+              </dl>
+              <dl>
+                <dt>Mouse</dt>
+                <dd>LMB click select · LMB drag / MMB orbit</dd>
+                <dd><kbd>Shift</kbd>+MMB or RMB pan · wheel zoom</dd>
+                <dt>Edit</dt>
+                <dd><kbd>Shift</kbd>+<kbd>D</kbd> duplicate · <kbd>X</kbd>/<kbd>Del</kbd> delete</dd>
+                <dd><kbd>F2</kbd> or double-click rename</dd>
+                <dd><kbd>Ctrl</kbd>+<kbd>Z</kbd>/<kbd>Y</kbd> undo / redo</dd>
+              </dl>
+              <dl>
+                <dt>Show</dt>
+                <dd><kbd>H</kbd> hide · <kbd>Alt</kbd>+<kbd>H</kbd> unhide all · <kbd>/</kbd> solo</dd>
+                <dt>Panels</dt>
+                <dd><kbd>T</kbd> library rail · <kbd>N</kbd> inspector rail</dd>
+                <dd><kbd>Esc</kbd> deselect / exit mode · <kbd>?</kbd> this card</dd>
+              </dl>
+            </div>
+            <p className="hint">
+              No move/rotate keys on purpose: elements are placed by joints
+              and parameters, not dragged — the kernel draws, the document
+              decides (ADR-044).
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ------------------------------------------------- render drawer */}
       {renderOpen && (

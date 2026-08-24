@@ -577,3 +577,20 @@ The shell is a pipeline (ADR-041). What it does NOT do:
 
 - **Undo history is in-memory** (capped at 100 steps) and lost on reload;
   the durable history is the builds themselves in the strip.
+
+**Phase 14b addendum (Blender-familiar controls, 2026-08-24):**
+
+- **No grab/rotate/scale keys (G/R/S), by design, and stated in the keymap
+  card:** elements are placed by joints and parameters — there is nothing
+  free-form for a transform gizmo to move. This repeats the "no rotation"
+  limit above from the interaction side.
+- **Single selection only.** No box select, no multi-select, no A
+  select-all; operations act on one element.
+- **No command palette (F3).** The keymap overlay (`?`) is the
+  discoverability surface for now.
+- **Saved views do not store orthographic zoom** — a view saved while
+  zoomed in ortho restores at the equivalent perspective distance instead.
+- **View shortcuts use top-row digits** (1/3/7/5 with Shift variants), not
+  only the numpad — the operator's laptop has none. Ctrl+digit is left to
+  the browser (tab switching), which is why opposites are on Shift, unlike
+  Blender's Ctrl.

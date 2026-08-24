@@ -6,6 +6,7 @@
 // an element added since the last build is listed but marked "unbuilt",
 // because there is no geometry of it to show or hide yet.
 
+import { useEffect, useRef, useState } from "react";
 import type { ElementDoc } from "./document";
 
 interface ScenePanelProps {
@@ -18,6 +19,11 @@ interface ScenePanelProps {
   onSelect: (id: string | null) => void;
   onToggleHidden: (id: string) => void;
   onToggleSolo: (id: string) => void;
+  /** Blender-outliner rename: double-click (or F2 on the selection). */
+  onRename: (id: string, newId: string) => void;
+  /** Set by the F2 shortcut; the panel opens that row's editor. */
+  renameRequestId: string | null;
+  onRenameRequestHandled: () => void;
 }
 
 function jointText(el: ElementDoc): string {
@@ -36,7 +42,29 @@ export default function ScenePanel({
   onSelect,
   onToggleHidden,
   onToggleSolo,
+  onRename,
+  renameRequestId,
+  onRenameRequestHandled,
 }: ScenePanelProps) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const editRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (renameRequestId) {
+      setEditingId(renameRequestId);
+      onRenameRequestHandled();
+    }
+  }, [renameRequestId, onRenameRequestHandled]);
+  useEffect(() => {
+    if (editingId) editRef.current?.select();
+  }, [editingId]);
+
+  const commitRename = (oldId: string, raw: string) => {
+    setEditingId(null);
+    const next = raw.trim();
+    if (next && next !== oldId) onRename(oldId, next);
+  };
+
   return (
     <div className="scene-panel">
       <h3>Scene</h3>
@@ -57,15 +85,31 @@ export default function ScenePanel({
                 built ? "" : "is-unbuilt",
               ].join(" ")}
             >
-              <button
-                type="button"
-                className="scene-name"
-                onClick={() => onSelect(el.element_id)}
-                title={`${el.primitive} — ${jointText(el)}`}
-              >
-                <span>{el.element_id}</span>
-                <small>{built ? jointText(el) : "unbuilt — press Build"}</small>
-              </button>
+              {editingId === el.element_id ? (
+                <input
+                  ref={editRef}
+                  className="scene-rename"
+                  defaultValue={el.element_id}
+                  onBlur={(e) => commitRename(el.element_id, e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter")
+                      commitRename(el.element_id, e.currentTarget.value);
+                    if (e.key === "Escape") setEditingId(null);
+                    e.stopPropagation();
+                  }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="scene-name"
+                  onClick={() => onSelect(el.element_id)}
+                  onDoubleClick={() => setEditingId(el.element_id)}
+                  title={`${el.primitive} — ${jointText(el)}\ndouble-click (or F2) to rename`}
+                >
+                  <span>{el.element_id}</span>
+                  <small>{built ? jointText(el) : "unbuilt — press Build"}</small>
+                </button>
+              )}
               <button
                 type="button"
                 className={`scene-tool ${hidden ? "is-on" : ""}`}

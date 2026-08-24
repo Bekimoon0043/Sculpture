@@ -129,3 +129,44 @@ docker compose --profile render up -d render-worker
 ```
 
 Then open http://localhost:5173 and walk `gate_phase14_visual.md`.
+
+---
+
+## Amendment — Phase 14b: window audit + Blender-familiar controls (2026-08-24)
+
+Directive: "check every window design, then make them easy to use for
+designers, like Blender." Audit table and keymap rationale:
+`PHASE_14B_BLENDER_UX_PLAN.md`; decisions: ADR-046; new limits:
+LIMITATIONS.md §18 addendum.
+
+Added, all frontend-only (no backend files touched, container suite
+unaffected):
+
+- **Viewport:** MMB orbit + Shift+MMB pan alongside LMB; 1/3/7 view keys
+  with Shift opposites; `5` orthographic ⇄ perspective (two cameras, the
+  perspective pose is the single truth); `.` frame-selected keeping the
+  current angle, `Home` frame all; a clickable axis gizmo positioned per
+  frame from the camera quaternion; a Blender-status-bar-style mouse-hint
+  line.
+- **Outliner:** double-click / F2 inline rename with joints re-pointed
+  atomically and UI state remapped only on a valid rename.
+- **Keys:** Shift+D duplicate, H hide, Alt+H unhide all, `/` solo, X
+  delete, T/N rail collapse (persisted), `?` keymap card. The map is
+  active only while the Designer view is shown.
+- **Discoverability:** every toolbar tooltip names its shortcut; the `?`
+  card is the reference; the keymap card states why G/R/S do not exist
+  (joints + parameters are the only honest editing path, ADR-044).
+
+## PHASE 14B GATE: PASS (auto frontend section, 2026-08-24)
+
+`python scripts\gate_phase14_auto.py --frontend-only` (tsc strict + vite):
+
+```
+[5/5] FRONTEND BUILD — tsc strict + vite, offline
+  ✓ built in 749ms
+ok — typecheck and production build pass
+PASS — all sections that ran passed at $0 with no network
+```
+
+Visual gate awaiting the operator: `gate_phase14b_visual.md` (four
+sections: discoverability, navigation, outliner editing, panels).

@@ -316,6 +316,7 @@ export default function App() {
           <ErrorBoundary label="Designer workspace">
             <DesignerWorkspace
               intake={intake}
+              active={view === "designer"}
               onFatal={setFatalError}
               onPipelineChange={onPipelineChange}
             />

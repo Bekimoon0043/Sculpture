@@ -1454,3 +1454,147 @@ main.designer-main {
   color: var(--text-dim);
   margin-top: 3px;
 }
+
+/* ===========================================================================
+   Phase 14b — Blender-familiar chrome: axis gizmo, keymap, rails, rename
+   =========================================================================== */
+
+/* Collapsible rails (T / N). The grid loses the track entirely — the
+   viewport takes the space, as in Blender. */
+.ws-body.left-closed { grid-template-columns: 0 minmax(0, 1fr) 380px; }
+.ws-body.right-closed { grid-template-columns: 248px minmax(0, 1fr) 0; }
+.ws-body.left-closed.right-closed {
+  grid-template-columns: 0 minmax(0, 1fr) 0;
+}
+
+/* Mouse-hint line — Blender's status-bar idea, kept inside the viewport. */
+.ws-mouse-hints {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: rgba(10, 14, 18, 0.72);
+  border-radius: 5px;
+  padding: 3px 8px;
+  pointer-events: none;
+  z-index: 3;
+  white-space: nowrap;
+}
+
+/* Axis gizmo — top-right navigation ball. Dots are positioned every frame
+   from the camera quaternion; colours follow Blender's axis convention. */
+.axis-gizmo {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  background: rgba(16, 20, 24, 0.35);
+  z-index: 3;
+}
+.axis-gizmo:hover { background: rgba(16, 20, 24, 0.6); }
+.gizmo-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin: -9px 0 0 -9px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  font-size: 10px;
+  font-weight: 700;
+  color: #14100a;
+  cursor: pointer;
+  padding: 0;
+  line-height: 18px;
+}
+.gizmo-dot.gx { background: #e2586b; }
+.gizmo-dot.gy { background: #79c141; }
+.gizmo-dot.gz { background: #4f7fd9; }
+.gizmo-dot.neg {
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  background: var(--bg-raised);
+  border: 2px solid;
+}
+.gizmo-dot.gx.neg { border-color: #e2586b; }
+.gizmo-dot.gy.neg { border-color: #79c141; }
+.gizmo-dot.gz.neg { border-color: #4f7fd9; }
+
+/* Outliner rename */
+.scene-rename {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-input);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 3px 5px;
+}
+
+/* Keymap overlay */
+.keymap-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 8, 10, 0.55);
+  display: grid;
+  place-items: center;
+  z-index: 8;
+}
+.keymap-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 16px 18px;
+  max-width: 760px;
+  width: min(760px, calc(100vw - 60px));
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.55);
+}
+.keymap-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.keymap-head h3 { margin: 0; font-size: 15px; }
+.keymap-head button {
+  background: var(--bg-raised);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.keymap-cols {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0 22px;
+}
+.keymap-cols dl { margin: 0; }
+.keymap-cols dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin: 10px 0 4px;
+}
+.keymap-cols dt:first-child { margin-top: 0; }
+.keymap-cols dd {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.keymap-cols kbd {
+  background: var(--bg-input);
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 11px;
+  font-family: inherit;
+}

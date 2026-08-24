@@ -110,6 +110,7 @@ export type DocAction =
       value: number | string | null;
     }
   | { kind: "set-joint"; elementId: string; joint: JointDoc | undefined }
+  | { kind: "rename"; elementId: string; newId: string }
   | { kind: "set-seed"; seed: number }
   | { kind: "set-gate-profile"; gateProfileId: string }
   | { kind: "set-fabrication"; name: string; value: number }
@@ -166,6 +167,30 @@ function mutate(doc: DesignDoc, action: DocAction): DesignDoc {
           e.element_id === action.elementId ? { ...e, joint: action.joint } : e
         ),
       };
+    case "rename": {
+      // Ids are the joint reference keys — a rename must re-point every
+      // child, or the build would refuse an unknown parent.
+      const newId = action.newId.trim();
+      if (
+        !newId ||
+        newId === action.elementId ||
+        !/^[a-z0-9_]+$/i.test(newId) ||
+        doc.elements.some((e) => e.element_id === newId)
+      ) {
+        return doc; // invalid or taken — a no-op, never a silent mangle
+      }
+      return {
+        ...doc,
+        elements: doc.elements.map((e) => ({
+          ...e,
+          element_id: e.element_id === action.elementId ? newId : e.element_id,
+          joint:
+            e.joint?.parent === action.elementId
+              ? { ...e.joint, parent: newId }
+              : e.joint,
+        })),
+      };
+    }
     case "set-seed":
       return { ...doc, seed: action.seed };
     case "set-gate-profile":

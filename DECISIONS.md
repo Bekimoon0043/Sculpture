@@ -2584,3 +2584,52 @@ at two different pictures is not consensus.
 - The four Blender formats are downloadable but never inside LUXEXCHANGE. If a
   future toolchain makes them byte-stable, flipping `deterministic=True` is the
   whole change.
+
+## ADR-046 — Phase 14b: the Blender-derived interaction layer (2026-08-24)
+
+### Context
+
+The operator's directive: audit every workspace window, then make the tool
+feel familiar to designers who know Blender. The audit table is in
+`PHASE_14B_BLENDER_UX_PLAN.md`; this records the decisions that will look
+deliberate-or-wrong in a year.
+
+### Decision
+
+1. **Adopt Blender's navigation and outliner vocabulary, not its transform
+   vocabulary.** Views (1/3/7, 5 ortho, `.`/Home framing, axis gizmo),
+   visibility (H, Alt+H, / solo), outliner rename (F2 / double-click),
+   Shift+D duplicate, T/N rail toggles, `?` keymap card. G/R/S do NOT
+   exist: the placement model is joints + parameters (ADR-044), and a grab
+   key that silently edited joint offsets would blur the one honest
+   editing path. The keymap card says this out loud.
+2. **Keymap deviations from Blender, with reasons:** top-row digits as
+   well as numpad (the operator's laptop has no numpad); opposite views on
+   Shift+digit rather than Ctrl+digit (Ctrl+digit is browser tab
+   switching and cannot be reliably intercepted); LMB-drag still orbits
+   alongside MMB (browser users' habit; Blender users' MMB both work).
+3. **Two cameras, one truth.** The perspective camera remains the sole
+   pose authority; the orthographic twin mirrors it on every sync, and
+   ortho zoom is folded back into perspective distance on toggle so the
+   model never jumps size. Framing, saved views and snapshots all act on
+   the perspective pose (a view saved in ortho loses only its zoom —
+   LIMITATIONS §18).
+4. **The gizmo and hint line are DOM, not scene objects** — positioned per
+   frame from the camera quaternion. No second scene, no render-target
+   cost on an iGPU; and the hint line doubles as Blender's status-bar
+   mouse legend, which is the single cheapest discoverability feature the
+   audit found missing.
+5. **Rename re-points joints atomically** in the document reducer, and
+   UI state (selection, hide/solo) remaps only when the rename validates —
+   the same rules checked in both places so a rejected rename is a no-op
+   everywhere. A renamed element reads "unbuilt" until the next build
+   because the scene GLB still carries the old node name; the honest state,
+   not a cosmetic patch-over.
+
+### Consequences
+
+- UI-only: no backend files changed, so the container gate suite is
+  untouched; `gate_phase14_auto.py --frontend-only` covers the compile and
+  `gate_phase14b_visual.md` covers the behaviour.
+- The workspace keyboard map is inert unless the Designer view is active —
+  it must never swallow keys under the Brief or Council forms.

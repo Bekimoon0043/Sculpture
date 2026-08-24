@@ -46,13 +46,48 @@ export interface MeasureResult {
   b: [number, number, number];
 }
 
+export type StandardView =
+  | "front" | "back" | "right" | "left" | "top" | "bottom";
+
 export interface WorkspaceViewportHandle {
   getCameraPose(): CameraPose | null;
   applyCameraPose(pose: CameraPose): void;
   frameAll(): void;
+  /** Frame one element's built meshes (Blender numpad-period). */
+  frameSelected(elementId: string): void;
+  /** Snap to an axis view (Blender numpad 1/3/7 and shifted opposites). */
+  applyStandardView(view: StandardView): void;
+  /** Orthographic ⇄ perspective (Blender numpad 5). Returns the new mode. */
+  toggleProjection(): "persp" | "ortho";
   /** PNG data URL of the current frame, rendered fresh at capture time. */
   snapshot(width?: number): string | null;
 }
+
+/** Camera directions per standard view, in the viewport's Y-up world (the
+ *  GLB arrives Y-up from OCCT). Top/bottom need a non-collinear up vector. */
+const VIEW_DIRS: Record<StandardView, [THREE.Vector3, THREE.Vector3]> = {
+  front: [new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 1, 0)],
+  back: [new THREE.Vector3(0, 0, -1), new THREE.Vector3(0, 1, 0)],
+  right: [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0)],
+  left: [new THREE.Vector3(-1, 0, 0), new THREE.Vector3(0, 1, 0)],
+  top: [new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, -1)],
+  bottom: [new THREE.Vector3(0, -1, 0), new THREE.Vector3(0, 0, 1)],
+};
+
+/** Axis gizmo dots: world axis, view it snaps to, label, colour class. */
+const GIZMO_AXES: Array<{
+  axis: THREE.Vector3;
+  view: StandardView;
+  label: string;
+  cls: string;
+}> = [
+  { axis: new THREE.Vector3(1, 0, 0), view: "right", label: "X", cls: "gx" },
+  { axis: new THREE.Vector3(-1, 0, 0), view: "left", label: "", cls: "gx neg" },
+  { axis: new THREE.Vector3(0, 1, 0), view: "top", label: "Y", cls: "gy" },
+  { axis: new THREE.Vector3(0, -1, 0), view: "bottom", label: "", cls: "gy neg" },
+  { axis: new THREE.Vector3(0, 0, 1), view: "front", label: "Z", cls: "gz" },
+  { axis: new THREE.Vector3(0, 0, -1), view: "back", label: "", cls: "gz neg" },
+];
 
 interface WorkspaceViewportProps {
   reloadToken: number;
@@ -113,9 +148,14 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
   ) {
     const containerRef = useRef<HTMLDivElement>(null);
     const labelRef = useRef<HTMLDivElement>(null);
+    const gizmoRef = useRef<HTMLDivElement>(null);
     const ctxRef = useRef<{
       scene: THREE.Scene;
       camera: THREE.PerspectiveCamera;
+      /** Orthographic twin — Blender numpad-5. The perspective camera stays
+       *  the source of truth for POSE; the ortho camera mirrors it. */
+      ortho: THREE.OrthographicCamera;
+      projection: "persp" | "ortho";
       renderer: THREE.WebGLRenderer;
       controls: OrbitControls;
       modelGroup: THREE.Group;
@@ -147,6 +187,10 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
         100000
       );
       camera.position.set(3500, 2800, 3500);
+      // The ortho twin's frustum is (re)derived from the perspective pose on
+      // every sync — these initial planes are placeholders like the persp
+      // camera's own (ADR-020: everything re-derives from the model bounds).
+      const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 100000);
 
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setPixelRatio(window.devicePixelRatio);
@@ -164,6 +208,19 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
 
       const controls = new OrbitControls(camera, renderer.domElement);
       controls.target.set(0, 900, 0);
+      // Blender hands: MMB orbits too (LMB drag still orbits — browser
+      // convention stays). RMB pans; Shift+MMB pans while Shift is down.
+      controls.mouseButtons = {
+        LEFT: THREE.MOUSE.ROTATE,
+        MIDDLE: THREE.MOUSE.ROTATE,
+        RIGHT: THREE.MOUSE.PAN,
+      };
+      const onShift = (e: KeyboardEvent) => {
+        controls.mouseButtons.MIDDLE =
+          e.shiftKey ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+      };
+      window.addEventListener("keydown", onShift);
+      window.addEventListener("keyup", onShift);
       controls.update();
 
       const modelGroup = new THREE.Group();
@@ -174,6 +231,8 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
       ctxRef.current = {
         scene,
         camera,
+        ortho,
+        projection: "persp",
         renderer,
         controls,
         modelGroup,
@@ -192,6 +251,8 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
         if (w === 0) return;
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
+        const ctx = ctxRef.current;
+        if (ctx) syncOrtho(ctx);
         renderer.setSize(w, h);
       };
       const observer = new ResizeObserver(onResize);
@@ -213,7 +274,10 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
           ((e.clientX - rect.left) / rect.width) * 2 - 1,
           -((e.clientY - rect.top) / rect.height) * 2 + 1
         );
-        raycaster.setFromCamera(ndc, ctx.camera);
+        raycaster.setFromCamera(
+          ndc,
+          ctx.projection === "ortho" ? ctx.ortho : ctx.camera
+        );
         const visible: THREE.Object3D[] = [];
         ctx.modelGroup.traverse((o) => {
           if ((o as THREE.Mesh).isMesh && o.visible) visible.push(o);
@@ -239,18 +303,28 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
       renderer.domElement.addEventListener("pointerdown", onPointerDown);
       renderer.domElement.addEventListener("pointerup", onPointerUp);
 
+      // Axis-gizmo dots are plain DOM, positioned every frame from the
+      // camera quaternion — no React re-render in the hot loop.
+      const gizmoDots = gizmoRef.current
+        ? Array.from(gizmoRef.current.querySelectorAll<HTMLButtonElement>(".gizmo-dot"))
+        : [];
+      const gizmoV = new THREE.Vector3();
+      const gizmoQ = new THREE.Quaternion();
+
       let disposed = false;
       renderer.setAnimationLoop(() => {
         if (disposed) return;
+        const ctx = ctxRef.current;
+        if (!ctx) return;
+        const cam = ctx.projection === "ortho" ? ctx.ortho : ctx.camera;
         controls.update();
-        renderer.render(scene, camera);
+        renderer.render(scene, cam);
+        const label = labelRef.current;
         // The measurement label is an HTML overlay; keep it pinned to the
         // midpoint of the measured segment in screen space.
-        const ctx = ctxRef.current;
-        const label = labelRef.current;
-        if (ctx && label) {
+        if (label) {
           if (ctx.measureMid) {
-            const v = ctx.measureMid.clone().project(camera);
+            const v = ctx.measureMid.clone().project(cam);
             const w = renderer.domElement.clientWidth;
             const h = renderer.domElement.clientHeight;
             label.style.display = v.z < 1 ? "block" : "none";
@@ -260,11 +334,26 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
             label.style.display = "none";
           }
         }
+        if (gizmoDots.length === GIZMO_AXES.length) {
+          gizmoQ.copy(cam.quaternion).invert();
+          const R = 34; // px orbit radius inside the widget
+          for (let i = 0; i < GIZMO_AXES.length; i++) {
+            gizmoV.copy(GIZMO_AXES[i].axis).applyQuaternion(gizmoQ);
+            const dot = gizmoDots[i];
+            dot.style.transform =
+              `translate(${gizmoV.x * R}px, ${-gizmoV.y * R}px)`;
+            // Toward-viewer dots draw on top and full-strength.
+            dot.style.zIndex = String(10 + Math.round(gizmoV.z * 9));
+            dot.style.opacity = gizmoV.z > 0 ? "1" : "0.45";
+          }
+        }
       });
 
       return () => {
         disposed = true;
         observer.disconnect();
+        window.removeEventListener("keydown", onShift);
+        window.removeEventListener("keyup", onShift);
         renderer.domElement.removeEventListener("pointerdown", onPointerDown);
         renderer.domElement.removeEventListener("pointerup", onPointerUp);
         controls.dispose();
@@ -318,6 +407,7 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
             ctx.controls,
             model
           );
+          if (ctx.projection === "ortho") syncOrtho(ctx);
           ctx.modelBox = box;
 
           ctx.scene.remove(ctx.grid);
@@ -412,12 +502,29 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
     }, [measureMode]);
 
     // ------------------------------------------------------------ imperative
+    const applyStandardView = (view: StandardView) => {
+      const ctx = ctxRef.current;
+      if (!ctx) return;
+      const [dir, up] = VIEW_DIRS[view];
+      const target = ctx.controls.target;
+      const dist =
+        ctx.projection === "ortho"
+          ? ctx.ortho.position.distanceTo(target) / ctx.ortho.zoom
+          : ctx.camera.position.distanceTo(target);
+      ctx.camera.up.copy(up);
+      ctx.camera.position.copy(target).addScaledVector(dir, dist);
+      ctx.camera.lookAt(target);
+      if (ctx.projection === "ortho") syncOrtho(ctx);
+      ctx.controls.update();
+    };
+
     useImperativeHandle(ref, (): WorkspaceViewportHandle => ({
       getCameraPose() {
         const ctx = ctxRef.current;
         if (!ctx) return null;
+        const cam = ctx.projection === "ortho" ? ctx.ortho : ctx.camera;
         return {
-          position: ctx.camera.position.toArray() as [number, number, number],
+          position: cam.position.toArray() as [number, number, number],
           target: ctx.controls.target.toArray() as [number, number, number],
         };
       },
@@ -426,19 +533,75 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
         if (!ctx) return;
         ctx.camera.position.set(...pose.position);
         ctx.controls.target.set(...pose.target);
+        if (ctx.projection === "ortho") syncOrtho(ctx);
         ctx.controls.update();
       },
       frameAll() {
         const ctx = ctxRef.current;
         if (!ctx) return;
         frameCameraToObject(ctx.camera, ctx.controls, ctx.modelGroup);
+        if (ctx.projection === "ortho") syncOrtho(ctx);
+      },
+      frameSelected(elementId: string) {
+        const ctx = ctxRef.current;
+        const meshes = ctx?.byElement.get(elementId);
+        if (!ctx || !meshes || meshes.length === 0) return;
+        const box = new THREE.Box3();
+        for (const mesh of meshes) box.expandByObject(mesh);
+        if (box.isEmpty()) return;
+        const centre = box.getCenter(new THREE.Vector3());
+        const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 1e-6);
+        // Keep the CURRENT view direction — framing an element must not
+        // also yank the designer to a canned angle.
+        const dir = ctx.camera.position
+          .clone()
+          .sub(ctx.controls.target)
+          .normalize();
+        const tanHalf = Math.tan(THREE.MathUtils.degToRad(ctx.camera.fov / 2));
+        const fit = Math.min(tanHalf, tanHalf * ctx.camera.aspect);
+        const distance = radius / (0.7 * fit);
+        ctx.camera.position.copy(centre).addScaledVector(dir, distance);
+        ctx.camera.near = Math.max(radius / 1000, 1e-9);
+        ctx.camera.far = distance + radius * 50;
+        ctx.camera.updateProjectionMatrix();
+        ctx.controls.target.copy(centre);
+        if (ctx.projection === "ortho") syncOrtho(ctx);
+        ctx.controls.update();
+      },
+      applyStandardView,
+      toggleProjection() {
+        const ctx = ctxRef.current;
+        if (!ctx) return "persp";
+        if (ctx.projection === "persp") {
+          syncOrtho(ctx);
+          ctx.controls.object = ctx.ortho;
+          ctx.projection = "ortho";
+        } else {
+          // Fold the ortho zoom back into a perspective distance so the
+          // model keeps its apparent size across the switch.
+          const target = ctx.controls.target;
+          const dir = ctx.ortho.position.clone().sub(target);
+          const dist = dir.length() / ctx.ortho.zoom;
+          ctx.camera.up.copy(ctx.ortho.up);
+          ctx.camera.position
+            .copy(target)
+            .addScaledVector(dir.normalize(), dist);
+          ctx.camera.quaternion.copy(ctx.ortho.quaternion);
+          ctx.controls.object = ctx.camera;
+          ctx.projection = "persp";
+        }
+        ctx.controls.update();
+        return ctx.projection;
       },
       snapshot(width = 320) {
         const ctx = ctxRef.current;
         if (!ctx) return null;
         // Render a fresh frame right before reading pixels — without
         // preserveDrawingBuffer the last presented frame is not readable.
-        ctx.renderer.render(ctx.scene, ctx.camera);
+        ctx.renderer.render(
+          ctx.scene,
+          ctx.projection === "ortho" ? ctx.ortho : ctx.camera
+        );
         const full = ctx.renderer.domElement;
         if (full.width === 0 || full.height === 0) return null;
         const scale = width / full.width;
@@ -455,6 +618,23 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
     return (
       <div ref={containerRef} className="viewport-canvas">
         <div ref={labelRef} className="measure-label" style={{ display: "none" }} />
+        <div
+          ref={gizmoRef}
+          className="axis-gizmo"
+          title="Click an axis to snap the view (1/3/7 front-right-top, Shift for opposites)"
+        >
+          {GIZMO_AXES.map((a) => (
+            <button
+              key={a.view}
+              type="button"
+              className={`gizmo-dot ${a.cls}`}
+              aria-label={`${a.view} view`}
+              onClick={() => applyStandardView(a.view)}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
       </div>
     );
   }
@@ -463,6 +643,32 @@ export default forwardRef<WorkspaceViewportHandle, WorkspaceViewportProps>(
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
+
+/** Mirror the perspective camera's pose into the ortho twin and size its
+ *  frustum so the model keeps its apparent size at the orbit target. */
+function syncOrtho(ctx: {
+  camera: THREE.PerspectiveCamera;
+  ortho: THREE.OrthographicCamera;
+  controls: { target: THREE.Vector3 };
+}) {
+  const { camera, ortho, controls } = ctx;
+  const dist = camera.position.distanceTo(controls.target);
+  const halfH = dist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const halfW = halfH * camera.aspect;
+  ortho.left = -halfW;
+  ortho.right = halfW;
+  ortho.top = halfH;
+  ortho.bottom = -halfH;
+  // Ortho near planes may go negative — geometry behind the pose still
+  // renders, which is what makes axis views usable without clip fiddling.
+  ortho.near = -camera.far;
+  ortho.far = camera.far;
+  ortho.zoom = 1;
+  ortho.position.copy(camera.position);
+  ortho.quaternion.copy(camera.quaternion);
+  ortho.up.copy(camera.up);
+  ortho.updateProjectionMatrix();
+}
 
 /** True when the point survives the renderer's active clipping planes. */
 function clippedIn(renderer: THREE.WebGLRenderer, point: THREE.Vector3): boolean {
