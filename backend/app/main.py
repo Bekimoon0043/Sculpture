@@ -19,6 +19,7 @@ from app.api import (
     routes_intake,
     routes_logs,
     routes_ops,
+    routes_render,
 )
 from app.db.database import get_default_db
 
@@ -46,4 +47,5 @@ app.include_router(routes_council.router, prefix="/api")
 app.include_router(routes_costing.router, prefix="/api")
 app.include_router(routes_intake.router, prefix="/api")
 app.include_router(routes_dna.router, prefix="/api")
+app.include_router(routes_render.router, prefix="/api")
 app.include_router(routes_ops.router, prefix="/api")

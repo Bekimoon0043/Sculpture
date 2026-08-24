@@ -10,3 +10,17 @@ scripts/assets/
 debs/
 frontend/node_modules/
 frontend/dist/
+vendor/
+
+# Editor-local settings, not project configuration.
+.vscode/
+
+# Phase 9B render worker: large local build inputs, never committed.
+# The tarball is fetched host-side by scripts/fetch_blender.sh (curl -C - so a
+# dropped connection resumes) and is consumed by the image build. The extracted
+# tree and the probe scratch dir are host-side only.
+docker/render/*.tar.xz
+docker/render/blender-*-linux-x64/
+docker/render/downloaded_debs/
+docker/render/local_debs/
+docker/render/probe/

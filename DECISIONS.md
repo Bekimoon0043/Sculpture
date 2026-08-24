@@ -2197,3 +2197,173 @@ CSS moved to role-named design tokens (`--bg-panel`, `--ok`,
 `--danger`, `--info`) so a surface is restyled once rather than by hunting
 hex codes. `needs_input` keeps its own colour, distinct from warn — the
 distinction ADR-036 established in the data must survive into the pixels.
+
+
+---
+
+## ADR-042 — Phase 5: render worker + bounded vision critique (2026-08-22)
+
+**Status:** accepted. Critique loop implemented 2026-08-22. The render worker
+this ADR assumes did NOT exist on that date — it was designed here and built
+on 2026-08-24 under ADR-043, which also records where reality differed from
+the design below (STEP vs GLB, and the consensus tolerance in point 4).
+
+### Context
+
+Phase 5 closes the render → vision-critique → bounded-delta loop from ADR-007.
+The loop is bounded by `max_vision_iterations` from `config/budget.yaml`, uses
+two-provider consensus (Anthropic + OpenAI, Kimi as tiebreaker only), and
+anneals the permitted delta magnitude each round to prevent oscillation.
+
+### Decision
+
+1. **Render worker is a separate container** mirroring the geo-worker shape:
+   non-root, no network, read-only filesystem except a dedicated scratch mount,
+   CPU and memory limits.  It runs headless Blender 4.5.12 LTS via
+   `blender -b -P render_scene.py`, not `bpy` as a Python module, because the
+   standalone Blender distribution is already fetched and pinned.
+2. **Backend only orchestrates.**  `app.render.queue` writes job manifests to
+   `/scratch` and polls for `result.json`, exactly like `app.council.fabricate`.
+   The backend never renders itself.
+3. **Vision deltas are strict JSON.**  The prompt requires a single JSON object
+   with `observations` (prose that cannot be a delta) and `deltas` (each with
+   `parameter_path`, `direction`, `magnitude`, `unit`).  Anything not matching
+   the schema is recorded as an observation.
+4. **Consensus requires both providers to agree** on the same parameter path,
+   same direction, and magnitude within relative tolerance.  Disagreement is
+   resolved by Kimi as a tiebreaker only, per `council.yaml`.
+5. **Annealing.**  Round 1 permits up to 10% of a parameter's validated range;
+   each subsequent round halves the limit.  This converts a loop that can
+   oscillate into one that converges.
+6. **Objective score.**  "Measurably improves" is scored from geometry facts
+   the platform already computes (constraint margin, mass vs handling limit,
+   silhouette stability across ortho views), not from the panel's own
+   subjective score, so a model cannot grade its own homework.
+
+### Consequences
+
+- The live loop needs the render-worker container to be running; the auto gate
+  exercises the loop offline with scripted render fixtures.
+- Cycles CPU is the only renderer; EEVEE is explicitly out of scope because it
+  requires a GL context and the operator has no dedicated GPU.
+- The operator visual gate verifies three real rounds on their own machine,
+  with before/after renders and logged deltas.
+
+
+---
+
+## ADR-043 — Phase 9B: the render worker as actually built (2026-08-24)
+
+**Status:** accepted, implemented and gated 2026-08-24
+(`gate_phase9b_auto.py` PASS).
+
+### Context
+
+ADR-042 specified the render worker; it did not exist. Blender 4.5.12 LTS had
+been fetched and extracted on the host, and a first attempt at the container
+had failed partway: `debs.txt` listed 57 packages whose pool paths were partly
+invented (mesa under `libg/libglvnd/`, a `t/tfonts-ubuntu/` directory that does
+not exist, epochs like `1%3a19.1.7` written into filenames that never carry
+them), `sums.txt` was never produced, and the fetch died on the fourth package.
+This ADR records what the working worker actually does and where it departs
+from ADR-042.
+
+### Decisions
+
+1. **Seventeen debs, derived empirically, and no mesa.** Extract Blender in a
+   bare `python:3.11-slim-trixie`, read `ldd`'s nine missing sonames, resolve
+   those to packages, let apt compute the closure against the same dated
+   snapshot the backend pins, and take the real pool paths from
+   `apt-get install --print-uris`. Then install, confirm `ldd` reports nothing
+   missing, and render an actual PNG.
+
+   apt's full closure pulls `libgl1-mesa-dri` → `mesa-libgallium` →
+   `libllvm19` → `libz3-4`, roughly 45 MB, for a GLX *vendor* that is only
+   dlopened when a real GLX context is created. A headless Cycles CPU render
+   never creates one; `libGL.so.1` only has to load. Dropped, exactly as the
+   backend does at ADR-017, with `dpkg -i --force-depends`.
+
+   The rule from ADR-009 applies to distro packages too: every path here came
+   from a live resolver against the pinned snapshot, none from recall.
+
+2. **The worker renders GLB, not STEP.** ADR-042 assumed the STEP artifact.
+   Blender has no STEP importer, and this image deliberately carries no OCCT —
+   that is the backend's stack, and putting it here would rebuild the thing the
+   separate image exists to avoid. The GLB the viewport already uses
+   (`app.geometry.exporters.export_glb`) is Blender's best-supported import
+   path, so `RenderJob.input_step` became `input_mesh` and the API renders
+   `design.glb_path`.
+
+3. **The handoff is basename-only, in both directions.** The geo-worker's
+   ADR-028 trick — same host dir at the same in-container path, so absolute
+   paths cross verbatim — is unavailable here: `/scratch` on the backend is
+   already the geo-worker's mount, so the backend sees the render scratch at
+   `/render_scratch` and the worker at `/scratch`. Every filename in
+   `job.json` and `result.json` is therefore a basename that each side
+   resolves against its own view of the job directory. `submit()` stages the
+   mesh into the job directory, which also pins the job to the geometry as it
+   was at submit time.
+
+4. **Extraction uses Python's lzma, not `tar -xJf`.** The base image ships GNU
+   tar but no `xz` binary, and tar shells out to xz for `.tar.xz`. Adding
+   `xz-utils` would mean an eighteenth pinned deb carried solely for build
+   time. `tarfile.open(..., "r:xz")` is already in the image and preserves the
+   symlinked sonames Blender's bundled libraries depend on.
+
+5. **Clay render, pinned colour management, fixed threads and seed.** Every
+   part gets one neutral matte material: the critique judges proportion,
+   silhouette and composition, and colour or material realism gives the model
+   things to comment on that the geometry pipeline cannot act on. The view
+   transform is set to AgX by name rather than inherited — Blender's default
+   changed from Filmic to AgX between releases, and a silent shift in tone at
+   the next version bump would read to the loop as the design having changed.
+   Cycles threads are pinned rather than AUTO for the same reason: on AUTO the
+   image depends on how busy the host was, and two rounds stop being
+   comparable.
+
+   Light energies were tuned against measured renders. The first values put
+   the subject at a mean luminance of 211–236 of 255 — not clipped, but with
+   too little headroom to separate a lit face from a highlight, which is the
+   separation the critique reads proportion from. They now land at 154–188.
+
+6. **The gate refuses to accept "four files exist".** The likeliest failure
+   here is four plausible-looking frames of nothing. `gate_phase9b_auto.py`
+   builds a known solid through the production exporter, then asserts real
+   tonal variation per view, a plausible subject share of the frame, six
+   distinct view pairs, and the bounding box Blender actually received.
+
+   That last check earned itself twice on the day it was written. Built with
+   trimesh's own Scene export, the model arrived rotated onto its side; built
+   with metre-valued numbers, it arrived 1000× too small (build123d is in
+   millimetres and `export_gltf` converts to metres). Both rendered as
+   perfectly competent pictures — the camera rig frames whatever it is given.
+   Neither would have been caught by eye, and only the numeric assertion
+   distinguishes them.
+
+7. **Consensus tolerance is 0.20, not the 0.05 ADR-042 point 4 implied.** Two
+   models proposing +0.030 m and +0.032 m on a tier height are 2 mm apart and
+   6.25% apart relatively, and were being scored as disagreeing — so the loop
+   accepted nothing in the common case. Consensus asks whether two independent
+   models found the same problem and the same direction, not whether they agree
+   to two significant figures, which is not something a language model's
+   magnitude estimate can honestly deliver. Widening is safe because magnitude
+   is not trusted from the model anyway: whatever survives is clamped to the
+   annealed step limit derived from the parameter's validated range. The model
+   chooses the direction; the engineering envelope chooses how far. The agreed
+   magnitude is now the smaller of the two proposals rather than the first
+   provider's, which is both conservative and symmetric — previously, swapping
+   the provider order silently changed the design.
+
+### Consequences
+
+- `docker compose --profile render up -d render-worker` is required for live
+  renders; the service sits behind a profile so a plain `docker compose up -d`
+  on a machine that has not fetched the 360 MB tarball still starts the
+  backend rather than failing the whole command.
+- The Blender tarball and its extracted tree are host-side build inputs and are
+  gitignored; `debs.txt` and `sums.txt` are committed, so the image is
+  reproducible from the repo plus one resumable download.
+- Measured on the operator's i7-8550U with 2 threads: four views at 256²/16
+  samples in ~29 s, four at 512²/32 samples in ~2 min. The critique loop's
+  per-round render cost is minutes, not seconds, which is what
+  `max_vision_iterations` has to be sized against.

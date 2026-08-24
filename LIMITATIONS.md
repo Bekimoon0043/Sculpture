@@ -78,9 +78,13 @@ own reports and in §9 below, not here.
 Not present in this repository, by design (later-phase code is not created
 early):
 
-- **Phase 5** — validation gates (mesh, hydraulics, structure, fabrication)
-  and the render → vision-critique → bounded-delta loop (ADR-007), including
-  enforcement of `max_vision_iterations`.
+- **Phase 5** — IN PROGRESS.  The render → vision-critique → bounded-delta
+  loop (ADR-007) is implemented and its auto gate passes offline with fixture
+  replay.  The render half is no longer a blocker: the Phase 9B render worker
+  is BUILT and gated (ADR-043), so real PNGs are available to the loop.  What
+  remains is a live multi-round run against real vision providers, which costs
+  money and is the operator's visual gate (`gate_phase5_visual.md`).
+  Enforcement of `max_vision_iterations` is wired to the budget.yaml value.
 - **Phase 6** — the primitive library (PHASE_6_PLAN.md). Slice A1 (assembly
   core + basin_round/plinth/sculptural_column, gate PASS 2026-08-20, ADR-032)
   is BUILT; slices A2 (AI + surfaces), B (rim treatments + fixtures),
@@ -334,12 +338,20 @@ NOT do:
 Ten formats are produced, hashed and reproducible (ADR-035, ADR-037). What
 is NOT there:
 
-- **No renders.** The Blender/Cycles render worker is Phase 9B. Thumbnails
+- **Renders are available as of 2026-08-24** (Phase 9B, ADR-043): the
+  Blender/Cycles render worker builds and produces four canonical views.
+  Export formats that need Blender are still not wired to it — see the USD
+  entry below. Historical note, kept because it dates the entries around it:
+  the Blender/Cycles render worker was Phase 9B. Thumbnails
   are absent from the package and the manifest says so rather than shipping
   an empty `renders/` folder.
 
-- **USD, USDZ, FBX and Alembic report `unavailable`.** They need Blender,
-  which is Phase 9B and its own container. Not faked, not silently omitted.
+- **USD, USDZ, FBX and Alembic report `unavailable`.** They need Blender.
+  As of 2026-08-24 Blender EXISTS in this system (the Phase 9B render worker,
+  ADR-043) but the export path is not wired to it: the worker renders images,
+  it does not convert formats. These four remain honestly `unavailable`
+  rather than faked or silently omitted, and converting them is now a wiring
+  job rather than a missing dependency.
 
 - **DAE and 3MF report `unavailable`** naming the missing optional Python
   package (`pycollada`, `networkx`). Both are small, but adding them means a

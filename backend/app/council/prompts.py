@@ -434,6 +434,50 @@ def fabrication_prompt(
     return prompt
 
 
+def vision_critique_prompt(spec_summary: str, round_no: int) -> str:
+    """Vision critique prompt (Phase 5).
+
+    Images are sent alongside this prompt via the provider's vision API.  The
+    response must be strict JSON with bounded deltas only; prose that cannot be
+    expressed as a delta goes into observations.
+    """
+    return (
+        "You are a VISUAL CRITIC for LuxuryForm Studio.  Examine the four "
+        "rendered views of the current fountain/sculpture design and propose "
+        "concrete, bounded parameter changes that improve proportion, "
+        "silhouette and composition.  You may ONLY suggest changes that fit "
+        "the registered parameter paths from the Design Spec summary below.\n\n"
+        f"DESIGN SPEC SUMMARY (ROUND {round_no}):\n{spec_summary}\n\n"
+        "Respond with ONLY a single JSON object.  No markdown fences, no "
+        "prose outside the JSON.  The FIRST character of your reply must be '{'.\n\n"
+        "JSON schema:\n"
+        '{\n'
+        '  "observations": ["string"],  // prose that cannot be a delta\n'
+        '  "deltas": [\n'
+        '    {\n'
+        '      "parameter_path": "tier_height_m",  // exact registered path\n'
+        '      "direction": "increase" | "decrease" | "set",\n'
+        '      "magnitude": 0.05,  // number; for direction=set this is the new value\n'
+        '      "unit": "m"\n'
+        '      "reason": "short reason"\n'
+        '    }\n'
+        '  ]\n'
+        '}\n\n'
+        "Rules:\n"
+        "- Each delta must name ONE existing parameter_path from the spec.\n"
+        "- Direction is relative to the CURRENT value: increase/decrease by "
+        "the magnitude, or set to the magnitude.\n"
+        "- Magnitudes must be small (annealing: the allowed step shrinks each "
+        "round).  Round 1: ~10% of the parameter's validated range; later "
+        "rounds: smaller.\n"
+        "- If you cannot express a visual concern as a bounded delta, put it "
+        "in observations and do NOT invent a parameter.\n"
+        "- You may NOT judge engineering facts (stress, hydraulics, "
+        "fabrication) — only proportion, silhouette and composition.\n"
+        "- No code, no new primitive names, no parameter paths not in the spec."
+    )
+
+
 def extract_program(text: str) -> str:
     """Strip markdown fences / leading prose from a model reply.
 

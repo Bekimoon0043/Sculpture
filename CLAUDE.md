@@ -42,8 +42,10 @@ LLMs do not generate geometry. They generate text. **They write the program that
 - **Commit per gate**, with a clear message. One commit that can be rolled back.
 - Keep `LIMITATIONS.md`, `DECISIONS.md` and the phase report current in the same commit as the change.
 - After any change touching `backend/`, tell the operator to rebuild: `docker compose up --build -d`.
-- Gates: `python scripts\gate_phase8_auto.py` and `gate_phase9a_auto.py` run
-  at $0 with no network. Both must pass before touching Phase 9B or later.
+- Gates: every `scripts\gate_*_auto.py` runs at $0 with no network. Run the
+  whole set before and after any change to `backend/`; twelve pass as of
+  2026-08-24. `gate_phase9b_auto.py` additionally needs the render-worker
+  container up.
 - The Hub status file regenerates with `python scripts\generate_hub_status.py --out "E:\Burook platform development\Luxurycon\AI-Team-Hub\luxuryform_status.json"`.
 
 ## Build status
@@ -64,16 +66,29 @@ byte-reproducible self-verifying LUXEXCHANGE package (ADR-035, ADR-037).
 hydraulic and structural gates to real verdicts, closing the Phase 8
 dependency.
 
-Ten auto gates, all $0 and offline:
-`gate_phase2/3/4/6a1/costing/8/8b/9a/11/13a_auto.py`.
+**Phase 9B (Blender render worker) auto gate PASS 2026-08-24** (ADR-043) —
+headless Blender 4.5.12 LTS, Cycles CPU, four canonical views, 17 pinned
+system debs and no mesa. This was the last piece needing a download.
+**Phase 5 (vision critique loop) auto gate PASS 2026-08-24** — its render
+dependency is now closed; what remains is the operator's live-spend gate.
+
+Twelve auto gates, all $0 and offline:
+`gate_phase2/3/4/5/6a1/costing/8/8b/9a/9b/11/13a_auto.py`.
+Note `gate_phase9b_auto.py` needs the render-worker container running
+(`docker compose --profile render up -d render-worker`); it still costs $0 and
+uses no network.
 
 Awaiting the operator's visual gates: `gate_phase8_visual.md`,
-`gate_phase9a_visual.md`, `gate_phase11_13a_visual.md`.
+`gate_phase9a_visual.md`, `gate_phase11_13a_visual.md`,
+`gate_phase9b_visual.md`, `gate_phase5_visual.md`.
 
-Not started: **Phase 9B** (Blender render worker — the only remaining part
-that needs a download), **Phase 10** (vision critique, blocked on 9B),
-**Phase 13 slices B+** (resumable job runner — see LIMITATIONS.md §16).
-Phase 6 slices B–D and Phase 5 remain open.
+Not started: **Phase 10** (vision critique of renders — no longer blocked,
+now that 9B is built), **Phase 13 slices B+** (resumable job runner — see
+LIMITATIONS.md §16). Phase 6 slices B–D remain open. Phase 5 is built and
+auto-gated; only its live-spend visual gate is outstanding.
+
+Nothing in the project still needs a large download: the Blender tarball is
+fetched, and it is the last one.
 
 Each closed phase has a `PHASE_N_REPORT.md` with its gate evidence; the
 forward plans are `PHASE_8_VALIDATION_GATE_PLAN.md` through

@@ -1,0 +1,46 @@
+# System libraries Blender 4.5.12 links at startup, even headless (-b).
+#
+# DERIVED EMPIRICALLY, NOT FROM A DOCUMENTATION LIST (2026-08-24):
+#   1. extract Blender in a bare python:3.11-slim-trixie container
+#   2. `ldd /opt/blender/blender | grep "not found"`  -> 9 sonames:
+#      libGL.so.1 libICE.so.6 libSM.so.6 libX11.so.6 libXext.so.6
+#      libXfixes.so.3 libXi.so.6 libXrender.so.1 libxkbcommon.so.0
+#   3. resolve those 9 to packages, let apt compute the dependency closure
+#      against the SAME dated snapshot the backend pins, and take the real
+#      pool paths from `apt-get install --print-uris`
+#   4. install, re-run ldd (zero missing) and render an actual PNG
+#
+# Everything Blender needs beyond this set it ships itself in
+# /opt/blender/lib (libtbb, libOpenEXR, libopenvdb, MaterialX, ...), found
+# via the binary's RUNPATH.
+#
+# NO MESA, NO LLVM, NO Z3. apt's full closure pulls libgl1-mesa-dri ->
+# mesa-libgallium -> libllvm19 -> libz3-4, about 45 MB compressed, for a GLX
+# *vendor* that is only dlopened when a real GLX context is created. A
+# headless Cycles CPU render never creates one; libGL.so.1 only has to load.
+# This is the same finding the backend image records at ADR-017 and the same
+# reason both use `dpkg -i --force-depends` rather than apt.
+#
+# VERIFIED at this exact set: `blender --version` reports 4.5.12 LTS and a
+# 256px 8-sample Cycles CPU render writes a valid PNG (Phase 9B evidence).
+#
+# Format: pool/path/filename.deb, relative to DEB_POOL_URL.
+# Filenames carry NO epoch -- Debian pool files drop it (an epoch appears in
+# `dpkg -l` output but never in the pool filename).
+libg/libglvnd/libgl1_1.7.0-1+b2_amd64.deb
+libg/libglvnd/libglvnd0_1.7.0-1+b2_amd64.deb
+libg/libglvnd/libglx0_1.7.0-1+b2_amd64.deb
+libx/libx11/libx11-6_1.8.12-1_amd64.deb
+libx/libx11/libx11-data_1.8.12-1_all.deb
+libx/libxcb/libxcb1_1.17.0-2+b1_amd64.deb
+libx/libxau/libxau6_1.0.11-1_amd64.deb
+libx/libxdmcp/libxdmcp6_1.1.5-1_amd64.deb
+libi/libice/libice6_1.1.1-1_amd64.deb
+libs/libsm/libsm6_1.2.6-1_amd64.deb
+libx/libxext/libxext6_1.3.4-1+b3_amd64.deb
+libx/libxfixes/libxfixes3_6.0.0-2+b4_amd64.deb
+libx/libxi/libxi6_1.8.2-1_amd64.deb
+libx/libxrender/libxrender1_0.9.12-1_amd64.deb
+libx/libxkbcommon/libxkbcommon0_1.7.0-2_amd64.deb
+x/xkeyboard-config/xkb-data_2.42-1_all.deb
+x/xorg/x11-common_7.7+24+deb13u1_all.deb

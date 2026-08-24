@@ -46,11 +46,21 @@ services:
       # ./data/geo_scratch to the SAME container path /scratch — artifact
       # paths the worker writes are valid verbatim on the backend.
       - LUXURYFORM_GEO_SCRATCH=/scratch
+      # The render handoff needs its own directory. /scratch is already taken
+      # by the geo-worker here, so the backend sees the render scratch at a
+      # DIFFERENT path than the render-worker does (/render_scratch vs
+      # /scratch). That is safe because the render protocol passes BASENAMES
+      # in both directions and each side resolves them against its own view of
+      # the job directory — no absolute path ever crosses the boundary.
+      - LUXURYFORM_RENDER_SCRATCH=/render_scratch
     volumes:
       - ./data:/app/data
       # host ./data/geo_scratch  ->  container /scratch  (geo-worker below
       # mounts the SAME host dir at the SAME path — do not let these drift)
       - ./data/geo_scratch:/scratch
+      # host ./data/render_scratch -> container /render_scratch (render-worker
+      # mounts the same host dir at /scratch — see the note above)
+      - ./data/render_scratch:/render_scratch
 
   # -----------------------------------------------------------------------
   # geo-worker (Phase 4, ADR-005 realized): the ONLY place AI-written code
@@ -83,6 +93,57 @@ services:
     volumes:
       # host ./data/geo_scratch  ->  container /scratch  (see backend above)
       - ./data/geo_scratch:/scratch
+
+  # -----------------------------------------------------------------------
+  # render-worker (Phase 9B): Blender 4.5.12 LTS, Cycles CPU, headless.
+  #
+  # SEPARATE IMAGE, not a layer on the backend. The backend carries the OCCT /
+  # build123d stack that cost repeated multi-hour rebuilds on a ~320 kB/s link
+  # (ADR-017/018); adding Blender above it would invalidate that layer on every
+  # touch. It is not FROM luxuryform-backend either -- the backend image is
+  # rebuilt constantly, which would discard the 360 MB Blender layer each time.
+  # See docker/render/Dockerfile for the full reasoning.
+  #
+  # Build inputs live in ./docker/render and are NOT committed: the Blender
+  # tarball (fetched host-side with a resumable curl) and the extracted tree.
+  # The 17 pinned system debs ARE committed, as debs.txt + sums.txt.
+  #
+  # profiles: the service only starts when explicitly asked for, so a plain
+  # `docker compose up -d` on a machine that has not fetched the 360 MB
+  # tarball still brings up the backend instead of failing the whole command.
+  #   docker compose --profile render up -d render-worker
+  render-worker:
+    image: luxuryform-render
+    profiles: ["render"]
+    build:
+      # Context is ./docker/render alone, so the Blender tarball is never
+      # shipped as build context to the backend or frontend builds.
+      context: ./docker/render
+      dockerfile: Dockerfile
+      args:
+        DEB_POOL_URL: ${DEB_POOL_URL:-https://snapshot.debian.org/archive/debian/20260803T082142Z/pool/main/}
+    # Same ADR-005 shape as the geo-worker. Blender is not AI-written code so
+    # ADR-005 does not strictly compel it; the pattern is reused because a
+    # render job has no business reaching the network, and it is proven here.
+    user: "1000:1000"
+    network_mode: "none"
+    read_only: true
+    tmpfs:
+      # Blender writes its own temp files; with read_only it must have one.
+      - /tmp
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - LUXURYFORM_RENDER_SCRATCH=/scratch
+      # 2 of the operator's 4 cores: the backend and geo-worker also want CPU.
+      - LUXURYFORM_RENDER_THREADS=${LUXURYFORM_RENDER_THREADS:-2}
+    cpus: 2.0
+    # Cycles peaks well under this for the assemblies this pipeline produces;
+    # the cap is what stops a runaway render from taking the 12 GB host down.
+    mem_limit: 3g
+    volumes:
+      # host ./data/render_scratch -> container /scratch, the SAME host dir at
+      # the SAME path as the backend below (ADR-028) so paths cross verbatim.
+      - ./data/render_scratch:/scratch
 
   frontend:
     # node_modules is baked into the image at BUILD time (frontend/Dockerfile,

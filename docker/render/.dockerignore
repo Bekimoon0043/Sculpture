@@ -1,0 +1,7 @@
+# The extracted Blender tree is a host-side convenience (probing, ldd checks).
+# The IMAGE extracts from the tarball itself, so shipping the 1.2 GB unpacked
+# copy as build context would add minutes to every build for nothing.
+blender-*-linux-x64/
+probe/
+downloaded_debs/
+local_debs/
