@@ -277,6 +277,14 @@ export async function getLatestAssemblyValidation(): Promise<LatestValidationRes
   return parseOrThrow(resp);
 }
 
+export async function getDesignValidation(
+  designId: string
+): Promise<LatestValidationResponse | null> {
+  const resp = await fetch(`/api/geometry/assembly/${designId}/validation`);
+  if (resp.status === 404) return null;
+  return parseOrThrow(resp);
+}
+
 export function latestAssemblyGlbUrl(cacheBuster: number): string {
   return `/api/geometry/assembly/latest.glb?ts=${cacheBuster}`;
 }
@@ -284,6 +292,124 @@ export function latestAssemblyGlbUrl(cacheBuster: number): string {
 export const latestAssemblyStepUrl = "/api/geometry/assembly/latest.step";
 export const latestAssemblyLuxexchangeUrl =
   "/api/geometry/assembly/latest/luxexchange.zip";
+
+// ---------------------------------------------------------------------------
+// Designer workspace API (Phase 14)
+// ---------------------------------------------------------------------------
+
+/** Pickable per-element scene — node names are element_ids. */
+export function latestSceneGlbUrl(cacheBuster: number): string {
+  return `/api/geometry/assembly/latest/scene.glb?ts=${cacheBuster}`;
+}
+
+export function designSceneGlbUrl(designId: string): (cacheBuster: number) => string {
+  return (cacheBuster) =>
+    `/api/geometry/assembly/${designId}/scene.glb?ts=${cacheBuster}`;
+}
+
+export interface DesignSummary {
+  design_id: string;
+  created_at: string;
+  spec_hash: string;
+  seed: number;
+  element_count: number;
+  primitives: string[];
+  element_ids: string[];
+  total_mass_kg: number | null;
+  overall_status: GateStatus | null;
+  glb_url: string;
+  scene_glb_url: string;
+}
+
+export async function listDesigns(
+  limit = 50
+): Promise<{ count: number; designs: DesignSummary[] }> {
+  return parseOrThrow(
+    await fetch(`/api/geometry/assembly/designs?limit=${limit}`)
+  );
+}
+
+export interface ManifestElement {
+  element_id: string;
+  primitive: string;
+  material_id: string;
+  parameters: Record<string, number | string>;
+  placement_mm: { x: number; y: number; z: number };
+  volume_mm3: number;
+  mass_kg: number;
+  bbox_mm: number[];
+  bbox_min_mm: number[];
+  bbox_max_mm: number[];
+  centroid_mm: { x: number; y: number; z: number };
+}
+
+export interface DesignManifestResponse {
+  created_at: string;
+  design_id: string;
+  spec_hash: string;
+  seed: number;
+  manifest: {
+    schema: string;
+    elements: ManifestElement[];
+    joints: Array<Record<string, unknown>>;
+    total_mass_kg: number;
+    [key: string]: unknown;
+  };
+  request: {
+    elements: Array<Record<string, unknown>>;
+    fabrication: Record<string, number | string>;
+    seed: number;
+    gate_profile_id: string;
+    intake_id: string | null;
+    [key: string]: unknown;
+  };
+  artifacts: Record<string, string>;
+}
+
+export async function getDesignManifest(
+  designId: string
+): Promise<DesignManifestResponse> {
+  return parseOrThrow(
+    await fetch(`/api/geometry/assembly/${designId}/manifest`)
+  );
+}
+
+// --- render jobs (Phase 9B worker) -----------------------------------------
+
+export interface RenderJobView {
+  name: string;
+  path?: string;
+  camera?: string;
+  resolution?: number;
+}
+
+export interface RenderJob {
+  id: string;
+  design_id?: string;
+  status: string;
+  error?: string | null;
+  views: RenderJobView[];
+  total_s?: number;
+}
+
+export async function postRenderJob(designId: string): Promise<RenderJob> {
+  return parseOrThrow(
+    await fetch("/api/render/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ design_id: designId }),
+    })
+  );
+}
+
+/** Blocks server-side up to ~30 s while the job runs — poll, don't spam. */
+export async function getRenderJob(jobId: string): Promise<RenderJob> {
+  return parseOrThrow(await fetch(`/api/render/jobs/${jobId}`));
+}
+
+export function renderViewUrl(jobId: string, viewName: string): string {
+  return `/api/render/jobs/${jobId}/views/${viewName}`;
+}
 
 // ---------------------------------------------------------------------------
 // Council transcript API (Phase 3, build step 3)

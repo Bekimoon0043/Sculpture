@@ -72,15 +72,23 @@ system debs and no mesa. This was the last piece needing a download.
 **Phase 5 (vision critique loop) auto gate PASS 2026-08-24** — its render
 dependency is now closed; what remains is the operator's live-spend gate.
 
-Twelve auto gates, all $0 and offline:
-`gate_phase2/3/4/5/6a1/costing/8/8b/9a/9b/11/13a_auto.py`.
+**Phase 14 (Designer Workspace) auto gate PASS 2026-08-24** (ADR-044) —
+library / selectable viewport / inspector / history strip, undo-redo,
+hide-solo, swatches, measure, section plane, saved views, 2-up compare;
+per-element named-node `scene.glb` + per-design read routes backend-side.
+
+Thirteen auto gates, all $0 and offline:
+`gate_phase2/3/4/5/6a1/costing/8/8b/9a/9b/11/13a/14_auto.py`.
 Note `gate_phase9b_auto.py` needs the render-worker container running
 (`docker compose --profile render up -d render-worker`); it still costs $0 and
-uses no network.
+uses no network. `gate_phase14_auto.py` runs its geometry/API sections in
+the backend container and its frontend section on the host
+(`python scripts\gate_phase14_auto.py --frontend-only`); each run prints
+which sections it covered.
 
 Awaiting the operator's visual gates: `gate_phase8_visual.md`,
 `gate_phase9a_visual.md`, `gate_phase11_13a_visual.md`,
-`gate_phase9b_visual.md`, `gate_phase5_visual.md`.
+`gate_phase9b_visual.md`, `gate_phase5_visual.md`, `gate_phase14_visual.md`.
 
 Not started: **Phase 10** (vision critique of renders — no longer blocked,
 now that 9B is built), **Phase 13 slices B+** (resumable job runner — see

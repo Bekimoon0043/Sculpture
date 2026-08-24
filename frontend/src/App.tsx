@@ -4,36 +4,33 @@
 // The shell makes that visible: a persistent stepper whose states are DERIVED
 // from real data (never a stored flag that can drift out of sync), a view per
 // stage, and a status bar carrying the numbers that matter continuously.
+//
+// Phase 14: the Assembly panel grew into the Designer Workspace — library,
+// selectable viewport, inspector, history strip. The workspace owns its
+// document and build state and reports the pipeline facts (design, verdict,
+// exports) up to this shell, which still owns the stepper and status bar.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
-  AssemblyBuildResponse,
   BuildResponse,
   DefaultsResponse,
   Validation,
-  ValidationGate,
   type ExportsResponse,
   type GateStatus,
   type IntakeResponse,
   type OpsCosts,
   getDefaults,
-  getAssemblyExports,
   getHealth,
-  getLatestAssemblyValidation,
   getLatestIntake,
-  getOpsCosts,
-  latestAssemblyGlbUrl,
-  latestGlbUrl,
   getLatestValidation,
+  getOpsCosts,
+  latestGlbUrl,
   listPrecedents,
-  postAssemblyExports,
   postBuild,
 } from "./api/client";
 import ErrorBoundary from "./ErrorBoundary";
 import PipelineStepper, { type PipelineStep, type StepState } from "./PipelineStepper";
-import AssemblyPanel from "./panels/AssemblyPanel";
-import ExportPanel from "./panels/ExportPanel";
 import CascadePanel from "./panels/CascadePanel";
 import CouncilPanel from "./panels/CouncilPanel";
 import IntakePanel from "./panels/IntakePanel";
@@ -41,15 +38,16 @@ import LibraryPanel from "./panels/LibraryPanel";
 import OpsPanel from "./panels/OpsPanel";
 import ValidationPanel from "./panels/ValidationPanel";
 import Viewport from "./viewport/Viewport";
+import DesignerWorkspace from "./workspace/DesignerWorkspace";
 
 type View =
-  | "intake" | "council" | "assembly" | "cascade"
+  | "intake" | "council" | "designer" | "cascade"
   | "library" | "ops";
 
 const VIEWS: Array<{ key: View; label: string; group: "pipeline" | "tools" }> = [
   { key: "intake", label: "Brief", group: "pipeline" },
   { key: "council", label: "AI Council", group: "pipeline" },
-  { key: "assembly", label: "Assembly", group: "pipeline" },
+  { key: "designer", label: "Designer", group: "pipeline" },
   { key: "library", label: "Library", group: "pipeline" },
   { key: "cascade", label: "Cascade", group: "tools" },
   { key: "ops", label: "Operations", group: "tools" },
@@ -59,6 +57,12 @@ const STATUS_LABEL: Record<GateStatus, string> = {
   pass: "PASS", warn: "WARN", fail: "FAIL", needs_input: "NEEDS INPUT",
 };
 
+interface PipelineFacts {
+  designId: string | null;
+  overallStatus: GateStatus | null;
+  exports: ExportsResponse | null;
+}
+
 export default function App() {
   const [defaults, setDefaults] = useState<DefaultsResponse | null>(null);
   const [values, setValues] = useState<Record<string, number | string>>({});
@@ -66,24 +70,20 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [violations, setViolations] = useState<string[] | null>(null);
   const [fatalError, setFatalError] = useState<string | null>(null);
+  // Cascade-tool mesh validation (the workspace has its own layered view).
   const [validation, setValidation] = useState<Validation | null>(null);
-  const [validationGates, setValidationGates] =
-    useState<Record<string, ValidationGate> | null>(null);
-  const [overallStatus, setOverallStatus] = useState<GateStatus | null>(null);
-  // The per-gate statuses the SERVER computed. The gate blobs cannot all
-  // supply this themselves (the mesh report has no status key), so the
-  // authoritative map travels alongside them.
-  const [gateStatuses, setGateStatuses] =
-    useState<Record<string, GateStatus> | null>(null);
-  const [designId, setDesignId] = useState<string | null>(null);
-  const [exports, setExports] = useState<ExportsResponse | null>(null);
-  const [exporting, setExporting] = useState(false);
+  // Pipeline facts, reported by the Designer Workspace (Phase 14).
+  const [facts, setFacts] = useState<PipelineFacts>({
+    designId: null,
+    overallStatus: null,
+    exports: null,
+  });
   const [intake, setIntake] = useState<IntakeResponse | null>(null);
   const [precedentCount, setPrecedentCount] = useState(0);
   const [costs, setCosts] = useState<OpsCosts | null>(null);
   const [online, setOnline] = useState(true);
   const [reloadToken, setReloadToken] = useState(0);
-  const [view, setView] = useState<View>("assembly");
+  const [view, setView] = useState<View>("designer");
   const [serverBuildMs, setServerBuildMs] = useState<number | null>(null);
   const [lastRebuildMs, setLastRebuildMs] = useState<number | null>(null);
   const rebuildStartRef = useRef<number | null>(null);
@@ -128,25 +128,9 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
-    if (view !== "assembly") return;
-    getAssemblyExports()
-      .then((e) => {
-        if (!e) return;
-        setExports(e);
-        setDesignId((current) => current ?? e.design_id);
-      })
-      .catch(() => undefined);
-    getLatestAssemblyValidation()
-      .then((v) => {
-        if (!v) return;
-        setValidation(v.validation);
-        setValidationGates(v.gates ?? null);
-        setGateStatuses(v.gate_statuses ?? null);
-        setOverallStatus(v.overall_status ?? null);
-      })
-      .catch(() => undefined);
-  }, [view]);
+  const onPipelineChange = useCallback((next: PipelineFacts) => {
+    setFacts(next);
+  }, []);
 
   const onRebuild = useCallback(() => {
     setBusy(true);
@@ -155,9 +139,6 @@ export default function App() {
     postBuild(values, seed)
       .then((resp: BuildResponse) => {
         setValidation(resp.validation);
-        setValidationGates(null);
-        setGateStatuses(null);
-        setOverallStatus(null);
         setServerBuildMs(resp.build_ms);
         setReloadToken((t) => t + 1);
         setBusy(false);
@@ -169,40 +150,6 @@ export default function App() {
         else setFatalError(`Rebuild failed: ${e.message}`);
       });
   }, [values, seed]);
-
-  const onAssemblyBuilt = useCallback((resp: AssemblyBuildResponse) => {
-    setValidation(resp.validation);
-    setValidationGates(resp.validation_gates);
-    // The build response reports the layered gates only; the mesh verdict
-    // rides in `validation.passed`, so name it here too.
-    setGateStatuses({
-      ...Object.fromEntries(
-        Object.entries(resp.validation_gates).map(([k, g]) => [k, g.status])
-      ),
-      assembly_mesh: resp.validation.passed ? "pass" : "fail",
-    });
-    setOverallStatus(resp.overall_status ?? null);
-    setServerBuildMs(resp.build_ms);
-    setDesignId(resp.design_id);
-    setExports(null);
-    getAssemblyExports(resp.design_id).then(setExports).catch(() => undefined);
-    setReloadToken((t) => t + 1);
-  }, []);
-
-  const onExport = useCallback(() => {
-    if (!designId) return;
-    setExporting(true);
-    postAssemblyExports(designId)
-      .then(() => getAssemblyExports(designId))
-      .then((e) => {
-        setExports(e);
-        setExporting(false);
-      })
-      .catch((e) => {
-        setExporting(false);
-        setFatalError(`Export failed: ${e.message}`);
-      });
-  }, [designId]);
 
   const onModelRendered = useCallback(() => {
     if (rebuildStartRef.current !== null) {
@@ -221,6 +168,7 @@ export default function App() {
 
   // --- the stepper: every state DERIVED, never stored ---------------------
   const steps: PipelineStep[] = useMemo(() => {
+    const { designId, overallStatus, exports } = facts;
     const intakeState: StepState = !intake
       ? "pending"
       : intake.status === "confirmed"
@@ -262,19 +210,19 @@ export default function App() {
       { key: "council", label: "Council", state: councilState,
         detail: intake?.council_session_id ? "session run" : "not run", view: "council" },
       { key: "build", label: "Build", state: buildState,
-        detail: designId ? `design ${designId.slice(0, 8)}` : "no design", view: "assembly" },
+        detail: designId ? `design ${designId.slice(0, 8)}` : "no design", view: "designer" },
       { key: "validate", label: "Validate", state: validationState,
         detail: overallStatus ? STATUS_LABEL[overallStatus] : "not validated",
-        view: "assembly" },
+        view: "designer" },
       { key: "export", label: "Export", state: exportState,
-        detail: exports?.package_built ? "package sealed" : "no package", view: "assembly" },
+        detail: exports?.package_built ? "package sealed" : "no package", view: "designer" },
       { key: "accept", label: "Library", state: libraryState,
         detail: precedentCount > 0
           ? `${precedentCount} precedent${precedentCount === 1 ? "" : "s"}`
           : acceptedThis ? "accepted" : "nothing accepted",
         view: "library" },
     ];
-  }, [intake, designId, overallStatus, exports, precedentCount]);
+  }, [intake, facts, precedentCount]);
 
   if (fatalError) {
     return (
@@ -292,8 +240,6 @@ export default function App() {
   if (!defaults) {
     return <div className="loading">Loading parameter registry…</div>;
   }
-
-  const workspace = view === "assembly" || view === "cascade";
 
   return (
     <div className="shell">
@@ -316,13 +262,21 @@ export default function App() {
         </nav>
       </header>
 
-      <main className={workspace ? "workspace" : "single"}>
+      <main
+        className={
+          view === "cascade"
+            ? "workspace"
+            : view === "designer"
+              ? "designer-main"
+              : "single"
+        }
+      >
         {view === "intake" && (
           <ErrorBoundary label="Brief intake">
             <IntakePanel
               onConfirmed={(next) => {
                 setIntake(next);
-                setView("assembly");
+                setView("designer");
               }}
               onFatal={setFatalError}
             />
@@ -338,8 +292,8 @@ export default function App() {
         {view === "library" && (
           <ErrorBoundary label="Library">
             <LibraryPanel
-              designId={designId}
-              exports={exports}
+              designId={facts.designId}
+              exports={facts.exports}
               onAccepted={refreshPipeline}
               onFatal={setFatalError}
             />
@@ -352,79 +306,56 @@ export default function App() {
           </ErrorBoundary>
         )}
 
-        {workspace && (
+        {/* The Designer Workspace stays MOUNTED across view switches — its
+            document, undo history and viewport state must survive a detour
+            to the Brief or Council views. Hidden with CSS, not unmounted. */}
+        <div
+          className="designer-host"
+          style={{ display: view === "designer" ? "contents" : "none" }}
+        >
+          <ErrorBoundary label="Designer workspace">
+            <DesignerWorkspace
+              intake={intake}
+              onFatal={setFatalError}
+              onPipelineChange={onPipelineChange}
+            />
+          </ErrorBoundary>
+        </div>
+
+        {view === "cascade" && (
           <>
             <div className="viewport-wrap">
               <Viewport
                 reloadToken={reloadToken}
-                glbUrl={view === "assembly" ? latestAssemblyGlbUrl : latestGlbUrl}
+                glbUrl={latestGlbUrl}
                 onModelRendered={onModelRendered}
                 onLoadError={onLoadError}
               />
               <div className="rebuild-timer">
                 {lastRebuildMs !== null
                   ? `Last build: ${Math.round(lastRebuildMs)} ms (server ${Math.round(serverBuildMs ?? 0)} ms)`
-                  : view === "assembly"
-                    ? "Last build: — (press Build assembly)"
-                    : "Last rebuild: — (press Rebuild)"}
-              </div>
-              <div className="viewport-switch">
-                {VIEWS.filter((v) => v.key === "assembly" || v.key === "cascade").map((v) => (
-                  <button
-                    key={v.key}
-                    className={view === v.key ? "active" : ""}
-                    onClick={() => setView(v.key)}
-                  >
-                    {v.label}
-                  </button>
-                ))}
+                  : "Last rebuild: — (press Rebuild)"}
               </div>
             </div>
             <div className="side">
-              {view === "assembly" ? (
-                <ErrorBoundary label="Assembly">
-                  <AssemblyPanel
-                    seed={seed}
-                    busy={busy}
-                    violations={violations}
-                    intake={intake}
-                    onSeedChange={setSeed}
-                    onBusyChange={setBusy}
-                    onViolationsChange={setViolations}
-                    onBuilt={onAssemblyBuilt}
-                    onFatal={setFatalError}
-                  />
-                </ErrorBoundary>
-              ) : (
-                <CascadePanel
-                  defaults={defaults}
-                  values={values}
-                  seed={seed}
-                  busy={busy}
-                  violations={violations}
-                  onChange={(name, v) => setValues((prev) => ({ ...prev, [name]: v }))}
-                  onSeedChange={setSeed}
-                  onRebuild={onRebuild}
-                />
-              )}
+              <CascadePanel
+                defaults={defaults}
+                values={values}
+                seed={seed}
+                busy={busy}
+                violations={violations}
+                onChange={(name, v) => setValues((prev) => ({ ...prev, [name]: v }))}
+                onSeedChange={setSeed}
+                onRebuild={onRebuild}
+              />
               <ErrorBoundary label="Validation">
                 <ValidationPanel
                   validation={validation}
-                  gates={validationGates}
-                  overallStatus={overallStatus}
-                  gateStatuses={gateStatuses}
+                  gates={null}
+                  overallStatus={null}
+                  gateStatuses={null}
                 />
               </ErrorBoundary>
-              {view === "assembly" && (
-                <ErrorBoundary label="Export">
-                  <ExportPanel
-                    designId={designId}
-                    exports={exports}
-                    exporting={exporting}
-                    onExport={onExport}
-                  />
-                </ErrorBoundary>
-              )}
             </div>
           </>
         )}
@@ -434,12 +365,12 @@ export default function App() {
         <span className={`dot ${online ? "is-online" : "is-offline"}`} />
         <span>{online ? "backend connected" : "backend unreachable"}</span>
         <span className="sep" />
-        {designId && <span>design <code>{designId.slice(0, 8)}</code></span>}
-        {overallStatus && (
+        {facts.designId && <span>design <code>{facts.designId.slice(0, 8)}</code></span>}
+        {facts.overallStatus && (
           <>
             <span className="sep" />
-            <span className={`badge badge-${overallStatus}`}>
-              {STATUS_LABEL[overallStatus]}
+            <span className={`badge badge-${facts.overallStatus}`}>
+              {STATUS_LABEL[facts.overallStatus]}
             </span>
           </>
         )}

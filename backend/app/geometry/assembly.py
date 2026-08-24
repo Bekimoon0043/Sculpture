@@ -163,8 +163,15 @@ def assemble(
     fabrication: dict[str, Any] | None = None,
     materials: dict[str, Material] | None = None,
     strict: bool = True,
+    return_solids: bool = False,
 ):
     """Validate, place, prove interference, fuse. Returns (solid, manifest).
+
+    ``return_solids`` (Phase 14): also return the PLACED per-element solids
+    as a third value ``{element_id: solid}`` — the designer workspace's
+    scene GLB needs each element as its own named node, and the solids
+    already exist here before the fuse. The fused solid and the manifest
+    are byte-for-byte unaffected by this flag.
 
     Raises ConstraintViolation with EVERY violation and its real numbers, or
     RuntimeError if the fused geometry itself breaks a guarantee (body
@@ -510,4 +517,6 @@ def assemble(
         ],
         "body_count_brep": 1,
     }
+    if return_solids:
+        return fused, manifest, solids
     return fused, manifest

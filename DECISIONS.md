@@ -2367,3 +2367,85 @@ from ADR-042.
   samples in ~29 s, four at 512²/32 samples in ~2 min. The critique loop's
   per-round render cost is minutes, not seconds, which is what
   `max_vision_iterations` has to be sized against.
+
+## ADR-044 — Phase 14: the Designer Workspace (2026-08-24)
+
+### Context
+
+Through Phase 13 the UI could drive the pipeline but not really *design* in
+it: the assembly was a hardcoded three-element demo, the viewport was one
+fused, unselectable body, and judging two ideas against each other meant
+rebuilding and remembering. The operator's directive for this phase: move
+from "the system can build a design" to "a designer can shape, judge,
+compare, and refine a design with confidence."
+
+### Decision
+
+1. **The document is the request.** The workspace edits a design document
+   whose shape IS the assembly build request (elements + joints +
+   fabrication + seed + gate profile). Undo/redo is a snapshot stack over
+   that document. There is no second representation to drift.
+
+2. **Build-to-see, kept visible.** The viewport renders the last BUILT
+   geometry, never a browser-side approximation of unbuilt edits. Editing
+   marks the workspace dirty ("UNBUILT CHANGES"); *Build & validate* is the
+   only bridge from document to pixels. This is Rule 5 as UI: the kernel
+   draws; the browser edits the program the kernel will receive. A
+   consequence accepted deliberately: no live preview while dragging a
+   parameter — every build is a full OCCT fuse plus gate run (seconds on
+   the operator's machine), and pretending otherwise would mean a second,
+   untrusted geometry path.
+
+3. **Selection comes from a per-element scene GLB, not from the fused
+   artifact.** `assemble()` already places every element's solid before
+   fusing; `return_solids=True` now exposes them (a keyword addition — the
+   Phase 6 two-tuple return is unchanged, proven by the gate). A new
+   `scene.glb` is written at build time next to `assembly.glb`: same
+   geometry, same tessellation constants, one glTF node per element, node
+   name == element_id. Composition goes through trimesh (an existing
+   dependency); build123d/XCAF label export was NOT used because its node
+   naming behaviour is undocumented for our version and ADR-009 forbids
+   trusting recalled behaviour — the gate instead parses the emitted binary
+   and asserts the node names match, so the property is proven per run.
+   `assembly.glb`, STEP, and their hashes are byte-for-byte unaffected;
+   scene.glb sits outside the determinism contract exactly as the fused GLB
+   always has.
+
+4. **Old designs regenerate their scene lazily.** GET
+   `/{design_id}/scene.glb` rebuilds a missing scene.glb from the stored
+   request (deterministic, cached to disk, no DB write). A config drift
+   that makes an old design unbuildable returns 409 with the real
+   violations rather than a fake file.
+
+5. **Per-design reads and a design list.** `/{design_id}.glb`,
+   `/{design_id}/manifest`, `/designs` — history restore and side-by-side
+   compare need designs that are no longer "latest". The history strip's
+   truth is the server list; thumbnails are real viewport screenshots taken
+   when that geometry was on screen, cached per-browser in localStorage,
+   with a schematic placeholder when absent — a thumbnail is never
+   synthesised from anything but a rendered frame.
+
+6. **Appearance is explicitly a UI concern.** materials.yaml carries
+   engineering numbers only; the swatch colours live in the frontend
+   (`appearance.ts`), are labelled "identification only", and unknown
+   material ids get a hash-derived hue so two new materials never share a
+   swatch silently. The honest appearance channel remains the Phase 9B
+   render, reachable from the toolbar.
+
+7. **Duplicate places the copy beside its source** (stack_on: x_offset by
+   the source's BUILT bbox width + 100 mm), because a copy in the same
+   place is an undeclared interference the assembler rightly refuses. A
+   concentric_insert copy cannot be offset — the joint model has no slot —
+   so the UI says that instead of letting the build fail mysteriously.
+
+### Consequences
+
+- Backend: `docker compose up --build -d` after pulling this commit (both
+  backend and frontend images changed).
+- `gate_phase14_auto.py` runs its geometry/API sections in the backend
+  container and its frontend build section on the host
+  (`--frontend-only`); each run states plainly which sections it covered.
+- The AssemblyPanel is retired; the Cascade tool remains as the legacy
+  single-primitive path.
+- No element rotation exists anywhere in the model (joints + translation
+  only) — a workspace gesture for it would have nothing to send.

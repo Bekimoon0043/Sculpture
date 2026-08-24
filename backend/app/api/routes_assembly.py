@@ -50,6 +50,7 @@ from app.geometry.exporters import export_glb, export_step
 from app.geometry.gates import WaterContext, validate_layered_gates, worst_status
 from app.geometry.kernel import step_timestamp_for
 from app.geometry.luxexchange import build_luxexchange_package
+from app.geometry.scene_glb import export_scene_glb
 from app.geometry.validate import validate_assembly
 
 log = logging.getLogger("luxuryform.api.assembly")
@@ -298,11 +299,12 @@ def post_assembly_build(request: AssemblyBuildRequest) -> dict[str, Any]:
     """Assemble -> export STEP/GLB -> validate -> persist -> respond."""
     t0 = time.perf_counter()
     try:
-        solid, manifest = assemble(
+        solid, manifest, element_solids = assemble(
             request.elements,
             seed=request.seed,
             fabrication=request.fabrication,
             strict=request.strict,
+            return_solids=True,
         )
     except ConstraintViolation as exc:
         raise HTTPException(
@@ -319,6 +321,10 @@ def post_assembly_build(request: AssemblyBuildRequest) -> dict[str, Any]:
     glb_path = out_dir / "assembly.glb"
     step_sha256 = export_step(solid, step_path, step_timestamp_for(request.seed))
     glb_sha256 = export_glb(solid, glb_path)
+    # Phase 14: the pickable per-element scene for the designer workspace.
+    # Same geometry, one named node per element; assembly.glb stays fused.
+    scene_glb_path = out_dir / "scene.glb"
+    scene_glb_sha256 = export_scene_glb(element_solids, scene_glb_path)
 
     mesh_report = validate_assembly(glb_path, manifest)
     try:
@@ -341,6 +347,8 @@ def post_assembly_build(request: AssemblyBuildRequest) -> dict[str, Any]:
         "glb_path": str(glb_path),
         "step_sha256": step_sha256,
         "glb_sha256": glb_sha256,
+        "scene_glb_path": str(scene_glb_path),
+        "scene_glb_sha256": scene_glb_sha256,
     }
     db = get_default_db()
     with db.get_session() as session:
@@ -398,6 +406,7 @@ def post_assembly_build(request: AssemblyBuildRequest) -> dict[str, Any]:
         "glb_sha256": glb_sha256,
         "glb_url": "/api/geometry/assembly/latest.glb",
         "step_url": "/api/geometry/assembly/latest.step",
+        "scene_glb_url": f"/api/geometry/assembly/{design_id}/scene.glb",
         "exports_url": f"/api/geometry/assembly/{design_id}/exports",
         "luxexchange_url": f"/api/geometry/assembly/{design_id}/luxexchange.zip",
         "build_ms": build_ms,
@@ -497,6 +506,133 @@ def get_latest_validation() -> dict[str, Any]:
 @router.get("/{design_id}/validation")
 def get_design_validation(design_id: str) -> dict[str, Any]:
     return _validation_payload(_design_or_404(design_id))
+
+
+# ---------------------------------------------------------------------------
+# Phase 14 — designer workspace reads
+# ---------------------------------------------------------------------------
+# The workspace needs three things the latest-only routes cannot give it:
+# a PICKABLE per-element scene, per-design artifact reads (history restore
+# and side-by-side compare load designs that are no longer "latest"), and a
+# browsable design list for the history strip.
+
+
+def _ensure_scene_glb(row: DesignRow) -> Path:
+    """Path to the design's scene.glb, regenerating it if absent.
+
+    Designs built before Phase 14 have no scene.glb on disk. The stored
+    request is a complete, replayable build input and the assembler is
+    deterministic, so the scene is rebuilt from it once and cached next to
+    assembly.glb. GET stays semantically a read: same inputs, same file,
+    no DB writes.
+    """
+    if not row.glb_path:
+        raise HTTPException(status_code=404, detail="design has no GLB on disk")
+    path = Path(row.glb_path).parent / "scene.glb"
+    if path.exists():
+        return path
+    stored = json.loads(row.parameter_json)
+    request = stored.get("request") or {}
+    try:
+        _, _, element_solids = assemble(
+            request.get("elements") or [],
+            seed=int(request.get("seed", 0)),
+            fabrication=request.get("fabrication") or None,
+            # The design built successfully once; strict=False keeps a
+            # recorded workshop-limit breach from turning a read into a 500.
+            strict=False,
+            return_solids=True,
+        )
+    except ConstraintViolation as exc:
+        # Deterministic rebuild of a previously built design cannot violate
+        # constraints unless config (materials.yaml) changed underneath it.
+        # Say exactly that instead of pretending the design is gone.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "stored design no longer rebuilds under the current "
+                f"material/config values: {'; '.join(exc.violations[:3])}"
+            ),
+        ) from exc
+    export_scene_glb(element_solids, path)
+    return path
+
+
+@router.get("/latest/scene.glb")
+def get_latest_scene_glb() -> FileResponse:
+    path = _ensure_scene_glb(_latest_assembly_design())
+    return FileResponse(path, media_type="model/gltf-binary", filename="scene.glb")
+
+
+@router.get("/designs")
+def list_designs(limit: int = 50) -> dict[str, Any]:
+    """Newest-first assembly builds — the history strip's persistence.
+
+    Summary only (the full manifest rides on /{design_id}/manifest): what a
+    designer needs to recognise a variant — when, what elements, how heavy,
+    and the honest validation verdict.
+    """
+    limit = max(1, min(int(limit), 200))
+    db = get_default_db()
+    with db.get_session() as session:
+        rows = session.execute(
+            select(DesignRow)
+            .where(DesignRow.status == "assembly_built")
+            .order_by(DesignRow.created_at.desc())
+            .limit(limit)
+        ).scalars().all()
+    designs = []
+    for row in rows:
+        try:
+            stored = json.loads(row.parameter_json)
+        except (ValueError, TypeError):
+            stored = {}
+        manifest = stored.get("manifest") or {}
+        elements = manifest.get("elements") or []
+        statuses = _validation_statuses(row.id)
+        designs.append({
+            "design_id": row.id,
+            "created_at": row.created_at,
+            "spec_hash": row.spec_hash,
+            "seed": row.seed,
+            "element_count": len(elements),
+            "primitives": [e.get("primitive") for e in elements],
+            "element_ids": [e.get("element_id") for e in elements],
+            "total_mass_kg": manifest.get("total_mass_kg"),
+            "overall_status": worst_status(statuses.values()) if statuses else None,
+            "glb_url": f"/api/geometry/assembly/{row.id}.glb",
+            "scene_glb_url": f"/api/geometry/assembly/{row.id}/scene.glb",
+        })
+    return {"count": len(designs), "designs": designs}
+
+
+@router.get("/{design_id}/scene.glb")
+def get_design_scene_glb(design_id: str) -> FileResponse:
+    path = _ensure_scene_glb(_design_or_404(design_id))
+    return FileResponse(path, media_type="model/gltf-binary", filename="scene.glb")
+
+
+@router.get("/{design_id}.glb")
+def get_design_glb(design_id: str) -> FileResponse:
+    row = _design_or_404(design_id)
+    if not row.glb_path or not Path(row.glb_path).exists():
+        raise HTTPException(status_code=404, detail="design has no GLB on disk")
+    return FileResponse(row.glb_path, media_type="model/gltf-binary", filename="assembly.glb")
+
+
+@router.get("/{design_id}/manifest")
+def get_design_manifest(design_id: str) -> dict[str, Any]:
+    row = _design_or_404(design_id)
+    stored = json.loads(row.parameter_json)
+    return {
+        "created_at": row.created_at,
+        "design_id": row.id,
+        "spec_hash": row.spec_hash,
+        "seed": row.seed,
+        "manifest": stored["manifest"],
+        "request": stored["request"],
+        "artifacts": stored["artifacts"],
+    }
 
 
 # ---------------------------------------------------------------------------

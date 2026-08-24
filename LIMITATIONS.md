@@ -500,7 +500,9 @@ The shell is a pipeline (ADR-041). What it does NOT do:
 - **The layout is desktop-only.** Fixed three-row shell with a 440 px side
   column. It is not responsive and has not been tested below about 1100 px.
 
-- **No keyboard shortcuts, no command palette, no undo.**
+- **No command palette.** (Phase 14 added undo/redo and Ctrl+Z / Ctrl+Y /
+  Delete / Esc in the Designer Workspace; other views still have no
+  shortcuts.)
 
 - **The pipeline stepper does not enforce order.** It reports state and
   navigates; every view remains reachable at any time. Nothing stops the
@@ -512,3 +514,56 @@ The shell is a pipeline (ADR-041). What it does NOT do:
 - **The Council view still has no precedent toggle in the UI.** The API
   supports `use_precedents`, and the Library shows what would be injected,
   but the Council panel does not yet expose the switch.
+
+## 18. Phase 14 Designer Workspace scope limits (2026-08-24)
+
+- **No element rotation.** The placement model is joints plus translation;
+  there is no rotation or scale anywhere in the request, manifest, or
+  assembler. The inspector therefore offers none. Free-form placement
+  beyond stack_on x/y offsets does not exist.
+
+- **No live geometry preview while editing.** The viewport shows the last
+  build; every edit requires *Build & validate* (a full OCCT fuse + gate
+  run, seconds per press on the operator's machine) to become visible.
+  Deliberate — see ADR-044 point 2. The UNBUILT CHANGES badge is the
+  honest indicator.
+
+- **Library thumbnails are schematic SVG line art,** drawn by hand per
+  primitive, not rendered geometry. Rendering each primitive at startup
+  would cost a full build per card. Unknown future primitives get a
+  generic glyph.
+
+- **Material swatch colours are identification only.** materials.yaml has
+  no appearance data (colour/roughness/texture); the mapping lives in
+  `frontend/src/workspace/appearance.ts` and says so in its tooltip. The
+  only honest appearance output is the Phase 9B render.
+
+- **The scene GLB doubles mesh storage per design** (fused assembly.glb +
+  per-element scene.glb, ~70 kB each at current sizes). Accepted for
+  pickability; both are outside the determinism contract (STEP is
+  canonical).
+
+- **Variant thumbnails and saved camera views are per-browser**
+  (localStorage), not server state. Clearing site data loses them; the
+  design list itself always comes back from the server. Thumbnails exist
+  only for builds whose geometry was actually on screen in that browser.
+
+- **The history strip lists the newest 50 designs**, un-paginated, and
+  "restore" replays the stored request — it does not diff or branch.
+  Lineage between designs is still not modelled (a restored-then-edited
+  design has no recorded parent).
+
+- **Measurement snaps to the tessellated surface** (the 1 mm-deflection
+  preview mesh), not the exact B-rep — good to about a millimetre at
+  fountain scale, which the tool's own numbers make visible. Fabrication
+  measurements come from STEP in CAD, never from the viewport.
+
+- **Section plane is a visual cut only** — it clips rendering and picking;
+  it does not produce a drawing (DXF/SVG sections remain the export
+  package's job).
+
+- **Compare is two variants,** not N, and compares as-built geometry with
+  verdict and mass — it does not diff parameters side by side.
+
+- **Undo history is in-memory** (capped at 100 steps) and lost on reload;
+  the durable history is the builds themselves in the strip.
