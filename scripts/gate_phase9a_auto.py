@@ -111,10 +111,35 @@ def main() -> int:
 
     # -----------------------------------------------------------------
     _section(2, "HONESTY — what is missing says why")
+    # The Blender tier has TWO honest outcomes, and the gate accepts either
+    # depending on whether the render worker is up. What it does not accept
+    # is silence: a format that is missing without saying why.
+    #
+    #   worker down -> "unavailable", reason naming the command that fixes it
+    #   worker up   -> "included", produced and downloadable, but NOT sealed
+    #                  into the package, because two conversions of the same
+    #                  design differ by a few timestamp bytes and the package
+    #                  is guaranteed byte-reproducible (see section 3). The
+    #                  manifest must say so per format rather than omit it.
     for fmt in ("USD", "USDZ", "FBX", "ABC"):
         r = by_format[fmt]
+        if r.status == "included":
+            entry = next((e for e in manifest_a["exports"]
+                          if e["format"] == fmt), None)
+            _check(failures,
+                   f"{fmt} is produced and its exclusion from the ZIP is stated",
+                   entry is not None
+                   and entry.get("in_package") is False
+                   and "byte-reproducible" in (entry.get("excluded_reason") or ""),
+                   str(entry)[:110] if entry else "no manifest entry")
+            continue
         _check(failures, f"{fmt} is unavailable, not silently omitted",
-               r.status == "unavailable" and "render worker" in (r.reason or ""))
+               r.status == "unavailable" and "render worker" in (r.reason or ""),
+               (r.reason or "")[:70])
+    _check(failures,
+           "the manifest names every format omitted for non-reproducibility",
+           isinstance(manifest_a.get("omitted_non_reproducible"), list),
+           str(manifest_a.get("omitted_non_reproducible")))
     for fmt in ("DWG", "SKP"):
         r = by_format[fmt]
         _check(failures, f"{fmt} is declared impossible with a workaround",

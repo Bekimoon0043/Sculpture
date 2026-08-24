@@ -78,13 +78,18 @@ own reports and in §9 below, not here.
 Not present in this repository, by design (later-phase code is not created
 early):
 
-- **Phase 5** — IN PROGRESS.  The render → vision-critique → bounded-delta
-  loop (ADR-007) is implemented and its auto gate passes offline with fixture
-  replay.  The render half is no longer a blocker: the Phase 9B render worker
-  is BUILT and gated (ADR-043), so real PNGs are available to the loop.  What
-  remains is a live multi-round run against real vision providers, which costs
-  money and is the operator's visual gate (`gate_phase5_visual.md`).
-  Enforcement of `max_vision_iterations` is wired to the budget.yaml value.
+- **Phase 5** — the loop is BUILT, auto-gated, and has now been RUN LIVE
+  (2026-08-24, ADR-045): three rounds against Claude Sonnet 4.5 and GPT-4o for
+  $0.042916 measured, 5 agreed deltas applied, geometry rebuilt each round and
+  measurably changed. `scripts/run_vision_critique.py` reproduces it.
+  Enforcement of `max_vision_iterations` is wired to the budget.yaml value and
+  the script refuses to exceed it.
+
+  What is NOT yet established is how the loop behaves over MANY designs. One
+  live run on one design proves the machinery converges; it does not prove the
+  critique reliably improves a design, and the objective score is currently a
+  thin composite (mass against handling limit). Treat the loop as working, not
+  as validated design judgement.
 - **Phase 6** — the primitive library (PHASE_6_PLAN.md). Slice A1 (assembly
   core + basin_round/plinth/sculptural_column, gate PASS 2026-08-20, ADR-032)
   is BUILT; slices A2 (AI + surfaces), B (rim treatments + fixtures),
@@ -346,12 +351,17 @@ is NOT there:
   are absent from the package and the manifest says so rather than shipping
   an empty `renders/` folder.
 
-- **USD, USDZ, FBX and Alembic report `unavailable`.** They need Blender.
-  As of 2026-08-24 Blender EXISTS in this system (the Phase 9B render worker,
-  ADR-043) but the export path is not wired to it: the worker renders images,
-  it does not convert formats. These four remain honestly `unavailable`
-  rather than faked or silently omitted, and converting them is now a wiring
-  job rather than a missing dependency.
+- **USD, USDZ, FBX and Alembic are produced, but are NOT inside the
+  LUXEXCHANGE package** (2026-08-24, ADR-045). The render worker converts them
+  (`docker compose --profile render up -d render-worker`); with the worker
+  down they report `unavailable` naming that command.
+
+  They are downloadable individually and deliberately not sealed into the ZIP.
+  Measured: two conversions of the same design differ by 2 bytes (USDZ), 27
+  (FBX) and 1 (ABC) — embedded creation timestamps. The package's promise is
+  that the same design yields the same bytes, so a file that cannot honour it
+  stays out. The manifest lists them under `omitted_non_reproducible` with a
+  per-format `excluded_reason`, so nothing is silently missing.
 
 - **DAE and 3MF report `unavailable`** naming the missing optional Python
   package (`pycollada`, `networkx`). Both are small, but adding them means a

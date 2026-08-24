@@ -1,8 +1,9 @@
 # PHASE_5_REPORT.md — Vision Critique Loop (Phase 5)
 
-**Status:** auto gate PASS 2026-08-24. The render dependency is CLOSED
-(Phase 9B built, ADR-043). Awaiting the operator's visual gate
-(`gate_phase5_visual.md`), which requires live API spend.
+**Status:** auto gate PASS 2026-08-24, and RUN LIVE against real vision
+providers the same day (ADR-045). The render dependency is CLOSED (Phase 9B,
+ADR-043). The operator's visual gate remains, but it is now a matter of
+looking at renders that exist rather than of spend that has not happened.
 
 **Date:** 2026-08-22, revised 2026-08-24.
 
@@ -107,6 +108,33 @@ $ docker compose exec backend python -m pytest tests/test_critique.py -q
 7 passed
 ```
 
+### LIVE run (2026-08-24) — real providers, real money
+
+`scripts/run_vision_critique.py`, run 57d90665dcf2, Claude Sonnet 4.5 +
+GPT-4o, three rounds, geometry rebuilt between rounds:
+
+```
+ROUND 1  consensus: 2 agreed
+    APPLY a_plinth.height_mm: 350 -> 465
+    APPLY b_basin.height_mm:  300 -> 260
+ROUND 2  consensus: 1 agreed
+    APPLY a_plinth.height_mm: 465 -> 535
+ROUND 3  consensus: 2 agreed
+    APPLY a_plinth.top_diameter_mm: 1400 -> 1470
+    APPLY b_basin.height_mm:         260 -> 277.5
+rounds completed 3/3   total measured cost $0.042916
+agreed deltas 5, applied 5
+```
+
+In round 3 both models independently proposed
+`a_plinth.top_diameter_mm increase 200`. Evidence, including every raw model
+reply and the contact sheet each provider saw, is in
+`data/critiques/57d90665dcf2/critique_rounds.json`.
+
+**The first live run applied zero deltas**, and finding out why was the whole
+value of running it — see ADR-045 Part 3. The consensus magnitude tolerance was
+discarding genuine agreement, and no fixture-based gate could have shown that.
+
 ---
 
 ## How to run
@@ -133,17 +161,16 @@ estimated at ≈ $0.47 per `PHASE_5_PLAN.md` §1.1, well under the $5 session ca
 
 ## Honest blockers
 
-1. **No live iteration run yet.** The auto gate proves the orchestration with
-   scripted providers; it does not prove that two real vision models, looking
-   at two real renders, will converge. That is the operator's visual gate and
-   it costs money.
-2. **`scripts/measure_render.py` does not exist.** The 2026-08-22 report and
-   `gate_phase5_visual.md` both reference it. It was never written. The visual
-   gate's render step is served by `gate_phase9b_auto.py` and the API instead —
-   `gate_phase5_visual.md` should be re-read against that before the operator
-   runs it.
-3. **The loop can only move parameters already in the Design Spec**, and it
+1. **One live run, one design.** The loop converges and the machinery is
+   proven end to end, but a single run does not establish that the critique
+   reliably improves designs in general. The objective score is also a thin
+   composite (mass against handling limit). Treat the loop as working, not as
+   validated design judgement.
+2. **The loop can only move parameters already in the Design Spec**, and it
    cannot judge engineering — only proportion, silhouette and composition.
+3. **GPT-4o proposes fewer deltas than Claude** (typically 2 vs 3-4), which
+   caps how much consensus is reachable per round. Not a defect, but it is why
+   a round can produce one agreed delta rather than three.
 
 ---
 

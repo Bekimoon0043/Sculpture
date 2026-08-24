@@ -79,9 +79,12 @@ per-element named-node `scene.glb` + per-design read routes backend-side.
 
 Thirteen auto gates, all $0 and offline:
 `gate_phase2/3/4/5/6a1/costing/8/8b/9a/9b/11/13a/14_auto.py`.
-Note `gate_phase9b_auto.py` needs the render-worker container running
-(`docker compose --profile render up -d render-worker`); it still costs $0 and
-uses no network. `gate_phase14_auto.py` runs its geometry/API sections in
+Note `gate_phase9b_auto.py` and the Blender-tier sections of
+`gate_phase9a_auto.py` need the render-worker container running
+(`docker compose --profile render up -d render-worker`); both still cost $0 and
+use no network. 9a passes either way — with the worker down the four
+Blender-only formats report `unavailable`, with it up they report `included`
+but stay OUT of the reproducible package (ADR-045). `gate_phase14_auto.py` runs its geometry/API sections in
 the backend container and its frontend section on the host
 (`python scripts\gate_phase14_auto.py --frontend-only`); each run prints
 which sections it covered.
@@ -89,6 +92,13 @@ which sections it covered.
 Awaiting the operator's visual gates: `gate_phase8_visual.md`,
 `gate_phase9a_visual.md`, `gate_phase11_13a_visual.md`,
 `gate_phase9b_visual.md`, `gate_phase5_visual.md`, `gate_phase14_visual.md`.
+
+**Phase 9B.5 + Phase 5 live run 2026-08-24 (ADR-045)** — USD/USDZ/FBX/ABC
+are produced by the render worker (not sealed into LUXEXCHANGE: they are not
+byte-reproducible), and the critique loop has been run against real vision
+providers: 3 rounds, $0.042916, 5 agreed deltas applied, geometry rebuilt and
+measurably changed. Reproduce with `scripts/run_vision_critique.py`; size the
+iteration count with `scripts/measure_render.py`.
 
 Not started: **Phase 10** (vision critique of renders — no longer blocked,
 now that 9B is built), **Phase 13 slices B+** (resumable job runner — see

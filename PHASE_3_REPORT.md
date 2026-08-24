@@ -5,6 +5,8 @@ alternatives × 2 providers, geometrist, engineer, critic (dynamic rule:
 never a producer provider), and a binding Arbiter decision — every call
 logged with real tokens and real cost, hard-capped before every dispatch.
 
+## PHASE 3 GATE: PASS (auto, fixture mode, $0 - 2026-08-07)
+
 ## Gate result
 
 - **Auto gate** (`scripts/gate_phase3_auto.py`, fixture mode, $0): PASS

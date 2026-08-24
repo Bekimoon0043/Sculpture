@@ -162,6 +162,8 @@ Four regression tests cover it.
 
 ---
 
+## PHASE 8 GATE: PASS (auto, offline, $0 - 2026-08-21)
+
 ## Gate evidence
 
 ```

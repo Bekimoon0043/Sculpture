@@ -88,6 +88,7 @@ RUN echo "${BLENDER_SHA256}  /tmp/blender.tar.xz" | sha256sum -c - \
 # image needs nothing from PyPI and cannot be broken by an index outage.
 COPY render_worker.py /app/render_worker.py
 COPY render_scene.py /app/render_scene.py
+COPY convert_scene.py /app/convert_scene.py
 
 # ADR-005 shape, reused: the worker runs non-root with no network and a
 # read-only filesystem except the scratch mount. Blender is not AI-written

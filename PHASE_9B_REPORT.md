@@ -164,14 +164,37 @@ which is what `max_vision_iterations` has to be sized against.
   recorded in `debs.txt` and ADR-043, not an oversight.
 - **PNG bytes are not byte-reproducible.** Seed and thread count are pinned so
   rounds are comparable, but the determinism guarantee remains STEP-only.
-- **The render worker renders; it does not convert.** USD, USDZ, FBX and
-  Alembic still report `unavailable` in the export package. Blender could now
-  produce them, but that path is not wired. It is a wiring job, not a missing
-  dependency — recorded in LIMITATIONS.md rather than quietly implied.
+- **The Blender-tier formats are produced but not sealed into the package.**
+  Wired on 2026-08-24 (Phase 9B.5, ADR-045): the worker gained a `convert` job
+  kind and writes USD, USDZ, FBX and Alembic. They are downloadable but stay
+  out of the LUXEXCHANGE ZIP, because two conversions of the same design differ
+  by a handful of timestamp bytes and the package is guaranteed
+  byte-reproducible.
 - **The Blender tarball is not in the repo.** It is a 360 MB host-side build
   input, gitignored along with the extracted tree. `debs.txt` and `sums.txt`
   are committed, so the image rebuilds from the repo plus one resumable
   download.
+
+## Amendment 2026-08-24 — Phase 9B.5, format conversion
+
+The worker now dispatches on `manifest["kind"]`: `render` (four views) or
+`convert` (USD/USDZ/FBX/ABC via `convert_scene.py`, all formats in ONE Blender
+launch). Conversion of a real design GLB takes about 2.7 s for all four.
+
+Three things worth recording, each caught by looking rather than assuming:
+
+1. `export_textures=False` did not stop the USD exporter writing a `textures/`
+   folder — it bakes Blender's default grey WORLD to a one-pixel HDR. The world
+   is now dropped before export.
+2. The four formats are not byte-reproducible (2/27/1 bytes differ for
+   USDZ/FBX/ABC — embedded timestamps). This broke `gate_phase9a` §3 and
+   `gate_phase13a` §3 and was fixed the same day; see ADR-045 Part 2 and the
+   amendment in PHASE_9A_REPORT.md.
+3. Verified by magic bytes, not extension: `PXR-USDC`, `PK`,
+   `Kaydara FBX Binary`, `Ogawa`. An exporter silently writing the wrong format
+   to the right filename would otherwise pass.
+
+`gate_phase9b_auto.py` gained sections 5 and 6 covering exactly this.
 
 ## What this unblocks
 

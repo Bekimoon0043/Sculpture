@@ -7,6 +7,8 @@ sandbox executes legal ones, the Phase 2 validation gate measures the
 result, and a bounded repair loop feeds every failure back. Every attempt —
 including rejected and failed ones — is persisted against its spec.
 
+## PHASE 4 GATE: PASS (live, operator's machine, 2026-08-17)
+
 ## Gate result
 
 **GATE (verbatim, as approved):** the brief from the operator's Phase 3

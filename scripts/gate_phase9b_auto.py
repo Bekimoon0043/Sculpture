@@ -28,6 +28,7 @@ no two views are near-identical.
 
 from __future__ import annotations
 
+import shutil
 import sys
 from itertools import combinations
 from pathlib import Path
@@ -58,6 +59,20 @@ MIN_SUBJECT_FRACTION = 0.02
 #: Two views differing by less than this mean absolute difference are the same
 #: picture, which means the camera rig is not actually moving.
 MIN_VIEW_DIFFERENCE = 2.0
+
+#: The four formats only Blender can write, with the magic bytes that prove a
+#: file really is that format. Checking the extension would prove nothing --
+#: an exporter that silently wrote glTF to assembly.fbx would pass.
+#:   USD  -> Blender writes binary USD (usdc) by default
+#:   USDZ -> an uncompressed zip package
+#:   FBX  -> binary FBX
+#:   ABC  -> Alembic's Ogawa backend
+BLENDER_FORMATS = {
+    "USD": (".usd", b"PXR-USDC"),
+    "USDZ": (".usdz", b"PK"),
+    "FBX": (".fbx", b"Kaydara FBX Binary"),
+    "ABC": (".abc", b"Ogawa"),
+}
 
 
 def fail(step: str, msg: str) -> int:
@@ -222,6 +237,49 @@ def main() -> int:
                              f"(mean abs diff {diff:.2f}) -- the camera rig is "
                              "not moving between views")
     print("[4] PASS all six view pairs are distinct")
+
+    # 5. Format conversion (Phase 9B.5). USD, USDZ, FBX and Alembic are the
+    # four formats nothing else in this stack can write. Before this was
+    # wired they reported `unavailable`; the point of the check is that they
+    # now report `included` AND that the bytes are really those formats.
+    from app.geometry.export_formats import write_exports
+
+    convert_out = staging / "converted"
+    if convert_out.exists():
+        shutil.rmtree(convert_out)
+    results = {r.format: r for r in write_exports(
+        None, convert_out, step_path=None, glb_path=mesh,
+        formats=list(BLENDER_FORMATS), render_worker_available=True,
+    )}
+
+    for fmt, (ext, magic) in BLENDER_FORMATS.items():
+        r = results.get(fmt)
+        if r is None:
+            return fail("5", f"{fmt} was not attempted at all")
+        if r.status != "included":
+            return fail("5", f"{fmt} reported {r.status}: "
+                             f"{r.error or r.reason or 'no reason given'}")
+        path = convert_out / f"assembly{ext}"
+        if not path.exists() or path.stat().st_size == 0:
+            return fail("5", f"{fmt} reported included but wrote no file")
+        head = path.read_bytes()[:len(magic)]
+        if head != magic:
+            return fail("5", f"{fmt} is not really {fmt}: expected magic "
+                             f"{magic!r}, file starts {head!r}")
+        print(f"    {fmt:<5} {r.bytes:>8} bytes  magic={magic!r}")
+    print(f"[5] PASS all four Blender-only formats written and verified")
+
+    # 6. A conversion must carry the design and nothing else. Blender's
+    # factory world gets baked to an HDR sidecar by the USD exporter unless
+    # it is explicitly dropped, and that folder would ship to a fabricator as
+    # a file they did not ask for.
+    strays = [p.name for p in convert_out.iterdir()
+              if p.name not in {f"assembly{ext}"
+                                for ext, _ in BLENDER_FORMATS.values()}]
+    if strays:
+        return fail("6", f"conversion left files that are not the design: "
+                         f"{', '.join(sorted(strays))}")
+    print("[6] PASS conversion output contains only the four design files")
 
     print("=" * 62)
     print("Phase 9B auto gate PASS")

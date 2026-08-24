@@ -194,33 +194,48 @@ def _delta_key(delta: ParameterDelta) -> str:
     return f"{delta.parameter_path}:{delta.direction}"
 
 
-#: Relative tolerance on magnitude for two providers to count as agreeing.
+#: OPTIONAL extra restriction on magnitude agreement. ``None`` -- the default
+#: -- means magnitude does NOT gate consensus at all.
 #:
-#: 0.20, not the 0.05 this started at. Consensus here is asking "did two
-#: independent vision models identify the same problem and the same direction
-#: of fix" -- it is NOT asking them to agree on a number to two significant
-#: figures, which is not something a language model's magnitude estimate can
-#: honestly deliver. At 0.05, two models proposing +0.030 m and +0.032 m on a
-#: tier height (2 mm apart, 6.25% relative) were scored as DISAGREEING and the
-#: round produced nothing. That is the common case, so the loop would almost
-#: never accept a delta and the whole phase would be dead code that passes its
-#: own unit tests.
+#: This started at 0.05, was widened to 0.20, and is now off. The evidence for
+#: turning it off came from the first LIVE run (2026-08-24, run 5994e1a8ea8e,
+#: $0.039 across three rounds), which is the only thing that could have
+#: produced it -- the fixture in the $0 gate has both providers proposing
+#: nearly the same number, so the gate never exercised this.
 #:
-#: Widening this is safe because magnitude is not trusted from the model
-#: anyway: whatever survives here is clamped to the annealed step limit
-#: (_annealing_limit), which is derived from the parameter's validated range.
-#: The model chooses the direction; the engineering envelope chooses how far.
-DELTA_AGREEMENT_TOLERANCE = 0.20
+#: In that run's round 1, both providers independently said "make the basin
+#: taller": anthropic +50 mm, openai +30 mm on b_basin.height_mm. Same
+#: parameter, same direction, arrived at independently -- consensus by any
+#: reasonable reading. The magnitude gate threw it away because 50 and 30 are
+#: 40% apart, and the loop reported "no agreement" and moved nothing. Across
+#: three rounds it applied zero deltas while the models were visibly agreeing.
+#:
+#: Consensus asks whether two independent models saw the same problem and the
+#: same direction of fix. It is not, and cannot be, asking them to agree on a
+#: number: a magnitude out of a vision model is an impression, not a
+#: measurement. And it does not need to be trusted, because it is not used --
+#: compute_consensus takes the SMALLER of the two proposals and then clamps
+#: that to _annealing_limit, which is derived from the parameter's validated
+#: engineering range. The model chooses the direction; the envelope chooses
+#: how far.
+#:
+#: Callers that genuinely want a magnitude check can still pass a float.
+DELTA_AGREEMENT_TOLERANCE: float | None = None
 
 
 def _deltas_agree(a: ParameterDelta, b: ParameterDelta,
-                  tolerance: float = DELTA_AGREEMENT_TOLERANCE) -> bool:
-    """Two deltas agree if they target the same path, same direction, and
-    their magnitudes are within the given relative tolerance."""
+                  tolerance: float | None = DELTA_AGREEMENT_TOLERANCE) -> bool:
+    """Two deltas agree if they target the same path and the same direction.
+
+    ``tolerance`` (relative) additionally requires their magnitudes to be
+    close. It defaults to None -- no magnitude gate. See the note above.
+    """
     if a.parameter_path != b.parameter_path:
         return False
     if a.direction != b.direction:
         return False
+    if tolerance is None:
+        return True
     ref = max(abs(a.magnitude), abs(b.magnitude), 1e-9)
     return abs(a.magnitude - b.magnitude) / ref <= tolerance
 
@@ -238,7 +253,7 @@ def compute_consensus(
     b: VisionCritique,
     round_no: int,
     validated_ranges: dict[str, tuple[float, float]],
-    tolerance: float = DELTA_AGREEMENT_TOLERANCE,
+    tolerance: float | None = DELTA_AGREEMENT_TOLERANCE,
 ) -> ConsensusResult:
     """Return deltas that BOTH providers propose within tolerance.
 
@@ -329,6 +344,7 @@ class CritiqueLoop:
         round_no: int,
         validated_ranges: dict[str, tuple[float, float]],
         providers: list[str] | None = None,
+        current_params: dict[str, float] | None = None,
     ) -> tuple[list[CritiqueRound], list[CritiqueOutcome]]:
         """Run a single critique round (render + two-provider critique + consensus).
 
@@ -337,7 +353,15 @@ class CritiqueLoop:
         providers = providers or ["anthropic", "openai"]
         from app.council import prompts
 
-        prompt = prompts.vision_critique_prompt(spec_summary, round_no)
+        # Pass the allowed paths and their validated ranges into the prompt.
+        # Without them both models guess at parameter names, and two different
+        # guesses for the same dimension read as disagreement rather than as
+        # the agreement they actually are.
+        prompt = prompts.vision_critique_prompt(
+            spec_summary, round_no,
+            tunable=validated_ranges,
+            current=current_params,
+        )
 
         critiques: list[VisionCritique] = []
         outcomes: list[CritiqueOutcome] = []

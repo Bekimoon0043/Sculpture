@@ -2449,3 +2449,138 @@ compare, and refine a design with confidence."
   single-primitive path.
 - No element rotation exists anywhere in the model (joints + translation
   only) — a workspace gesture for it would have nothing to send.
+
+
+---
+
+## ADR-045 — Phase 9B.5: Blender-tier export, and what a live critique run proved (2026-08-24)
+
+**Status:** accepted, implemented and gated 2026-08-24. Extends ADR-043.
+
+### Part 1 — USD, USDZ, FBX and Alembic are now produced
+
+These four were the last formats the export package could not write; nothing
+else in the stack produces them and Blender does. The render worker gained a
+second job kind, `convert`, alongside `render`:
+
+- `docker/render/convert_scene.py` imports the GLB and exports every requested
+  format in ONE Blender launch. It is separate from `render_scene.py` because
+  rendering builds a camera rig, lights and a ground plane that must never be
+  baked into a delivered FBX.
+- The world is dropped before export. `export_textures=False` alone was not
+  enough: the USD exporter bakes Blender's default grey world to a one-pixel
+  HDR in a `textures/` folder beside the file, which would ship to a
+  fabricator as a file they did not ask for.
+- `_blender_writer` in export_formats.py converts every requested
+  Blender-tier format in one worker round trip, sharing the result through a
+  mutable cache in the export context. Four formats otherwise mean four
+  Blender launches — or, when the worker is down, four separate 20-second
+  pickup timeouts.
+- `ExportUnavailable` was added so a missing render worker reports
+  `unavailable` with the exact command that fixes it, rather than `failed`.
+  Overloading `ImportError` for this was tried first and was wrong: the
+  existing optional-dependency path only recognises module-name messages, so
+  the operator saw a raw `ImportError` string and would have gone hunting a
+  bug that is really one command.
+
+### Part 2 — they are produced but NOT sealed into the package
+
+Measured, two conversions of the same GLB: USDZ differs by 2 bytes, FBX by 27,
+ABC by 1. Embedded creation timestamps — the zip directory, the FBX header,
+Alembic's metadata. USD matched, but comes off the same toolchain, so the whole
+tier is marked non-deterministic rather than trusting one lucky format.
+Byte-patching those fields was rejected: the offsets are undocumented and
+version-specific, so it would work until a Blender upgrade moved them and then
+silently produce corrupt files.
+
+`FormatSpec.deterministic` now records this, and the LUXEXCHANGE packager
+produces such a file and offers it for download but does NOT put it in the ZIP.
+
+**Excluding it from the content digest is not sufficient, and that mistake was
+made first.** The digest is only a field; Phase 13a compares the package BYTES.
+A non-deterministic file inside the ZIP changes the ZIP whether or not its hash
+feeds the digest.
+
+**The same trap has a second floor.** Having removed the bytes, the per-build
+sha256 was recorded in `provenance.json` — which is excluded from the digest,
+and still a file INSIDE the ZIP. The package bytes changed again. Per-build
+facts about these formats live on the `exports` database row, which is the only
+place outside the reproducible deliverable. Nothing that varies between two
+builds of the same design may appear anywhere inside the package.
+
+The manifest gains `omitted_non_reproducible` (format names only) and per-entry
+`in_package` / `excluded_reason`, so a fabricator reading it learns the format
+exists and why it is absent, instead of assuming the export failed.
+
+This regression was introduced and caught the same day: it surfaced in a
+full-suite run against an image built from the work-in-progress (2026-08-24),
+failing `gate_phase9a` §3 and `gate_phase13a` §3, and was fixed before either
+gate was allowed to stay red.
+
+### Part 3 — the consensus magnitude gate was destroying real agreement
+
+The first LIVE critique run (2026-08-24, run 5994e1a8ea8e, $0.039, three
+rounds against Claude Sonnet 4.5 and GPT-4o) applied ZERO deltas. The models
+were not failing to agree — the loop was discarding their agreement.
+
+Round 1, both providers independently: "make the basin taller". Anthropic
++50 mm, OpenAI +30 mm on `b_basin.height_mm`. Same parameter, same direction,
+reached independently. The magnitude tolerance threw it away because 50 and 30
+are 40% apart.
+
+Consensus asks whether two independent models saw the same problem and the same
+direction of fix. It cannot ask them to agree on a number: a magnitude out of a
+vision model is an impression, not a measurement. And it need not, because the
+number is not used — the smaller of the two proposals is taken and then clamped
+to `_annealing_limit`, derived from the parameter's validated engineering range.
+The model chooses the direction; the envelope chooses how far.
+
+`DELTA_AGREEMENT_TOLERANCE` is now `None` (no magnitude gate); callers may still
+pass a float. **Only a live run could have found this** — the $0 gate's fixture
+has both providers proposing nearly the same number, so it never exercised the
+case.
+
+Re-run with the gate removed (run 57d90665dcf2, $0.042916, three rounds): 5
+agreed deltas, all 5 applied, plinth height 350→535 mm, top diameter
+1400→1470 mm, basin height 300→277.5 mm. In round 3 both models independently
+proposed `a_plinth.top_diameter_mm increase 200`.
+
+### Part 4 — the prompt has to name the parameter paths
+
+Two further live findings, both fixed in `vision_critique_prompt`:
+
+- The schema example used `tier_height_m` in metres while the real parameters
+  are `b_basin.diameter_mm` in millimetres. The example anchors harder than the
+  spec summary does.
+- GPT-4o returned `a_plinth_taper_deg` — underscores for the dot separator.
+  Correctly discarded, and a wasted round.
+
+The prompt now lists the exact allowed paths with their current values and
+validated ranges, states the unit once, and describes the image as one contact
+sheet of four labelled views rather than "four rendered views" — which is what
+is actually sent (see Part 5).
+
+### Part 5 — four views go as one contact sheet
+
+`AIProvider.vision()` takes one image, and that path carries the ADR-005/Rule 8
+machinery: the pre-dispatch budget check that raises BudgetHalt before any
+network traffic, real cost from real tokens, and the `ai_calls` audit row.
+Widening it to a list would have meant reworking per-provider image token
+accounting to reach the same place.
+
+Compositing is also better for the task. Every judgement the critique makes —
+is the bowl too wide FOR the plinth, does the elevation agree with the plan — is
+comparative. A model shown four separate images must recall three of them; shown
+a contact sheet it can look. It is cheaper too: one image at 2x linear size
+costs far fewer tokens than four at 1x, each carrying its own fixed overhead.
+Both providers are shown the SAME sheet — consensus between two models looking
+at two different pictures is not consensus.
+
+### Consequences
+
+- Live critique costs about $0.0143 per round for two providers at 320px/16
+  samples. Rendering, not the API, is the expensive half — `measure_render.py`
+  exists to size `max_vision_iterations` against wall clock.
+- The four Blender formats are downloadable but never inside LUXEXCHANGE. If a
+  future toolchain makes them byte-stable, flipping `deterministic=True` is the
+  whole change.

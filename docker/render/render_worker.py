@@ -47,6 +47,7 @@ from pathlib import Path
 
 BLENDER_BIN = os.environ.get("BLENDER_BIN", "/usr/local/bin/blender")
 SCENE_SCRIPT = Path(__file__).resolve().parent / "render_scene.py"
+CONVERT_SCRIPT = Path(__file__).resolve().parent / "convert_scene.py"
 
 #: How often to rescan for new job directories.
 POLL_S = float(os.environ.get("LUXURYFORM_RENDER_POLL_S", "0.5"))
@@ -80,14 +81,122 @@ def write_atomic(path: Path, payload: dict) -> None:
         raise
 
 
+def run_blender(script: Path, spec_path: Path, job_dir: Path,
+                timeout: float, log_name: str):
+    """Run one Blender script as a subprocess.
+
+    Returns (ok, error). Blender's full output always lands in the job
+    directory: when a conversion or render fails, the reason is in there and
+    nowhere else, and the operator should not have to reproduce the failure
+    to read it.
+    """
+    cmd = [BLENDER_BIN, "-b", "--factory-startup",
+           "--python", str(script), "--", str(spec_path)]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return False, ("blender exceeded the %.0fs budget for this job and "
+                       "was killed" % timeout)
+    except FileNotFoundError:
+        return False, "blender binary not found at %s" % BLENDER_BIN
+
+    (job_dir / log_name).write_text(
+        (proc.stdout or "") + "\n--- stderr ---\n" + (proc.stderr or ""),
+        encoding="utf-8")
+
+    if proc.returncode != 0:
+        tail = (proc.stderr or proc.stdout or "").strip().splitlines()[-12:]
+        return False, ("blender exited %d: %s"
+                       % (proc.returncode, " | ".join(tail)))
+    return True, None
+
+
+#: Formats convert_scene.py knows how to write. Kept here so the worker can
+#: reject an unknown one before paying for a Blender launch.
+CONVERT_FORMATS = ("USD", "USDZ", "FBX", "ABC")
+
+#: Per-format allowance before Blender is killed, plus start-up margin.
+CONVERT_TIMEOUT_PER_FORMAT_S = 120.0
+
+
+def run_convert(job_dir: Path, manifest: dict, mesh_path: Path,
+                started: float) -> dict:
+    """Convert one mesh into the Blender-only export formats."""
+    wanted = [str(f).upper() for f in (manifest.get("formats") or [])]
+    if not wanted:
+        return {"ok": False, "formats": [], "total_s": 0.0,
+                "error": "convert job lists no formats"}
+    unknown = [f for f in wanted if f not in CONVERT_FORMATS]
+    if unknown:
+        return {"ok": False, "formats": [], "total_s": 0.0,
+                "error": "unknown format(s) %s; this worker writes %s"
+                         % (", ".join(unknown), ", ".join(CONVERT_FORMATS))}
+
+    spec = {"input_mesh": str(mesh_path),
+            "output_dir": str(job_dir),
+            "formats": wanted}
+    spec_path = job_dir / "convert_spec.json"
+    spec_path.write_text(json.dumps(spec, sort_keys=True), encoding="utf-8")
+
+    timeout = len(wanted) * CONVERT_TIMEOUT_PER_FORMAT_S + TIMEOUT_MARGIN_S
+    log("job %s: convert %s, timeout %.0fs"
+        % (job_dir.name, ",".join(wanted), timeout))
+
+    ok, error = run_blender(CONVERT_SCRIPT, spec_path, job_dir, timeout,
+                            "blender_convert.log")
+    if not ok:
+        return {"ok": False, "formats": [], "total_s": time.time() - started,
+                "error": error}
+
+    produced = job_dir / "convert.json"
+    if not produced.exists():
+        return {"ok": False, "formats": [], "total_s": time.time() - started,
+                "error": ("blender exited 0 but wrote no convert.json -- see "
+                          "blender_convert.log in the job directory")}
+
+    results = json.loads(produced.read_text(encoding="utf-8")).get("results", [])
+
+    # Verify rather than trust: confirm each claimed file is really on disk
+    # and non-empty. A format that claims success but produced nothing would
+    # otherwise be shipped in an export package as a broken file.
+    for entry in results:
+        if not entry.get("ok"):
+            continue
+        out = job_dir / Path(entry["path"]).name
+        if not out.exists() or out.stat().st_size == 0:
+            entry["ok"] = False
+            entry["error"] = "exporter claimed success but wrote no usable file"
+
+    succeeded = [r for r in results if r.get("ok")]
+    # Partial success is still success: the caller is told per format, and one
+    # unwritable format must not deny the operator the other three.
+    return {"ok": bool(succeeded), "formats": results,
+            "total_s": round(time.time() - started, 3),
+            "error": None if succeeded else "no format converted successfully"}
+
+
 def run_job(job_dir: Path) -> dict:
-    """Render one job. Returns the result payload (never raises)."""
+    """Run one job. Returns the result payload (never raises).
+
+    Two kinds, dispatched on manifest["kind"]:
+      "render"  (default) -- four canonical views, render_scene.py
+      "convert" -- USD/USDZ/FBX/ABC, convert_scene.py
+    The default is "render" so a manifest written before convert existed
+    still means what it meant.
+    """
     started = time.time()
     try:
         manifest = json.loads((job_dir / "job.json").read_text(encoding="utf-8"))
     except Exception as exc:
         return {"ok": False, "error": "unreadable job.json: %s" % exc,
                 "views": [], "total_s": 0.0}
+
+    kind = manifest.get("kind", "render")
+    if kind not in ("render", "convert"):
+        return {"ok": False, "views": [], "total_s": 0.0,
+                "error": "unknown job kind %r (expected 'render' or 'convert')"
+                         % kind}
 
     # `input_step` is accepted for one reason only: to give a job written by
     # an older backend a clear error instead of a KeyError. Blender has no
@@ -114,6 +223,9 @@ def run_job(job_dir: Path) -> dict:
                           "backend must stage it there before queueing"
                           % (Path(mesh).name, job_dir))}
 
+    if kind == "convert":
+        return run_convert(job_dir, manifest, mesh_path, started)
+
     views = manifest.get("views") or []
     if not views:
         return {"ok": False, "error": "job.json lists no views",
@@ -138,30 +250,13 @@ def run_job(job_dir: Path) -> dict:
     budget = sum(float(v.get("time_budget_s", 120.0)) for v in views)
     timeout = budget + TIMEOUT_MARGIN_S
 
-    cmd = [BLENDER_BIN, "-b", "--factory-startup",
-           "--python", str(SCENE_SCRIPT), "--", str(spec_path)]
     log("job %s: %d view(s), timeout %.0fs" % (job_dir.name, len(views), timeout))
 
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True,
-                              timeout=timeout)
-    except subprocess.TimeoutExpired:
+    ok, error = run_blender(SCENE_SCRIPT, spec_path, job_dir, timeout,
+                            "blender.log")
+    if not ok:
         return {"ok": False, "views": [], "total_s": time.time() - started,
-                "error": ("blender exceeded the %.0fs budget for this job and "
-                          "was killed" % timeout)}
-    except FileNotFoundError:
-        return {"ok": False, "views": [], "total_s": time.time() - started,
-                "error": "blender binary not found at %s" % BLENDER_BIN}
-
-    (job_dir / "blender.log").write_text(
-        (proc.stdout or "") + "\n--- stderr ---\n" + (proc.stderr or ""),
-        encoding="utf-8")
-
-    if proc.returncode != 0:
-        tail = (proc.stderr or proc.stdout or "").strip().splitlines()[-12:]
-        return {"ok": False, "views": [], "total_s": time.time() - started,
-                "error": ("blender exited %d: %s"
-                          % (proc.returncode, " | ".join(tail)))}
+                "error": error}
 
     views_json = out_dir / "views.json"
     if not views_json.exists():
@@ -215,8 +310,9 @@ def main(argv):
     scratch = Path(argv[1])
     scratch.mkdir(parents=True, exist_ok=True)
 
-    if not SCENE_SCRIPT.exists():
-        raise SystemExit("scene script missing at %s" % SCENE_SCRIPT)
+    for script in (SCENE_SCRIPT, CONVERT_SCRIPT):
+        if not script.exists():
+            raise SystemExit("blender script missing at %s" % script)
     if not shutil.which(BLENDER_BIN) and not Path(BLENDER_BIN).exists():
         raise SystemExit("blender not found at %s" % BLENDER_BIN)
 

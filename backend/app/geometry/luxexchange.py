@@ -247,15 +247,53 @@ def build_luxexchange_package(
     # depend on where the file happened to be written, and it would ship the
     # operator's filesystem layout to whoever receives the package. The
     # absolute path belongs on the export row in the database.
+    #: A format whose bytes differ between two exports of the same design
+    #: cannot go INTO this ZIP. Excluding it from the content digest alone
+    #: would not be enough -- the ZIP contains the bytes, so the ZIP itself
+    #: would differ, and Rule 5 (and the Phase 13a resume-equivalence check)
+    #: is about the package being byte-identical, not just its digest field.
+    #:
+    #: These files are still PRODUCED and still downloadable individually;
+    #: they are simply not sealed into the reproducible deliverable. The
+    #: manifest says so per format rather than omitting them silently.
+    from app.geometry.export_formats import FORMATS_BY_NAME
+
     export_entries = []
+    omitted_non_reproducible: list[dict[str, Any]] = []
     for result in exports:
         entry = result.to_manifest_entry()
-        if result.status == "included" and result.path:
+        spec = FORMATS_BY_NAME.get(result.format)
+        reproducible = spec.deterministic if spec is not None else True
+        if result.status == "included" and result.path and not reproducible:
+            entry["path"] = None
+            entry["in_package"] = False
+            # The manifest is COVERED by the content digest, so nothing that
+            # varies between two builds may go in it. That includes this
+            # format's own sha256 and byte count -- the very things that vary.
+            # They are recorded in provenance.json instead, which is excluded
+            # from the digest precisely so per-build facts have a home.
+            entry["sha256"] = None
+            entry["bytes"] = None
+            entry["excluded_reason"] = (
+                "produced, but not sealed into this package: two exports of "
+                "the same design do not produce identical bytes for this "
+                "format (embedded creation timestamps), and the package is "
+                "guaranteed byte-reproducible. Download it separately."
+            )
+            omitted_non_reproducible.append({
+                "format": result.format,
+                "filename": Path(result.path).name,
+                "sha256_this_build": result.sha256,
+                "bytes": result.bytes,
+            })
+        elif result.status == "included" and result.path:
             name = f"exports/{Path(result.path).name}"
             builder.add_file(name, Path(result.path))
             entry["path"] = name
+            entry["in_package"] = True
         else:
             entry["path"] = None
+            entry["in_package"] = False
         export_entries.append(entry)
 
     render_entries: list[dict[str, Any]] = []
@@ -274,6 +312,13 @@ def build_luxexchange_package(
         "assembly_manifest": assembly_manifest,
         "validation_reports": validation_reports,
         "exports": export_entries,
+        # Named explicitly so a fabricator reading the manifest learns that
+        # these formats exist and why they are not in the ZIP, instead of
+        # noticing an absence and assuming the export failed. Only the FORMAT
+        # NAMES -- the per-build hashes live in provenance.json, because this
+        # manifest is digest-covered and must be identical between builds.
+        "omitted_non_reproducible": sorted(
+            e["format"] for e in omitted_non_reproducible),
         "renders": render_entries,
         "package_layout": {
             MANIFEST_NAME: "this manifest",
@@ -310,5 +355,13 @@ def build_luxexchange_package(
     builder.add_text(VERIFIER_NAME, VERIFIER_SOURCE)
     builder.add_json(MANIFEST_NAME, manifest)
 
+    # NOTE on the omitted formats' per-build hashes: they are deliberately
+    # NOT recorded anywhere inside this package -- not in the manifest, and
+    # not in provenance either. provenance is excluded from the content
+    # DIGEST, but it is still a file INSIDE the ZIP, so a value that changes
+    # every build would still change the package bytes, which is the thing
+    # Phase 13a's resume-equivalence check compares. Those hashes already
+    # have a correct home: the `exports` table row for each file, which is
+    # per-build by nature and outside the reproducible deliverable.
     digest = builder.seal(package_path, provenance or {})
     return package_path, manifest, digest

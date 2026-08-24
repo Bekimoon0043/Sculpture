@@ -434,20 +434,55 @@ def fabrication_prompt(
     return prompt
 
 
-def vision_critique_prompt(spec_summary: str, round_no: int) -> str:
+def vision_critique_prompt(
+    spec_summary: str,
+    round_no: int,
+    tunable: dict[str, tuple[float, float]] | None = None,
+    current: dict[str, float] | None = None,
+    unit: str = "mm",
+) -> str:
     """Vision critique prompt (Phase 5).
 
     Images are sent alongside this prompt via the provider's vision API.  The
     response must be strict JSON with bounded deltas only; prose that cannot be
     expressed as a delta goes into observations.
+
+    ``tunable`` (path -> (min, max)) and ``current`` (path -> value) are
+    OPTIONAL, but a live run should always pass them.  Without them the model
+    has only the prose spec summary to infer parameter names from, and two
+    models inventing two different names for the same dimension is a
+    disagreement consensus cannot resolve — the loop then reads a round in
+    which both models saw the same problem as "no change proposed".  Naming
+    the exact allowed paths, their current values and their validated ranges
+    is the single biggest lever on whether a live round produces a usable
+    delta.
     """
+    allow_block = ""
+    if tunable:
+        lines = []
+        for path in sorted(tunable):
+            lo, hi = tunable[path]
+            now = (current or {}).get(path)
+            now_txt = f"currently {now:g}{unit}, " if now is not None else ""
+            lines.append(f"  {path}  ({now_txt}allowed {lo:g}..{hi:g}{unit})")
+        allow_block = (
+            "PARAMETER PATHS YOU MAY USE — these are the ONLY valid values "
+            "for parameter_path.\nCopy one of these strings EXACTLY, "
+            "character for character.  A path that is\nnot in this list is "
+            "discarded, which wastes the round:\n"
+            + "\n".join(lines)
+            + f"\n\nEvery magnitude is in {unit}.  Do NOT convert to metres.\n\n"
+        )
+
     return (
-        "You are a VISUAL CRITIC for LuxuryForm Studio.  Examine the four "
-        "rendered views of the current fountain/sculpture design and propose "
-        "concrete, bounded parameter changes that improve proportion, "
-        "silhouette and composition.  You may ONLY suggest changes that fit "
-        "the registered parameter paths from the Design Spec summary below.\n\n"
+        "You are a VISUAL CRITIC for LuxuryForm Studio.  The image is a "
+        "single contact sheet showing FOUR labelled views of the SAME "
+        "fountain design (FRONT, SIDE, TOP, THREE QUARTER).  Judge it as one "
+        "design seen four ways, and propose concrete, bounded parameter "
+        "changes that improve proportion, silhouette and composition.  You "
+        "may ONLY suggest changes to the registered parameter paths.\n\n"
         f"DESIGN SPEC SUMMARY (ROUND {round_no}):\n{spec_summary}\n\n"
+        + allow_block +
         "Respond with ONLY a single JSON object.  No markdown fences, no "
         "prose outside the JSON.  The FIRST character of your reply must be '{'.\n\n"
         "JSON schema:\n"
@@ -455,10 +490,10 @@ def vision_critique_prompt(spec_summary: str, round_no: int) -> str:
         '  "observations": ["string"],  // prose that cannot be a delta\n'
         '  "deltas": [\n'
         '    {\n'
-        '      "parameter_path": "tier_height_m",  // exact registered path\n'
+        '      "parameter_path": "<copy one EXACTLY from the list above>",\n'
         '      "direction": "increase" | "decrease" | "set",\n'
-        '      "magnitude": 0.05,  // number; for direction=set this is the new value\n'
-        '      "unit": "m"\n'
+        '      "magnitude": 120,  // number; for direction=set this is the new value\n'
+        '      "unit": "mm"\n'
         '      "reason": "short reason"\n'
         '    }\n'
         '  ]\n'

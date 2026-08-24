@@ -32,6 +32,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import shutil
 import time
 from dataclasses import dataclass, field
 
@@ -249,6 +250,97 @@ def _mesh_writer(file_type: str) -> Callable[[Any, Path, dict[str, Any]], None]:
     return _write
 
 
+class ExportUnavailable(Exception):
+    """The format cannot be produced right now, and that is not a defect.
+
+    Distinct from a failure: a failure means the exporter was asked to do its
+    job and could not. This means a precondition the OPERATOR controls is not
+    met -- here, the optional render worker is not running. write_exports
+    turns it into status `unavailable` carrying this message as the reason,
+    which is the difference between "something is broken" and "start the
+    render worker".
+    """
+
+
+#: MEASURED 2026-08-24: two conversions of the same GLB differ by 2 bytes
+#: (USDZ), 27 bytes (FBX) and 1 byte (ABC) -- embedded creation timestamps in
+#: the zip directory, the FBX header and Alembic's metadata. USD happened to
+#: match, but it comes off the same toolchain and a future Blender could
+#: start stamping it too, so the whole tier is marked non-deterministic
+#: rather than relying on one lucky format.
+#:
+#: Byte-patching those fields was considered and rejected: the offsets are
+#: undocumented and version-specific, so it would work until a Blender
+#: upgrade moved them and then silently produce corrupt files.
+#:
+#: Shown when the four Blender-only formats cannot be produced. It names the
+#: exact command, because "requires the render worker" without it sends the
+#: operator reading documentation to find one line.
+_RENDER_WORKER_REASON = (
+    "requires the Phase 9B render worker (Blender); start it with "
+    "docker compose --profile render up -d render-worker"
+)
+
+
+def _blender_writer(fmt: str) -> Callable[[Any, Path, dict[str, Any]], None]:
+    """Writer for a format only Blender can produce (USD/USDZ/FBX/ABC).
+
+    ONE BLENDER LAUNCH FOR ALL FOUR
+    -------------------------------
+    Blender costs several seconds to start and import. Four formats as four
+    launches would pay that four times over, on a laptop where the export
+    package is already the slowest thing the operator waits for. So the first
+    of these writers to run converts EVERY Blender-tier format that this
+    export actually asked for, caches the results in the shared ctx, and the
+    other three then just collect their file.
+
+    `ctx["blender_formats"]` is the set the caller wants and
+    `ctx["blender_cache"]` is the shared mutable dict holding the outcome;
+    `write_exports` fills both in. If they are absent this falls back to
+    converting just `fmt`, which is correct but slower.
+    """
+
+    def _write(solid, out: Path, ctx: dict[str, Any]) -> None:
+        from app.render.convert import ConversionUnavailable, convert_via_worker
+
+        glb_path = ctx.get("glb_path")
+        if glb_path is None or not Path(glb_path).exists():
+            raise FileNotFoundError(
+                "the preview GLB is required to derive Blender-tier formats"
+            )
+
+        cache = ctx.get("blender_cache")
+        if cache is None:          # called outside write_exports
+            cache = {}
+
+        # The worker was already found to be unreachable by an earlier writer
+        # in this same package. Fail immediately rather than waiting out the
+        # pickup timeout once per format.
+        if "unavailable" in cache:
+            raise ExportUnavailable(cache["unavailable"])
+
+        if "produced" not in cache:
+            batch = sorted(ctx.get("blender_formats") or {fmt})
+            try:
+                cache["produced"] = convert_via_worker(Path(glb_path), batch)
+            except ConversionUnavailable as exc:
+                cache["unavailable"] = str(exc)
+                # Not a failure: the render worker being off is a choice the
+                # operator made, and reporting it as a failure would send them
+                # hunting a bug that is really one command.
+                raise ExportUnavailable(str(exc)) from exc
+
+        produced = cache["produced"].get(fmt)
+        if produced is None:
+            raise RuntimeError(
+                f"the render worker did not produce {fmt}; see "
+                "blender_convert.log in the conversion job directory"
+            )
+        shutil.copyfile(produced, out)
+
+    return _write
+
+
 # ---------------------------------------------------------------------------
 # The registry
 # ---------------------------------------------------------------------------
@@ -280,6 +372,13 @@ class FormatSpec:
     status_without_writer: ExportStatus = "unavailable"
     reason: str | None = None
     derived_from: str | None = None
+    #: False when two exports of the SAME design do not produce identical
+    #: bytes. Measured, not assumed -- see the Blender-tier entries below.
+    #: The LUXEXCHANGE packager reads this: a non-reproducible file is
+    #: produced and offered for download, but is NOT sealed into the package,
+    #: because the package's whole promise is that the same design yields the
+    #: same ZIP (Rule 5, ADR-035).
+    deterministic: bool = True
 
     @property
     def media_type(self) -> str:
@@ -343,26 +442,26 @@ FORMAT_REGISTRY: tuple[FormatSpec, ...] = (
     FormatSpec(
         "USD", ".usd", "render",
         "USD scene for downstream visualisation",
-        reason="requires the Phase 9B render worker (Blender); start it with "
-               "docker compose --profile render up -d",
+        writer=_blender_writer("USD"), derived_from="assembly.glb",
+        reason=_RENDER_WORKER_REASON, deterministic=False,
     ),
     FormatSpec(
         "USDZ", ".usdz", "render",
         "AR-ready USD package for client presentation",
-        reason="requires the Phase 9B render worker (Blender); start it with "
-               "docker compose --profile render up -d",
+        writer=_blender_writer("USDZ"), derived_from="assembly.glb",
+        reason=_RENDER_WORKER_REASON, deterministic=False,
     ),
     FormatSpec(
         "FBX", ".fbx", "render",
         "FBX for animation and visualisation pipelines",
-        reason="requires the Phase 9B render worker (Blender); start it with "
-               "docker compose --profile render up -d",
+        writer=_blender_writer("FBX"), derived_from="assembly.glb",
+        reason=_RENDER_WORKER_REASON, deterministic=False,
     ),
     FormatSpec(
         "ABC", ".abc", "render",
         "Alembic cache for animation pipelines",
-        reason="requires the Phase 9B render worker (Blender); start it with "
-               "docker compose --profile render up -d",
+        writer=_blender_writer("ABC"), derived_from="assembly.glb",
+        reason=_RENDER_WORKER_REASON, deterministic=False,
     ),
     FormatSpec(
         "DWG", ".dwg", "none",
@@ -452,8 +551,20 @@ def write_exports(
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     wanted = set(formats) if formats else {f.format for f in FORMAT_REGISTRY}
+    # The Blender-tier writers convert every requested format in ONE worker
+    # round trip; this tells the first one to run what the whole batch is.
+    blender_wanted = {f.format for f in FORMAT_REGISTRY
+                      if f.tier == "render" and f.format in wanted
+                      and f.writer is not None}
     ctx: dict[str, Any] = {"glb_path": glb_path, "step_path": step_path,
-                           "seed": seed}
+                           "seed": seed, "blender_formats": blender_wanted,
+                           # A MUTABLE dict, shared deliberately. Each writer
+                           # gets a shallow copy of ctx, so this same object
+                           # reaches all four Blender writers and the first
+                           # one's result (or its failure) is seen by the
+                           # rest. Without it they would each launch Blender,
+                           # or each wait out the worker-missing timeout.
+                           "blender_cache": {}}
     prebuilt = {"STEP": step_path, "GLB": glb_path}
     results: list[ExportResult] = []
 
@@ -514,6 +625,22 @@ def write_exports(
                 duration_ms=(time.perf_counter() - t0) * 1000.0,
                 derived_from=spec.derived_from, notes=notes,
             ))
+        except ExportUnavailable as exc:
+            # A precondition the operator controls is not met. Report it as
+            # unavailable with the reason, exactly as if there were no writer.
+            log.info("export %s unavailable: %s", spec.format, exc)
+            if out.exists():
+                try:
+                    out.unlink()
+                except OSError:
+                    pass
+            results.append(ExportResult(
+                format=spec.format, status="unavailable", tier=spec.tier,
+                purpose=spec.purpose,
+                duration_ms=(time.perf_counter() - t0) * 1000.0,
+                derived_from=spec.derived_from, reason=str(exc),
+            ))
+            continue
         except Exception as exc:  # one bad exporter must not cost the package
             log.warning("export %s failed: %s", spec.format, exc)
             if out.exists():

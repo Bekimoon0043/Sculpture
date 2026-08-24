@@ -206,3 +206,31 @@ i7-8550U with no GPU would make Phase 10's four-views-per-iteration loop
 unusable.
 
 Full scope limits: `LIMITATIONS.md` §13.
+
+
+---
+
+## Amendment 2026-08-24 — the Blender tier, and a regression caught the same day
+
+Phase 9B.5 (ADR-045) wired USD, USDZ, FBX and Alembic to the render worker.
+They had been reported `unavailable` since this phase closed.
+
+**That change briefly broke this phase's central guarantee.** A full-suite run
+on 2026-08-24, against a backend image built from the work in progress, failed
+`gate_phase9a` section 3 and `gate_phase13a` section 3: the content digest and
+the package ZIP were no longer byte-identical across two exports of the same
+design. Blender embeds creation timestamps (2 bytes in USDZ, 27 in FBX, 1 in
+ABC), so sealing those files into the package made the package vary.
+
+Fixed the same day, before the gates were allowed to stay red: the four formats
+are produced and downloadable but are NOT sealed into the ZIP, and the manifest
+says so per format (`in_package`, `excluded_reason`, `omitted_non_reproducible`).
+Excluding them from the digest alone was insufficient — the ZIP contains the
+bytes — and moving their per-build hashes to `provenance.json` was insufficient
+too, because provenance is digest-excluded but still a file inside the ZIP.
+
+Section 2 of the gate now accepts either honest outcome: `unavailable` naming
+the command that starts the worker, or `included` with its exclusion from the
+package stated. Both gates PASS. The reproducibility guarantee is unchanged:
+what is in the package is byte-identical for the same design, and what cannot
+be is not in the package.

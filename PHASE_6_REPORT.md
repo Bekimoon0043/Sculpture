@@ -7,6 +7,12 @@ and exportable — passes live at slice A2.
 
 ---
 
+## PHASE 6 GATE: PASS - slice A1 only (auto, 2026-08-20); A2/B/C/D not built
+
+This verdict covers `gate_phase6a1_auto.py`, the only Phase 6 gate that
+exists. Phase 6 as a whole is NOT closed: slices A2 (AI + surfaces),
+B (rim treatments + fixtures), C and D are not built.
+
 ## Slice A1 — the assembly core (CLOSED, auto gate PASS 2026-08-20, $0)
 
 **Scope:** registry restructure, three new revolved primitives, per-member
