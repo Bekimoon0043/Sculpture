@@ -103,4 +103,7 @@ spending.
   `_cascade_build_once.py`, `generate_hub_status.py`
 - `tests/` — the offline test suite (`pytest`)
 - `docs/operator/` — plain-language operator guides + the visual gate
+- `NEXT.md` — what is left, in order, with its blockers (the loop state file)
+- `.claude/commands/` — the `/lf-*` slash commands that drive the build loop;
+  the operator's guide to it is `docs/operator/06_the_loop.md`
 - `DECISIONS.md` / `LIMITATIONS.md` / `PHASE_1..4_REPORT.md` — read these

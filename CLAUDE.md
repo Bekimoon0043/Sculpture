@@ -8,7 +8,11 @@ An internal design platform for LuxuryCon (Addis Ababa), a company that builds m
 
 Single operator: the CEO, who has no coding background and directs all development through AI. Explain the **why** alongside the **what**. Give exact copy-paste commands for anything he must run himself.
 
-Full scope: `SCOPE.md`. Architecture decisions: `DECISIONS.md`. Known gaps: `LIMITATIONS.md`. Read all three before your first change in a session.
+What is left, in order, with its blockers: `NEXT.md` — the loop state file,
+rewritten at the close of every slice. Architecture decisions: `DECISIONS.md`.
+Known gaps: `LIMITATIONS.md`. Read all three before your first change in a
+session. (`SCOPE.md` is cited throughout this repo and does not exist — see
+the note at the end of this file.)
 
 ## The core architectural truth
 
@@ -36,11 +40,20 @@ LLMs do not generate geometry. They generate text. **They write the program that
 - **The connection is slow and drops.** ~320 kB/s, frequent resets. Anything that downloads must retry, resume, and be cached in its own Docker layer. This has cost more time than any code defect.
 - Repo: `C:\Users\buroo\luxuryform` → `github.com/burook-Luxury/luxuryform`
 
+## The loop
+
+Work runs as repeating gated slices, driven by the slash commands in
+`.claude/commands/`: `/lf-orient` → `/lf-next` (plan, stop for approval) →
+`/lf-build` → `/lf-gate` → `/lf-close` (docs + one commit + push), plus
+`/lf-broke`, `/lf-spend` and `/lf-drift` as standing commands. Each command
+carries the rules above so they do not depend on recall. The operator's guide
+to the loop is `docs/operator/06_the_loop.md`; the queue itself is `NEXT.md`.
+
 ## Working method
 
 - **Report the plan before coding** on any new phase. Repo structure, schema, approach, and anything in the order you believe is wrong. Wait for approval.
 - **Commit per gate**, with a clear message. One commit that can be rolled back.
-- Keep `LIMITATIONS.md`, `DECISIONS.md` and the phase report current in the same commit as the change.
+- Keep `NEXT.md`, `LIMITATIONS.md`, `DECISIONS.md` and the phase report current in the same commit as the change.
 - After any change touching `backend/`, tell the operator to rebuild: `docker compose up --build -d`.
 - The Hub status file regenerates with `python scripts\generate_hub_status.py --out "E:\Burook platform development\Luxurycon\AI-Team-Hub\luxuryform_status.json"`.
 
