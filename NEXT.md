@@ -21,7 +21,7 @@ LIMITATIONS.md and DECISIONS.md as they stand — not from memory.
 | 3 — the AI Council | **CLOSED** | gate PASS 2026-08-07, live $0.843842 |
 | 4 — fabrication loop (AI writes CAD, sandbox runs) | **CLOSED** | gate PASS 2026-08-17, live $0.046777 |
 | costing engine | **BUILT, gated, starved** | ADR-031; rate card still unfilled (B-3) |
-| 6 — primitive library | **A1 CLOSED; A2 BUILT (bridge + two-tier surface); B/C/D not built** | A1 auto PASS 2026-08-20, A2 auto PASS 2026-08-26 ($0, ADR-052); live gate `gate_phase6_visual.md` pending |
+| 6 — primitive library | **A1 CLOSED; A2 + B BUILT; C/D not built** | A1 PASS 2026-08-20; A2 PASS 2026-08-26 (ADR-052/053); B PASS 2026-08-26 (ADR-054); live gate `gate_phase6_visual.md` + eye gate `gate_phase6b_visual.md` pending |
 | 7A — assembly surface (API, manifest persistence) | **BUILT** | implemented 2026-08-21, `PHASE_7_COMPLETION_PLAN.md` §7A |
 | 8 — L5 validation gates (structure/fabrication/hydraulics) | **BUILT, auto-gated** | auto PASS 2026-08-21 + 8b re-gate; visual pending |
 | 9A — LUXEXCHANGE export package | **BUILT, auto-gated** | auto PASS 2026-08-21, re-proven 08-24; visual pending |
@@ -48,9 +48,10 @@ LIMITATIONS.md and DECISIONS.md as they stand — not from memory.
       `gate_phase8_visual.md`, `gate_phase9a_visual.md`,
       `gate_phase9b_visual.md`, `gate_phase11_13a_visual.md`,
       `gate_phase14_visual.md`, `gate_phase14b_visual.md`,
-      `gate_phase15_visual.md`, and now `gate_phase6_visual.md` — the
-      Phase 6 LIVE gate (≈$0.90–1.10 spend, the only one that costs
-      money; it is THE operator's gate the phase is named for). First:
+      `gate_phase15_visual.md`, `gate_phase6_visual.md` — the Phase 6
+      LIVE gate (≈$0.90–1.10 spend, the only one that costs money; it is
+      THE operator's gate the phase is named for) — and
+      `gate_phase6b_visual.md` (treatments + nozzles by eye, $0). First:
       `docker compose up --build -d`
       (backend AND frontend images changed), optionally
       `docker compose --profile render up -d render-worker`. Coordinate with
@@ -111,12 +112,16 @@ Each entry is one loop iteration: `/lf-next` → approve → `/lf-build` →
       OWN design instead of the shared DB's newest, and the Cascade tool
       labelled as the legacy single-primitive tool. Rebuild any
       pre-2026-08-26 assembly before quoting it.
-- [ ] **W-2 — Phase 6 slice B: rim treatments + fixtures.** `weir_edge`,
-      `coping_profile`, `pool_edge_detail` as profile modifiers (never
-      post-hoc booleans); `nozzle_ring` driven by `service_voids` and
-      `hydraulic_network`. Makes the signed `min_feature_mm` /
-      `min_internal_radius_mm` floors load-bearing at last. **Gate B:** weir
-      depth and nozzle bores from `hydraulic_network`, not invention.
+- [x] **W-2 — Phase 6 slice B — BUILT 2026-08-26, auto gate PASS at $0
+      (ADR-054).** weir_edge/coping/pool_edge drawn INTO the basin's
+      revolved profile; nozzle_ring cut by trusted code with exact volume
+      arithmetic (59,992 mm³ measured = expected); weir/nozzle numbers
+      wired from `hydraulic_network` with refusal-not-default; the signed
+      feature/radius floors now load-bearing (316L formula included).
+      Plan correction recorded openly (ADR-054 §2): crest-elevation
+      consistency replaced the incoherent weir-depth derivation. Operator
+      eye gate: `gate_phase6b_visual.md` ($0), queued under B-1. Slice
+      limits (360° crests, one bore size, basin-only) in LIMITATIONS §11.
 - [ ] **W-3 — Phase 6 slice C: extrusion and array masses + segmentation.**
       `basin_rect`, `stepped_monolith`, `water_wall`, `torus_ring`,
       `blade_fin_array`, `lotus_petal_array`, and split-line segmentation

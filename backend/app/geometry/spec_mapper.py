@@ -28,6 +28,13 @@ _ALIASES: dict[str, dict[str, str]] = {
         "floor_thickness": "floor_mm",
         "clearance": "min_clearance_mm",
         "min_clearance": "min_clearance_mm",
+        # slice B rim treatments (ADR-054)
+        "rim": "rim_treatment",
+        "crest_radius": "crest_radius_mm",
+        "drip_edge": "drip_edge_mm",
+        "coping_overhang": "coping_overhang_mm",
+        "coping_thickness": "coping_thickness_mm",
+        "pool_edge_radius": "pool_edge_radius_mm",
     },
     "plinth": {
         "diameter": "top_diameter_mm",
@@ -143,6 +150,124 @@ def fabrication_limits_from_spec(spec: dict[str, Any]) -> dict[str, Any]:
     return limits
 
 
+#: A weir node must sit AT the crest it claims (ADR-054): the tolerance is
+#: survey noise, not a lever — anything larger means the water plan and the
+#: geometry disagree about where the water leaves the basin.
+_WEIR_ELEVATION_TOL_MM = 5.0
+
+
+def _wire_hydraulics(
+    spec: dict[str, Any],
+    eid: str,
+    element: dict[str, Any],
+    primitive: str,
+    parameters: dict[str, Any],
+    plan_element: dict[str, Any],
+    violations: list[str],
+) -> None:
+    """Slice B (ADR-054): hydraulic facts come FROM the network, never from
+    invention — and never from silent defaults.
+
+    * a `weir` node bound to this element demands (and supplies) the
+      weir_edge treatment, and its elevation must MATCH the element's crest
+      elevation within survey tolerance;
+    * a weir_edge treatment WITHOUT a weir node is refused — a spillway the
+      water plan does not know is invention;
+    * `nozzle` nodes become ONE nozzle_ring fixture (count = nodes, bore
+      verbatim); mixed bores are refused (slice B limit).
+    """
+    nodes = (spec.get("hydraulic_network") or {}).get("nodes") or []
+    weir_nodes = [
+        n for n in nodes
+        if n.get("type") == "weir" and n.get("element_id") == eid
+    ]
+    nozzle_nodes = sorted(
+        (n for n in nodes
+         if n.get("type") == "nozzle" and n.get("element_id") == eid),
+        key=lambda n: str(n.get("node_id")),
+    )
+
+    if weir_nodes:
+        if primitive != "basin_round":
+            violations.append(
+                f"{eid}: weir node {weir_nodes[0].get('node_id')!r} targets "
+                f"a {primitive!r} — only basin_round carries a weir crest "
+                "in slice B"
+            )
+            return
+        if len(weir_nodes) > 1:
+            violations.append(
+                f"{eid}: {len(weir_nodes)} weir nodes on one element — "
+                "slice B builds one 360° crest per basin"
+            )
+            return
+        node = weir_nodes[0]
+        stated = parameters.get("rim_treatment")
+        if stated not in (None, "weir_edge"):
+            violations.append(
+                f"{eid}: rim_treatment={stated!r} but weir node "
+                f"{node.get('node_id')!r} declares a spill crest — the "
+                "water plan and the rim disagree"
+            )
+            return
+        height = parameters.get("height_mm")
+        if height is None:
+            height = PRIMITIVES[primitive].PARAMETERS["height_mm"]["default"]
+        z_m = float((element.get("position") or {}).get("z_m", 0.0))
+        rim_mm = z_m * 1000.0 + float(height)
+        node_mm = float(node.get("elevation_m", 0.0)) * 1000.0
+        if abs(node_mm - rim_mm) > _WEIR_ELEVATION_TOL_MM:
+            violations.append(
+                f"{eid}: weir node {node.get('node_id')!r} elevation "
+                f"{node_mm:g} mm does not match the crest elevation "
+                f"{rim_mm:g} mm (base {z_m * 1000:g} + height {height:g}; "
+                f"tolerance {_WEIR_ELEVATION_TOL_MM:g} mm) — for a 360° "
+                "revolved basin the crest IS the wall top (ADR-054): move "
+                "the node or resize/re-seat the basin"
+            )
+            return
+        parameters["rim_treatment"] = "weir_edge"
+    elif parameters.get("rim_treatment") == "weir_edge":
+        violations.append(
+            f"{eid}: rim_treatment=weir_edge but hydraulic_network has no "
+            "weir node for this element — a spillway the water plan does "
+            "not know is invention; declare the weir node at the crest "
+            "elevation"
+        )
+        return
+
+    if nozzle_nodes:
+        if primitive != "basin_round":
+            violations.append(
+                f"{eid}: nozzle nodes target a {primitive!r} — only "
+                "basin_round floors carry nozzle rings in slice B"
+            )
+            return
+        bores = []
+        for n in nozzle_nodes:
+            bore = n.get("nozzle_bore_mm")
+            if bore is None:
+                violations.append(
+                    f"{eid}: nozzle node {n.get('node_id')!r} carries no "
+                    "nozzle_bore_mm — the bore comes from the network, "
+                    "never from invention"
+                )
+                return
+            bores.append(float(bore))
+        if len(set(bores)) > 1:
+            violations.append(
+                f"{eid}: nozzle nodes carry MIXED bores "
+                f"{sorted(set(bores))} — slice B drills one bore size per "
+                "basin (a mixed ring is a slice-C fixture)"
+            )
+            return
+        plan_element["fixtures"] = [{
+            "type": "nozzle_ring",
+            "count": len(nozzle_nodes),
+            "bore_mm": bores[0],
+        }]
+
+
 def assembly_plan_from_spec(spec: dict[str, Any]) -> list[dict[str, Any]]:
     """Map Design Spec massing.elements to registry.assemble input.
 
@@ -193,6 +318,10 @@ def assembly_plan_from_spec(spec: dict[str, Any]) -> list[dict[str, Any]]:
             "primitive": primitive,
             "parameters": parameters,
         }
+        _wire_hydraulics(
+            spec, eid, element, primitive, parameters, plan_element,
+            violations,
+        )
         parent_id = element.get("parent_id")
         if parent_id:
             parent = by_id.get(parent_id)

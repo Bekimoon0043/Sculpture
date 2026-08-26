@@ -157,6 +157,111 @@ def _overlap_floor_mm(child_mat: Material, parent_mat: Material) -> float:
     return max(child_mat.joint_overlap_mm, parent_mat.joint_overlap_mm)
 
 
+def _apply_fixtures(
+    eid: str,
+    el: dict[str, Any],
+    module,
+    p,
+    solid,
+    materials: dict[str, Material],
+    violations: list[str],
+    fixtures_out: dict[str, list[dict[str, Any]]],
+):
+    """Slice B (ADR-054): cut declared fixtures into ONE element, locally.
+
+    Nozzle rings only, basin_round hosts only (it has the floor the bores
+    pierce). Every bound derives from the signed sheet: the stone web
+    between holes and to the wall is a projecting FEATURE and must clear
+    min_feature_mm. Bore positions are deterministic: N equally spaced
+    holes, phase 0, sorted evaluation order."""
+    fixtures = el.get("fixtures") or []
+    if not fixtures:
+        return solid
+    if module.PRIMITIVE_ID != "basin_round":
+        violations.append(
+            f"{eid}: fixtures are cut into a basin floor; only basin_round "
+            f"hosts them in slice B (got {module.PRIMITIVE_ID!r})"
+        )
+        return solid
+
+    import math
+
+    from build123d import Cylinder, Pos
+
+    mat = materials[p.material_id]
+    feat = float(mat.min_feature_floor_mm(p.wall_mm))
+    inner_d = float(p.diameter_mm - 2 * p.wall_mm)
+    floor_t = float(p.floor_mm)
+    recorded: list[dict[str, Any]] = []
+    for fx in fixtures:
+        if fx.get("type") != "nozzle_ring":
+            violations.append(
+                f"{eid}: unknown fixture type {fx.get('type')!r} — slice B "
+                "knows nozzle_ring only"
+            )
+            continue
+        n = int(fx.get("count", 0))
+        bore = float(fx.get("bore_mm", 0.0))
+        if n < 1:
+            violations.append(f"{eid}: nozzle_ring count must be >= 1")
+            continue
+        if bore < 8.0:
+            violations.append(
+                f"{eid}: nozzle bore {bore:g} mm < the 8 mm drillable-stone "
+                "floor (ADR-054, judgement)"
+            )
+            continue
+        default_ring = inner_d / 2.0 if n > 1 else 0.0
+        rd = float(fx.get("ring_diameter_mm", default_ring))
+        wall_web = (inner_d - rd) / 2.0 - bore / 2.0
+        if wall_web < feat:
+            violations.append(
+                f"{eid}: nozzle-to-wall web = (inner {inner_d:g} - ring "
+                f"{rd:g})/2 - bore {bore:g}/2 = {wall_web:g} mm < the "
+                f"{p.material_id} feature floor {feat:g} mm — shrink the "
+                "ring, the bore, or the count"
+            )
+            continue
+        if n > 1:
+            spacing_web = rd * math.sin(math.pi / n) - bore
+            if spacing_web < feat:
+                violations.append(
+                    f"{eid}: web between adjacent nozzle bores = ring "
+                    f"{rd:g} x sin(pi/{n}) - bore {bore:g} = "
+                    f"{spacing_web:g} mm < the {p.material_id} feature "
+                    f"floor {feat:g} mm — fewer nozzles or a wider ring"
+                )
+                continue
+        removed = 0.0
+        for i in range(n):
+            ang = 2.0 * math.pi * i / n
+            cx = (rd / 2.0) * math.cos(ang)
+            cy = (rd / 2.0) * math.sin(ang)
+            before = float(solid.volume)
+            # 1 mm overshoot both ends so the cut never leaves a skin face
+            # (the cascade bore's proven pattern).
+            solid = solid - Pos(cx, cy, floor_t / 2.0) * Cylinder(
+                bore / 2.0, floor_t + 2.0
+            )
+            removed += before - float(solid.volume)
+        recorded.append({
+            "type": "nozzle_ring",
+            "count": n,
+            "bore_mm": bore,
+            "ring_diameter_mm": rd,
+            "removed_volume_mm3": removed,
+        })
+    remaining = solid.solids()
+    if len(remaining) != 1:
+        violations.append(
+            f"{eid}: fixture cuts split the element into "
+            f"{len(remaining)} bodies — a bore has severed the floor"
+        )
+    if recorded:
+        fixtures_out[eid] = recorded
+    return solid
+
+
 def assemble(
     elements: list[dict[str, Any]],
     seed: int = 0,
@@ -354,14 +459,25 @@ def assemble(
         raise ConstraintViolation(violations)
 
     # --- build + place every solid (deterministic: pure functions of params)
-    from build123d import CenterOf, Pos
+    from build123d import CenterOf, Pos  # noqa: F401  (Pos used below)
 
     solids: dict[str, Any] = {}
+    fixtures_by_eid: dict[str, list[dict[str, Any]]] = {}
     for eid in sorted(by_id):
         el = by_id[eid]
         module = PRIMITIVES[el["primitive"]]
-        x, y, z = placements[eid]
-        solids[eid] = Pos(x, y, z) * module.build(validated[eid])
+        local = module.build(validated[eid])
+        # Slice B (ADR-054): fixtures (nozzle rings) are cut by TRUSTED code
+        # in the element's local frame BEFORE placement and fuse, so element
+        # masses, the scene GLB and volume conservation all see the real
+        # bored solid.
+        local = _apply_fixtures(
+            eid, el, module, validated[eid], local, materials,
+            violations, fixtures_by_eid,
+        )
+        solids[eid] = Pos(*placements[eid]) * local
+    if violations:
+        raise ConstraintViolation(violations)
 
     # --- NON-joined pairs must keep a real gap ------------------------------
     # The per-joint checks cannot see this class: in a coaxial plinth ->
@@ -481,6 +597,7 @@ def assemble(
             "primitive": el["primitive"],
             "material_id": p.material_id,
             "parameters": dict(p.model_dump()),
+            "fixtures": fixtures_by_eid.get(eid, []),
             "placement_mm": {"x": x, "y": y, "z": z},
             "volume_mm3": vol,
             "mass_kg": mass,

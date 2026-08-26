@@ -7,7 +7,46 @@ and exportable — passes live at slice A2.
 
 ---
 
-## PHASE 6 GATE: PASS - slices A1 (2026-08-20) and A2 auto (2026-08-26); B/C/D not built
+## PHASE 6 GATE: PASS - slices A1 (2026-08-20), A2 and B auto (2026-08-26); C/D not built
+
+## Slice B — rim treatments + nozzle fixture (BUILT, auto gate PASS 2026-08-26, $0)
+
+**Scope:** `weir_edge` / `coping` / `pool_edge` as alternative rim
+cross-sections of the basin's ONE revolved profile (Polyline + RadiusArc,
+the ADR-010 cascade-lip pattern — never a post-hoc boolean); the
+`nozzle_ring` fixture cut by trusted assembler code before placement and
+fuse; hydraulic facts wired from the spec's `hydraulic_network` by the
+mapper — never invented, never silently defaulted. The signed §2.2/§2.3
+floors (min feature, min internal radius, incl. 316L's formula floors)
+became load-bearing. Decisions: ADR-054. One approved-plan correction,
+made openly (ADR-054 §2): `weir_depth_mm`-from-elevation was physically
+incoherent for a 360° crest; built as elevation-consistency (±5 mm) plus
+crest/drip shaping instead.
+
+### Gate evidence (verbatim, 2026-08-26)
+
+```
+docker compose exec backend python -m pytest tests/test_slice_b.py -q
+16 passed in 22.50s
+(regression: tests/test_assembly.py + primitives + cascade + fabricate + slice_b
+97 passed in 79.50s)
+
+docker compose exec backend python scripts/gate_phase6b_auto.py
+cascade: e1a59fa6… ok | A1 composition: 529014af… ok
+default basin: 6038d26f… ok (pinned BEFORE the first profile edit)
+weir_edge ⌀2010 / coping ⌀2120 h500 / pool_edge ⌀2000 — one solid each
+volume removed: 59992 mm³, expected 3·π·(20.6/2)²·60 = 59992 mm³
+process 74: 07dcd723e5e08a1a…  process 89: 07dcd723e5e08a1a…
+PASS — Phase 6 slice B auto gate: all sections passed at $0.
+(all 16 auto gates re-run: exit 0 across the roster)
+```
+
+One gate-authoring defect caught by the gate itself: the first run pinned
+a hand-copied A1 plan (missing `taper_deg`, wrong seed) and failed §1;
+the gate now imports the canonical plan from `_assembly_build_once.py`.
+Cost: **$0.00** — no AI call anywhere in the slice. Operator's eye gate:
+`gate_phase6b_visual.md` ($0). B-7 (hollow plinth cap) was not ruled at
+approval; the plinth stays an open tube.
 
 `gate_phase6a1_auto.py` and `gate_phase6a2_auto.py` both PASS at $0. Phase 6
 as a whole is NOT closed: the operator's LIVE gate (`gate_phase6_visual.md`

@@ -2904,3 +2904,66 @@ erase it entirely, and under load it spalls.
   it should grow a closed top face is a separate operator ruling — it
   would change STEP bytes and is deliberately not bundled into this fix.
 
+## ADR-054 - Phase 6 slice B: rim treatments in the profile, hydraulics from the spec (2026-08-26)
+
+### Context
+
+The plan (approved 2026-08-26): weir/coping/pool-edge as PROFILE
+modifiers on `basin_round` — never post-hoc booleans (the ADR-010
+argument) — and a nozzle-ring fixture whose numbers come from
+`hydraulic_network`, with the signed §2.2/§2.3 floors (min feature, min
+internal radius) finally load-bearing.
+
+### Decisions
+
+1. **Treatments are alternative rim cross-sections of the ONE closed
+   revolved profile** (Polyline + RadiusArc, the cascade lip pattern).
+   `rim_treatment: none` draws the inherited six-point profile —
+   byte-identity pinned in the gate against the sha captured BEFORE the
+   first profile edit (`6038d26f…`).
+2. **A physics correction to the approved plan, made openly:** the plan
+   derived `weir_depth_mm` = rim elevation − weir-node elevation. For a
+   360° revolved basin that is incoherent — water cannot pass a rim
+   ridge higher than the crest, so the crest IS the wall top. Built
+   instead: the mapper VERIFIES the weir node's elevation equals the
+   crest elevation within 5 mm survey tolerance (refusing with both
+   numbers), and the treatment shapes the crest — internal crest arc
+   (floor = signed min_internal_radius; 316L formula), flat land
+   (wall + drip − crest radius >= signed min_feature), and a square drip
+   lip (floor max(3, joint_overlap/3) — derived from the signed overlap
+   arithmetic since per-face tolerance is not stored; ceiling wall/3;
+   judgement, correctable). A partial-arc NOTCH weir breaks axisymmetry
+   and is deliberately out (LIMITATIONS §11), not smuggled in as a cut.
+3. **Never a silent hydraulic default.** A weir rim without a weir node
+   is refused as invention; nozzle bores and counts come verbatim from
+   the nozzle nodes (one bore size per basin in slice B; mixed bores
+   refused naming the values). Direct API/Designer builds may set
+   treatments and fixtures explicitly — the operator's deliberate act;
+   the spec path enforces the network.
+4. **Fixtures are cut by trusted code, locally, before placement and
+   fuse** — element masses, the scene GLB and volume conservation all
+   see the bored solid; the stone web between holes and to the wall is
+   a projecting FEATURE and must clear the signed min_feature floor
+   (arithmetic printed in every refusal); a cut that splits the floor is
+   refused via solids count. The manifest records each fixture with the
+   measured removed volume.
+5. **The honest seat follows the rim** (ADR-053 composition):
+   `stack_top_annulus_mm` reflects the lip, cap or bullnose, so the
+   bearing check sees the treated rim, not the plain one. Coping adds
+   its thickness to the element height and anchors.
+
+### Consequences
+
+- Gate: `gate_phase6b_auto.py` PASS at $0 — canonical guards
+  (`e1a59fa6…`, A1 `529014af…`, default basin `6038d26f…`), treatment
+  battery, spec-wiring refusals, exact bore-volume arithmetic
+  (59,992 mm³ measured vs expected), two-process determinism
+  (`07dcd723…`, PIDs printed). One gate-authoring lesson recorded: the
+  first run pinned a hand-copied A1 plan (missing taper, wrong seed) and
+  failed its own §1 — the gate now IMPORTS the canonical plan from
+  `_assembly_build_once.py` so it cannot drift.
+- The operator's B-7 ruling (hollow plinth cap) was NOT given at
+  approval; the plinth stays an open tube and B-7 stays open.
+- Slice B limits recorded in LIMITATIONS §11: 360° crests only, one
+  bore size per basin, basin_round-only hosts.
+

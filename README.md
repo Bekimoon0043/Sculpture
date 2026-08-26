@@ -32,7 +32,11 @@ persists as a real design — viewable in the Designer, checkable by the
 layered gates, exportable as a LUXEXCHANGE package — through the same
 byte-identical persistence path the operator's own builds use, and the
 assembler refuses knife-edge seats with the signed tolerance arithmetic
-(ADR-053).
+(ADR-053). Slice B (same day, ADR-054) makes a basin a fountain part:
+weir-crest, coping and pool-edge rims drawn INTO the revolved profile,
+and nozzle rings bored by trusted code with the count and bore taken
+verbatim from the spec's hydraulic network — never invented, refused
+when the water plan and the geometry disagree.
 
 Rendering and the vision-critique loop (Phase 5), the remaining primitive
 library work (Phase 6), exports beyond STEP/GLB, and DesignDNA/recovery

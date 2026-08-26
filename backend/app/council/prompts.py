@@ -272,6 +272,13 @@ def registry_surface(used_primitives=None) -> str:
         "    accepts inserts.",
         "  Omit overlap_mm unless the spec needs a larger interference; the",
         "    assembler uses the material joint-overlap floor. Never use 0.",
+        "  fixtures (slice B, ADR-054): optional list on a basin_round",
+        "    element — {\"type\": \"nozzle_ring\", \"count\": N,",
+        "    \"bore_mm\": b}. NEVER invent bores or counts: the trusted",
+        "    mapper (registry.assembly_plan_from_spec) wires them from the",
+        "    spec's hydraulic_network nozzle nodes. Likewise a weir_edge",
+        "    rim requires the spec's weir node AT the crest elevation;",
+        "    treatments without their hydraulic nodes are refused.",
         "  Pass fabrication={\"max_lift_kg\": spec[\"fabrication\"]"
         "[\"max_lift_kg\"], \"max_module_m\": spec[\"fabrication\"]"
         "[\"max_module_m\"]} when those keys exist so crane/module limits",
