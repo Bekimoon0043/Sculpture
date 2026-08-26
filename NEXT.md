@@ -5,7 +5,10 @@ the start of every session (`/lf-orient`) and rewritten at the end of every
 slice (`/lf-close`). If this file and a phase plan disagree, this file is
 stale and must be corrected in the same commit as the work.
 
-Last updated: 2026-08-26 — derived from the repo, not from memory.
+Last updated: 2026-08-26 — rewritten from the repo after the 2026-08-26 merge
+to main (`99569b2`) surfaced 17 commits of work (Phases 6A1 through 15E) that
+the previous version of this file predated. Derived from the phase reports,
+LIMITATIONS.md and DECISIONS.md as they stand — not from memory.
 
 ---
 
@@ -13,48 +16,65 @@ Last updated: 2026-08-26 — derived from the repo, not from memory.
 
 | phase | state | evidence |
 |---|---|---|
-| 1 — provider layer, spend caps, audit log, gates | **CLOSED** | gate PASS 2026-08-01, `PHASE_1_REPORT.md` |
-| 2 — geometry kernel, STEP/GLB, determinism, viewport | **CLOSED** | gate PASS 2026-08-04, `PHASE_2_REPORT.md` |
-| 3 — the AI Council | **CLOSED** | gate PASS 2026-08-07, `PHASE_3_REPORT.md`, first live session $0.843842 |
-| 4 — fabrication loop (AI writes CAD, sandbox runs it) | **CLOSED** | gate PASS 2026-08-17, `PHASE_4_REPORT.md`, live brief → watertight 2.6 m basalt cascade, $0.046777 |
-| costing engine | **BUILT, gated, starved** | `scripts/gate_costing_auto.py`, ADR-031 — machinery honest, rate card empty |
-| 6 — primitive library | **PLANNED, APPROVED, BLOCKED** | `PHASE_6_PLAN.md` approved 2026-08-17; blocked on B-1 below |
-| 5 — vision critique + Cycles render | **PLANNED, NOT APPROVED** | `PHASE_5_PLAN.md`, 4 rulings outstanding (B-4) |
-| 7 — resumable jobs, backup, cost dashboard, docs | **NOT PLANNED** | `luxuryform-claude-code-commands.md` |
+| 1 — providers, spend caps, audit, gates | **CLOSED** | gate PASS 2026-08-01, `PHASE_1_REPORT.md` |
+| 2 — geometry kernel, STEP/GLB, determinism | **CLOSED** | gate PASS 2026-08-04, canonical hash `e1a59fa6…` |
+| 3 — the AI Council | **CLOSED** | gate PASS 2026-08-07, live $0.843842 |
+| 4 — fabrication loop (AI writes CAD, sandbox runs) | **CLOSED** | gate PASS 2026-08-17, live $0.046777 |
+| costing engine | **BUILT, gated, starved** | ADR-031; rate card still unfilled (B-3) |
+| 6 — primitive library | **A1 CLOSED; A2 partial; B/C/D not built** | auto PASS 2026-08-20 at $0, ADR-032; envelope sheet SIGNED 2026-08-20 |
+| 7A — assembly surface (API, manifest persistence) | **BUILT** | implemented 2026-08-21, `PHASE_7_COMPLETION_PLAN.md` §7A |
+| 8 — L5 validation gates (structure/fabrication/hydraulics) | **BUILT, auto-gated** | auto PASS 2026-08-21 + 8b re-gate; visual pending |
+| 9A — LUXEXCHANGE export package | **BUILT, auto-gated** | auto PASS 2026-08-21, re-proven 08-24; visual pending |
+| 9B — Blender render worker (+9B.5 convert) | **BUILT, auto-gated** | auto PASS 2026-08-24, ADR-043/045; visual pending |
+| 5 — vision critique loop | **BUILT, auto-gated, RUN LIVE** | auto PASS 2026-08-24; live 3-round run $0.042916, 5 deltas applied; visual pending |
+| 10 — vision-driven revision loop (R1–R7) | **PLANNED, NOT built** | `PHASE_10_VISION_CRITIQUE_PLAN.md`; 9B dependency now satisfied |
+| 11 — DesignDNA precedent store | **BUILT, auto-gated** | auto PASS 2026-08-22, ADR-038; visual pending |
+| 12 — brief intake with provenance | **BUILT, auto-gated** | auto PASS 2026-08-22, ADR-039; closed Phase 8's hydraulic dependency |
+| 13 — recovery + hardening | **Slice A only** | auto PASS 2026-08-22, ADR-040; NO resumable job runner yet |
+| 14 + 14b — Designer Workspace, Blender-style controls | **BUILT, auto-gated** | auto PASS 2026-08-24, ADR-044/046; visual pending |
+| 15 A–E — designer UX, draft preview, projects/variants | **BUILT, auto-gated** | auto PASS 2026-08-24, ADR-047–051; visual pending |
 
-Operator's stated order stands: **Phase 6 before Phase 5.**
+**Latest full roster (2026-08-24, clean rebuild): 12 auto gates PASS, 0 FAIL;
+361 tests passed.** Total live spend recorded since Phase 4 closed: $0.042916
+(Phase 5 run) plus a possible ~$0.84 unverified incident exposure (B-2).
 
 ---
 
 ## 1. BLOCKERS — these need the operator, not the agent
 
-Nothing below can be unblocked by writing code. Each one names exactly what
-is wanted and what it unblocks.
-
-- [ ] **B-1 — Sign off `PHASE_6_SLICE_A_ENVELOPES.md`.** *Blocks: all Phase 6
-      code.* The sheet is a filled draft with the arithmetic shown; correct
-      the numbers or confirm them. Needs a ruling on: §2.1 joint overlap (the
-      agent is least sure of concrete's ±5 mm), §2.2 min feature size, §2.3
-      min internal tool radius, §3.1–3.3 the basin/plinth/column ranges.
-      Confirm the METHOD only for §4 and the hash-protection approach in §5.
-- [ ] **B-2 — Fill `config/costing.yaml`.** *Blocks: any client-facing quote.*
-      The rate card is all nulls, so no real design can produce a total today
-      — by design, not by defect. `GET /api/costing/rate-card` names every
-      missing entry. **Biggest single win: quote basalt per m³ or per kg**
-      (per-slab defers the largest BOM line to Phase 6 segmentation).
-- [ ] **B-3 — Verify token prices** against the three providers' price pages
-      and bump `pricing_version` in `config/pricing.yaml`. *Blocks: trusting
-      any cost number.* LIMITATIONS §4. Currently `2026-08-v3`.
-- [ ] **B-4 — Four rulings before Phase 5 slice 1** (`PHASE_5_PLAN.md` §9):
-      Cycles-CPU-only with EEVEE out; the separate `render-worker` container
-      and its 357 MB `bpy==5.0.1` download; `critique_render_seconds`
-      (120 s proposed, 60 s is the faster/noisier option); and whether the
-      objective score in §5 is the right definition of "measurably improves".
-- [ ] **B-5 — Supply or retire `SCOPE.md`.** It is cited as authority by
-      `CLAUDE.md`, the reports and `registry.py`, and **has never existed in
-      this repository** (checked against full git history). Same for
-      `SPEC_PHASE2.md`, `PHASE2_PLAN.md`, the "Master Build Order" and the
-      "First Action" document.
+- [ ] **B-1 — Walk the visual gates.** *Blocks: closing phases 5, 8, 9A, 9B,
+      11–15; they are all auto-gated only and "nobody has looked at the
+      pixels."* Eight checklists are outstanding: `gate_phase5_visual.md`,
+      `gate_phase8_visual.md`, `gate_phase9a_visual.md`,
+      `gate_phase9b_visual.md`, `gate_phase11_13a_visual.md`,
+      `gate_phase14_visual.md`, `gate_phase14b_visual.md`,
+      `gate_phase15_visual.md`. First: `docker compose up --build -d`
+      (backend AND frontend images changed), optionally
+      `docker compose --profile render up -d render-worker`. Coordinate with
+      any other live session before rebuilding shared containers.
+- [ ] **B-2 — ADR-033 incident: check the three provider consoles** for a
+      possible ~$0.84 test-leak spend on 2026-08-20 (a full-suite run outside
+      Docker leaked real `.env` keys past the test fixture; the local audit
+      rows died with the test temp DB, so only the consoles hold the truth).
+      Asked for in `PHASE_6_REPORT.md`; still unanswered.
+- [ ] **B-3 — Fill `config/costing.yaml`.** *Blocks: any client-facing
+      quote.* The rate card is still null-filled; `GET /api/costing/rate-card`
+      names every missing entry. **Biggest single win: quote basalt per m³ or
+      per kg** (per-slab defers the largest BOM line to Phase 6 slice C
+      segmentation).
+- [ ] **B-4 — Verify token prices** against the three providers' price pages
+      and bump `pricing_version` in `config/pricing.yaml` (currently
+      `2026-08-v3`). *Blocks: trusting any cost number.* Fix D-3 in the same
+      pass.
+- [ ] **B-5 — Structural profile sign-off.** `config/gate_profiles.yaml`
+      ships `signed_off: false`, so profile-threshold breaches report `warn`,
+      never `fail`; `overturning_safety_factor` stays `needs_input` until a
+      structural engineer signs a value (ADR-036/039 — deliberate, not a
+      defect). Sign it when a real project needs `fail` to bind.
+- [ ] **B-6 — Supply or retire `SCOPE.md`.** Still cited as authority by
+      the reports and `registry.py`, still never existed in this repository.
+      Same for `SPEC_PHASE2.md`, `PHASE2_PLAN.md`, the "Master Build Order"
+      and the "First Action" document.
 
 ---
 
@@ -65,67 +85,79 @@ Each entry is one loop iteration: `/lf-next` → approve → `/lf-build` →
 
 ### Next up
 
-- [ ] **W-1 — Phase 6 slice A1: the assembly core.** *Blocked by B-1.*
-      Entirely offline, $0 to iterate. Registry restructure, three revolved
-      masses (`basin_round`, `plinth`, `sculptural_column`), per-member wall
-      parameters, `registry.assemble()`, assembly validation, assembly
-      determinism, AST whitelist narrowed to `{registry, math}` (ADR-030
-      draft). **Gate A1 (auto, $0):** three primitives composed into ONE
-      watertight body; `body_count == 1` at B-rep *and* mesh level; every
-      declared joint verified to interfere; byte-identical STEP across two
-      processes; the Phase 2 canonical hash `e1a59fa6…` unchanged.
-- [ ] **W-2 — Phase 6 slice A2: the AI and the surfaces.** Two-tier prompt
-      surface (index always, full detail only for the primitives this spec
-      uses), spec→assembly mapping, designer primitive index + spec
-      validation against the live registry, primitive-agnostic API, frontend
-      refactor. **Gate A2 = the operator's Phase 6 gate:** a brief needing
-      three different primitives produces one watertight assembly, viewable
-      and exportable.
-- [ ] **W-3 — Phase 6 slice B: edge treatments + fixtures.** `weir_edge`,
+- [ ] **W-1 — Phase 6 slice A2 tie-off: the operator's gate, live.** The
+      surface work planned for A2 has largely landed piecemeal (7A assembly
+      API + manifest persistence; designer index + spec validation and the
+      GEOMETRIST assembly prompt, 2026-08-21; Designer Workspace, Phases
+      14–15). What remains is the gate itself: **a live brief needing three
+      different primitives, through Council → fabrication, producing one
+      watertight assembly, viewable and exportable** — plus mapper widening
+      beyond the A1 vocabulary and reconciling mixed-material costing
+      (LIMITATIONS §11). Budget ≈$0.15–0.20 (plan §7). This closes Phase 6's
+      operator gate for the primitives that exist.
+- [ ] **W-2 — Phase 6 slice B: rim treatments + fixtures.** `weir_edge`,
       `coping_profile`, `pool_edge_detail` as profile modifiers (never
-      post-hoc booleans); `nozzle_ring` as a fixture family driven by
-      `service_voids` and `hydraulic_network`. **Gate B:** a basin whose weir
-      depth and nozzle bores come from `hydraulic_network`, not invention.
-- [ ] **W-4 — Phase 6 slice C: extrusion and array masses.** `basin_rect`,
-      `stepped_monolith`, `water_wall`, `torus_ring`, `blade_fin_array`,
-      `lotus_petal_array`. **Gate C:** a 24-element polar array inside a
+      post-hoc booleans); `nozzle_ring` driven by `service_voids` and
+      `hydraulic_network`. Makes the signed `min_feature_mm` /
+      `min_internal_radius_mm` floors load-bearing at last. **Gate B:** weir
+      depth and nozzle bores from `hydraulic_network`, not invention.
+- [ ] **W-3 — Phase 6 slice C: extrusion and array masses + segmentation.**
+      `basin_rect`, `stepped_monolith`, `water_wall`, `torus_ring`,
+      `blade_fin_array`, `lotus_petal_array`, and split-line segmentation
+      against `fabrication.max_module_m` — which unlocks the three
+      driverless costing lines (per-slab purchase, seam welding,
+      install/transport). **Gate C:** a 24-element polar array inside a
       3-primitive assembly, byte-identical STEP across two processes.
-- [ ] **W-5 — Phase 6 slice D: free-form.** `basin_elliptical`,
+- [ ] **W-4 — Phase 6 slice D: free-form.** `basin_elliptical`,
       `basin_spline`, `spline_loft_mass`. **Gate D:** a free-form mass
-      composed with two library primitives — *or* an honest LIMITATIONS entry
-      saying which part of the watertight-by-construction guarantee does not
-      hold. Both are acceptable outcomes. Neither is "tune until green".
-- [ ] **W-6 — Phase 5 slice 1: render only, $0.** *Blocked by B-4.* Render
-      worker image, GL library-closure audit with a permanent `ldd` guard,
-      four camera views, budgeted Cycles CPU. **Ends with the measurement
-      spike: real seconds on the operator's machine, reported before
-      anything else is built.**
-- [ ] **W-7 — Phase 5 slice 2: critique + consensus, fixture-replayed at $0.**
-- [ ] **W-8 — Phase 5 slice 3: the live loop.** Projected ≈$0.47 for a full
-      six-iteration loop; full pipeline ≈$1.36 against the $5.00 session cap.
-- [ ] **W-9 — Phase 7: hardening.** Kill-and-resume job runner (the gate is
-      literally: kill the process mid-design, restart, it resumes with no
-      data loss), backup, cost dashboard, screenshot operator docs.
+      composed with two library primitives — *or* an honest LIMITATIONS
+      entry saying which part of the watertight-by-construction guarantee
+      does not hold. Both acceptable; neither is "tune until green".
+- [ ] **W-5 — Phase 10: the vision-driven revision loop.** The 9B blocker is
+      cleared. Build to the corrected plan (R1–R7): round-over-round image
+      comparison, in-frame scale cues, `{element_id, parameter, from, to}`
+      deltas resolved against the live registry, per-delta
+      accepted/clamped/rejected outcomes, Phase 8 re-gate every round with
+      revert-on-regression, per-run cost ceiling. Renders cost minutes, not
+      seconds (≈29 s per 4-view round at gate settings) — size
+      `max_vision_iterations` against that.
+- [ ] **W-6 — Phase 13 slices B+: the resumable job runner.** Checkpoint at
+      artifact boundaries on the hardened `JobRow` contract; auto-retry
+      transient only; kill-and-resume gate at every boundary asserting an
+      identical final `content_digest`; per-job status UI naming the failure
+      class and one next action; retry spend as its own dashboard line.
+- [ ] **W-7 — Costing tie-off.** After B-3 and W-3: seam rate, intake budget
+      wired to the binding budget check (LIMITATIONS §15), per-element
+      costing for mixed materials, first client-ready quote.
+- [ ] **W-8 — Final acceptance run** against the completion gate in
+      `PHASE_7_COMPLETION_PLAN.md`: brief → spec → assembly → gates → render
+      → critique → deltas → re-solve → export package → DesignDNA precedent,
+      surviving a backend restart.
 
 ### Debts — small, real, unscheduled
 
 Pick one up when a slice finishes early. Each is one commit.
 
-- [ ] **D-1 — `data/geo_scratch/` is never reaped.** One directory per sandbox
-      job, forever. Harmless today, not a cleanup story. (LIMITATIONS §9)
+- [ ] **D-1 — `data/geo_scratch/` is never reaped.** 23 directories and
+      counting. Harmless, not a cleanup story. (LIMITATIONS §9)
 - [ ] **D-2 — The synthetic demo Council session lies.** `54e12d62` shows
-      `completed` with `total_cost_usd $1.2624` and zero `ai_calls` rows.
-      Budget enforcement is unaffected (ADR-003) but any spend read from
-      `council_sessions` overstates by that amount. Mark it or delete it.
+      `completed`, `total_cost_usd $1.2624`, zero `ai_calls` rows. Mark it or
+      delete it. (The `/api/ops/costs` two-ledger view already exposes it.)
 - [ ] **D-3 — Doc drift: LIMITATIONS §4 says `pricing.yaml` ships
-      `2026-07-v1`; the file says `2026-08-v3`.** Fix in the same pass as B-3.
-- [ ] **D-4 — No `PHASE_6_PLAN` companion for the costing layer.** The engine
-      shipped with ADR-031 and a gate but no phase report. Either write one
-      or record that the ADR is the report.
-- [ ] **D-5 — The repair loop has never rescued a run.** Rounds 2 and 3 are
-      diagnostic, not corrective, across four live runs. Not a bug — but it
-      needs either a corrective mechanism or an honest "this is a diagnostic
-      loop" rename. Revisit after Phase 6 changes the failure surface.
+      `2026-07-v1`; the file says `2026-08-v3`.** Fix with B-4.
+- [ ] **D-4 — `PHASE_11_12_13A_REPORT.md` still says "Phase 9B and Phase 10
+      are untouched"** — stale since 2026-08-24; 9B is built and auto-gated.
+      One-line correction with a date.
+- [ ] **D-5 — The repair loop has never rescued a run** (rounds 2–3
+      diagnostic, not corrective, across four live runs). Revisit once Phase
+      6 A2 changes the failure surface; rename honestly if unchanged.
+- [ ] **D-6 — The three.js app chunk exceeds Vite's 500 kB warning.**
+      Performance item, not a failed build. (PHASE_15_REPORT)
+- [ ] **D-7 — DAE/3MF exporters need two small pip packages** (`pycollada`,
+      `networkx`) — a download on the operator's connection, so his call, not
+      done behind his back. (LIMITATIONS §13)
+- [ ] **D-8 — The Council panel has no `use_precedents` toggle** though the
+      API supports it. (LIMITATIONS §17)
 
 ---
 
@@ -148,3 +180,6 @@ this is the human-readable version.
 7. **ADR-005:** AI-written code executes only in the sandbox. Never in tests,
    never in the gate.
 8. **Say the projected cost before spending.** Caps: $5/session, $25/day.
+9. **More than one session works this repo at once.** Before rebuilding
+   containers, stashing, or touching another session's files: check, ask,
+   coordinate. Local main can be ahead of origin — push after every close.
