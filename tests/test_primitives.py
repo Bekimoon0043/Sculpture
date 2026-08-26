@@ -25,9 +25,12 @@ def _materials():
 # ---------------------------------------------------------------------------
 
 def test_registry_carries_the_slice_a_primitives():
-    assert set(PRIMITIVES) == {
-        "tiered_cascade", "basin_round", "plinth", "sculptural_column",
-    }
+    # Slice C1 (2026-08-26) widened the registry to ten — the exact set is
+    # asserted in test_slice_c.py; this test keeps its surviving intent:
+    # the A1 four are always present, and EVERY registered module honours
+    # the full protocol.
+    assert {"tiered_cascade", "basin_round", "plinth",
+            "sculptural_column"} <= set(PRIMITIVES)
     for pid, module in PRIMITIVES.items():
         assert module.PRIMITIVE_ID == pid
         for attr in ("PURPOSE", "CAN_PARENT_STACK", "CAN_PARENT_INSERT",

@@ -268,12 +268,24 @@ What Phase 6 still deliberately does NOT do:
   (`gate_phase6_visual.md` — brief → Council → fabrication → viewable,
   exportable assembly) has not been run. Until it passes, first-attempt
   success for assemblies is unmeasured.
-- **Four primitives.** `tiered_cascade`, `basin_round`, `plinth`,
-  `sculptural_column`. ~~Rim treatments and nozzle fixtures are slice B~~
-  — **slice B BUILT 2026-08-26** (ADR-054, `gate_phase6b_auto.py` PASS):
-  weir_edge/coping/pool_edge as profile treatments on `basin_round`, the
-  nozzle_ring fixture, hydraulics wired from the spec. Extrusion/array
-  masses remain slice C; free-form slice D.
+- ~~Four primitives~~ — **TEN as of 2026-08-26**: slice B (ADR-054)
+  added the rim treatments + nozzle fixture on `basin_round`; slice C1
+  (ADR-055, `gate_phase6c_auto.py` PASS) added `basin_rect`,
+  `stepped_monolith`, `water_wall`, `torus_ring`, `blade_fin_array`,
+  `lotus_petal_array`. Free-form (`basin_elliptical`, `basin_spline`,
+  `spline_loft_mass`) remains slice D.
+- **Slice C1 scope limits (2026-08-26, ADR-055):** the rect and
+  sculptural masses are NOT stack parents (their seats don't fit the
+  circular bearing model — a child cannot stack ON a rect basin rim or a
+  torus); rect footprints bear on their conservative INSCRIBED circle
+  (may refuse a geometrically viable overhang — loud, never silent);
+  arrays are one uniform ring (no mixed blade lengths, no spiral
+  phyllotaxis); the lens petal is circular arcs, not a sculpted spline;
+  `water_wall` has no notch weir (the ruling was asked twice and not
+  given) and its 3x thickness floor is judgement pending a real
+  cantilever check. **Segmentation against `max_module_m` is NOT built**
+  — an oversized element is still refused, never split; that work moved
+  to its own C2 slice beside the costing tie-off (W-7).
 - **Slice B scope limits (2026-08-26, ADR-054):** weir crests are
   full-perimeter (360°) only — a partial-arc NOTCH weir breaks
   axisymmetry and needs a cut, deferred to slice C/D with its own proof;

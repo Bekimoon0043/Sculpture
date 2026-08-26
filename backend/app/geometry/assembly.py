@@ -390,7 +390,16 @@ def assemble(
             # vanish entirely in fabrication. Found live 2026-08-26: a
             # 2,000 mm basin on a hollow 2,200/102 plinth passed every
             # check while bearing 1,550 kg on a 2 mm basalt lip.
-            child_out, child_in = child_mod.base_annulus_mm(child_p)
+            # ADR-055: a module whose base footprint depends on how deep it
+            # sinks (the torus: line contact un-sunk, a real chord when
+            # sunk) exposes the overlap-aware form; everything else states
+            # a fixed footprint.
+            if hasattr(child_mod, "base_annulus_at_overlap_mm"):
+                child_out, child_in = child_mod.base_annulus_at_overlap_mm(
+                    child_p, overlap
+                )
+            else:
+                child_out, child_in = child_mod.base_annulus_mm(child_p)
             parent_out, parent_in = parent_mod.stack_top_annulus_mm(parent_p)
             d = ((x - px) ** 2 + (y - py) ** 2) ** 0.5
             # Worst-angle supported width of the child's base ring: the

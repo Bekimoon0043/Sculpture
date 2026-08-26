@@ -96,12 +96,20 @@ def main() -> int:
     from app.core.config import load_config_bundle
     from app.geometry.registry import PRIMITIVES
 
+    # Operator ruling 2026-08-26: this gate asserts that A1's four
+    # primitives are REGISTERED with their signed envelopes — not that the
+    # library is frozen at four. Slice C1 widened it to ten, exactly as the
+    # approved plan says slices B-D do (primitives/__init__ docstring), so
+    # the check is a SUBSET. The exact-set assertion belongs to the newest
+    # slice's gate: gate_phase6c_auto asserts the ten (ADR-055).
     expected = {"tiered_cascade", "basin_round", "plinth", "sculptural_column"}
     got = set(PRIMITIVES)
     print(f"registered primitives: {', '.join(sorted(got))}")
-    if got != expected:
-        failures.append(f"registry: expected {sorted(expected)}, got {sorted(got)}")
-        print(f"FAIL — registry mismatch")
+    print(f"slice A1 four present: {sorted(expected)}")
+    missing = expected - got
+    if missing:
+        failures.append(f"registry: slice A1 primitives MISSING {sorted(missing)}")
+        print(f"FAIL — slice A1 primitives missing: {sorted(missing)}")
     mats = load_config_bundle().materials.materials
     print(f"{'material':24s} {'overlap':>8s} {'feature':>8s} {'int.radius':>10s}")
     signed = {

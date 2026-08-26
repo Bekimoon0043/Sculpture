@@ -7,7 +7,73 @@ and exportable — passes live at slice A2.
 
 ---
 
-## PHASE 6 GATE: PASS - slices A1 (2026-08-20), A2 and B auto (2026-08-26); C/D not built
+## PHASE 6 GATE: PASS - slices A1 (2026-08-20), A2, B and C1 auto (2026-08-26); C2/D not built
+
+## Slice C1 — extrusion and array masses (BUILT, auto gate PASS 2026-08-26, $0)
+
+**Scope:** six new masses (registry 4 → 10): `basin_rect`,
+`stepped_monolith`, `water_wall`, `torus_ring`, `blade_fin_array`,
+`lotus_petal_array`. Extrusion joins revolution as a
+watertight-by-construction path; arrays fuse in index order, engaged into
+their hubs by the joint floor, with the tangency band refused
+(`check_array_spacing`); non-circular footprints bear on conservative
+inscribed-circle seats and the torus on its computed chord (ADR-053
+extended). Segmentation was removed from scope to its own C2 slice (plan
+§8.1, approved). Decisions: ADR-055. Live-verified library facts
+(ADR-009): `Torus`, `PolarLocations`, `extrude`, `Rot` present in the
+installed build123d 0.11.1, checked 2026-08-26.
+
+### Gate evidence (verbatim, 2026-08-26)
+
+```
+docker compose exec backend python -m pytest tests/test_slice_c.py -q
+16 passed in 32.03s
+(regression: assembly + primitives + cascade + fabricate + slice_b + slice_c
+113 passed in 121.56s)
+
+docker compose exec backend python scripts/gate_phase6c_auto.py
+cascade e1a59fa6… ok | A1 529014af… ok | default basin 6038d26f… ok
+six masses built, volumes printed (blade array 225.9 x10⁶ mm³, …)
+THE GATE C COMPOSITION: body_count 1 (B-rep AND mesh),
+volume conservation delta 0.0000% of 0.2%
+process 313: 956436c12891d3bd471888a139d640e4e23cd764c7977d253de21cb0a0b97985
+process 323: 956436c12891d3bd471888a139d640e4e23cd764c7977d253de21cb0a0b97985
+torus chord = 2·sqrt(10·190) = 87.2 mm >= 10 mm floor
+2,494.8 kg monolith refused by a 2,000 kg crane (arithmetic printed)
+PASS — Phase 6 slice C1 auto gate: all sections passed at $0.
+```
+
+Full roster and suite on the C1 code (verbatim, 2026-08-26):
+
+```
+17 auto gates: costing, 2, 3, 4, 5, 6a1, 6a2, 6b, 6c, 8, 8b, 9a, 9b, 11,
+13a, 14, 15 — every one exit=0
+
+docker compose exec backend python -m pytest tests/ -q
+5 failed, 399 passed, 2 warnings in 523.72s (0:08:43)
+```
+
+The 5 failures are the pre-existing D-9 render-worker-state tests BY NAME
+(2 in test_assembly_api, 3 in test_export_package) — the same five that
+failed before slice A2, unrelated to C1.
+
+Two OLDER gates went red when the registry widened, were reported before
+any edit, and were corrected without weakening a check (ADR-055): 6a1's
+exact-four registry assertion became a subset check **on the operator's
+explicit ruling**, and 6a2's example "unknown primitive" moved from
+`water_wall` (which C1 made real) to `basin_spline` (slice D, genuinely
+unbuilt). Recorded as debt D-10: sweep the remaining gates for the same
+built-in-expiry pattern before slice D.
+
+Two defects caught during the build, both mine, both fixed before the
+gate went green: the lens degeneracy bound was twice as strict as the
+real arithmetic (width < length/2 vs width < length), and the gate's
+surface check first matched index lines instead of parameter tables. One
+A1-era test snapshot (registry == exactly four) updated to
+subset-plus-protocol, with the exact-ten assertion in test_slice_c.
+Cost: **$0.00** — no AI call anywhere in the slice. Eye gate:
+`gate_phase6c_visual.md` ($0). B-7 and the notch-weir ruling remain
+unanswered and open.
 
 ## Slice B — rim treatments + nozzle fixture (BUILT, auto gate PASS 2026-08-26, $0)
 

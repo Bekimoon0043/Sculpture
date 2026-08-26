@@ -156,3 +156,50 @@ def revolve_closed_profile(draw) -> "object":
             draw()
         make_face()
     return revolve(sketch.sketch, Axis.Z)
+
+
+def check_array_spacing(
+    label: str,
+    hub_diameter_mm: float,
+    count: int,
+    width_mm: float,
+    material,
+    material_id: str,
+    violations: list[str],
+) -> None:
+    """The array tangency band (slice C1, ADR-055 — ADR-029 generalised).
+
+    Adjacent array elements at the hub circle may cleanly GAP (>= the
+    feature floor: a tool must pass) or cleanly OVERLAP (>= the joint
+    floor: a real fuse). The near-tangent band between is the knife edge
+    that fuses to a non-watertight solid."""
+    import math
+
+    spacing = math.pi * float(hub_diameter_mm) / int(count) - float(width_mm)
+    feat = float(material.min_feature_floor_mm(width_mm))
+    joint = float(material.joint_overlap_mm)
+    if spacing >= feat or -spacing >= joint:
+        return
+    violations.append(
+        f"{label}: spacing at the hub = pi x {hub_diameter_mm:g} / {count} "
+        f"- {width_mm:g} = {spacing:.1f} mm — inside the tangency band "
+        f"(ADR-029): a GAP needs >= {feat:g} mm (feature floor), an "
+        f"OVERLAP needs >= {joint:g} mm (joint floor) for {material_id}"
+    )
+
+
+def extrude_closed_profile(draw, amount_mm: float, plane_name: str = "XY"):
+    """Draw a closed profile on the named plane and extrude it by amount.
+
+    Same watertight-by-construction argument as the revolve helper
+    (slice C1, ADR-055): a closed planar face extruded along its normal is
+    always a valid closed solid. ``plane_name`` is "XY" (extrude +Z) or
+    "XZ" (extrude +Y — the water wall's section runs along its length)."""
+    from build123d import BuildLine, BuildSketch, Plane, extrude, make_face
+
+    plane = Plane.XY if plane_name == "XY" else Plane.XZ
+    with BuildSketch(plane) as sketch:
+        with BuildLine():
+            draw()
+        make_face()
+    return extrude(sketch.sketch, amount=float(amount_mm))

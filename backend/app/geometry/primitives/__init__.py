@@ -15,15 +15,29 @@ from __future__ import annotations
 from types import ModuleType
 
 from app.geometry.primitives import (
+    basin_rect,
     basin_round,
+    blade_fin_array,
     cascade,
+    lotus_petal_array,
     plinth,
     sculptural_column,
+    stepped_monolith,
+    torus_ring,
+    water_wall,
 )
 
 PRIMITIVES: dict[str, ModuleType] = {
     module.PRIMITIVE_ID: module
-    for module in (cascade, basin_round, plinth, sculptural_column)
+    for module in (
+        cascade, basin_round, plinth, sculptural_column,          # A1
+        basin_rect, stepped_monolith, water_wall, torus_ring,     # C1
+        blade_fin_array, lotus_petal_array,                       # C1 arrays
+    )
 }
 
-__all__ = ["PRIMITIVES", "basin_round", "cascade", "plinth", "sculptural_column"]
+__all__ = [
+    "PRIMITIVES", "basin_rect", "basin_round", "blade_fin_array", "cascade",
+    "lotus_petal_array", "plinth", "sculptural_column", "stepped_monolith",
+    "torus_ring", "water_wall",
+]

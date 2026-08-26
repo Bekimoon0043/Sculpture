@@ -2967,3 +2967,94 @@ internal radius) finally load-bearing.
 - Slice B limits recorded in LIMITATIONS §11: 360° crests only, one
   bore size per basin, basin_round-only hosts.
 
+## ADR-055 - Phase 6 slice C1: extrusion and array masses (2026-08-26)
+
+### Context
+
+The plan (approved 2026-08-26): six new masses — basin_rect,
+stepped_monolith, water_wall, torus_ring, blade_fin_array,
+lotus_petal_array — taking the registry from four primitives to ten.
+The engineering risk to retire: an array is N boolean fuses in ONE
+element, where fuse-order nondeterminism would quietly end Amendment 1.
+Capabilities verified against the INSTALLED build123d 0.11.1 on
+2026-08-26 (`PolarLocations`, `extrude`, `Rot`, `Torus`, `Cylinder`,
+`Box`, `Pos` — live import, not recall; ADR-009).
+
+### Decisions
+
+1. **Extrusion joins revolution as a watertight-by-construction path**:
+   `extrude_closed_profile` beside the revolve helper, same argument.
+   Internal booleans stay on the proven pattern (cavity/bore cuts with
+   overshoot).
+2. **Arrays fuse in INDEX order, engaged, and clear the tangency band.**
+   Each blade/petal is sunk into its hub by the material joint floor
+   (ADR-029: touching is not joining), and adjacent elements must either
+   GAP >= the feature floor (tool access) or OVERLAP >= the joint floor
+   (a real fuse) — the near-tangent band between is refused with the
+   arithmetic (`check_array_spacing`). Petals may overlap deliberately;
+   a lotus does.
+3. **Non-circular footprints report conservative seats** (ADR-053
+   extension): rect masses expose their INSCRIBED circle — a false
+   refusal is loud, an overstated seat would be the silent failure. The
+   torus exposes `base_annulus_at_overlap_mm`: line contact un-sunk, a
+   real chord 2·sqrt(d·(minor − d)) when sunk, held to the joint floor.
+   Consequence, recorded: basin_rect and the sculptural masses are NOT
+   stack parents in C1 (a circular seat model on a rect rim would lie).
+4. **The lens petal is arcs, not splines** (sagitta arithmetic; width <
+   length or the arcs close into a circle) — free-form stays in slice D.
+   The initial plan bound (width < length/2) was an arithmetic error
+   caught by the first test run and corrected to the true degeneracy.
+5. **water_wall carries the ADR-054 crest linearly** (extruded, so the
+   360° axisymmetry limit does not apply); its thickness floor is 3x the
+   vessel-wall floor — the slice's weakest number, flagged as judgement
+   at approval and unchallenged. No notch weir was built: the ruling was
+   asked twice and not given.
+6. Envelope table as approved (plan §5) — signed by the plan approval,
+   including: rect corner radius >= the §2.3 internal-radius floor
+   (316L formula), step inset >= the §2.1 joint floor, blade/petal
+   thickness >= the §2.2 feature floor, torus major >= 2x minor.
+
+### Consequences
+
+- Gate `gate_phase6c_auto.py` PASS at $0: the three canonical hashes
+  unmoved; six masses built with printed volumes; every floor refused
+  with real numbers; THE GATE C COMPOSITION — a 24-blade array inside a
+  3-primitive assembly — body_count 1 at B-rep and mesh, volume
+  conservation 0.0000%, byte-identical STEP `956436c1…` across PIDs 313
+  and 323; the torus chord (87.2 mm at the 10 mm floor) and the
+  inscribed-circle seat proven; a 2,494.8 kg monolith refused by a
+  2,000 kg crane.
+- Segmentation was REMOVED from this slice's scope (plan §8.1): it is
+  costing-driver work and moves to its own C2 slice beside the costing
+  tie-off. NEXT.md corrected.
+- One prior test's registry snapshot (exactly-four) updated to
+  subset-plus-protocol; the exact-ten assertion lives in test_slice_c.
+
+### Two older gates corrected — with the operator's ruling, not quietly
+
+Widening the registry broke two earlier gates. Both were reported red
+BEFORE any edit, and the first was changed only on the operator's
+explicit instruction (2026-08-26). Neither correction weakened a check:
+
+1. **`gate_phase6a1_auto` §1** asserted the registry held EXACTLY the
+   four A1 primitives. Its intent was "A1's four are registered with
+   their signed envelopes", not "the library is frozen" — the approved
+   plan and `primitives/__init__` both say slices B-D widen the dict.
+   Now a SUBSET check (`missing = expected - got`), and it reports which
+   A1 primitive is missing if one ever disappears. The exact-set
+   assertion lives in the NEWEST slice's gate — 6c asserts the ten
+   today, slice D's will assert thirteen.
+2. **`gate_phase6a2_auto` §6** proved "an unknown primitive is refused"
+   using `water_wall` as the example unknown — which slice C1 made real,
+   so the platform correctly ACCEPTED it and the gate failed. The check
+   is right; its example must simply name something outside the live
+   registry. Now `basin_spline` (a slice-D primitive, genuinely not
+   built). It will move again when slice D lands — that is the check
+   working, and the comment in the gate says so.
+
+**The standing lesson:** a gate that pins the exact contents of a
+deliberately growing registry, or that hard-codes an "unknown" name the
+roadmap will later make known, has a built-in expiry. Frozen-set
+assertions belong to the newest slice's gate; older gates assert what
+their own slice made true.
+

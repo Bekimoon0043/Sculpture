@@ -21,7 +21,7 @@ LIMITATIONS.md and DECISIONS.md as they stand — not from memory.
 | 3 — the AI Council | **CLOSED** | gate PASS 2026-08-07, live $0.843842 |
 | 4 — fabrication loop (AI writes CAD, sandbox runs) | **CLOSED** | gate PASS 2026-08-17, live $0.046777 |
 | costing engine | **BUILT, gated, starved** | ADR-031; rate card still unfilled (B-3) |
-| 6 — primitive library | **A1 CLOSED; A2 + B BUILT; C/D not built** | A1 PASS 2026-08-20; A2 PASS 2026-08-26 (ADR-052/053); B PASS 2026-08-26 (ADR-054); live gate `gate_phase6_visual.md` + eye gate `gate_phase6b_visual.md` pending |
+| 6 — primitive library | **A1 CLOSED; A2 + B + C1 BUILT (10 primitives); C2/D not built** | auto gates PASS 2026-08-20 / 2026-08-26 (ADR-052–055); pending: live gate `gate_phase6_visual.md`, eye gates 6b + 6c |
 | 7A — assembly surface (API, manifest persistence) | **BUILT** | implemented 2026-08-21, `PHASE_7_COMPLETION_PLAN.md` §7A |
 | 8 — L5 validation gates (structure/fabrication/hydraulics) | **BUILT, auto-gated** | auto PASS 2026-08-21 + 8b re-gate; visual pending |
 | 9A — LUXEXCHANGE export package | **BUILT, auto-gated** | auto PASS 2026-08-21, re-proven 08-24; visual pending |
@@ -51,7 +51,8 @@ LIMITATIONS.md and DECISIONS.md as they stand — not from memory.
       `gate_phase15_visual.md`, `gate_phase6_visual.md` — the Phase 6
       LIVE gate (≈$0.90–1.10 spend, the only one that costs money; it is
       THE operator's gate the phase is named for) — and
-      `gate_phase6b_visual.md` (treatments + nozzles by eye, $0). First:
+      `gate_phase6b_visual.md` (treatments + nozzles by eye, $0) and
+      `gate_phase6c_visual.md` (the six new masses by eye, $0). First:
       `docker compose up --build -d`
       (backend AND frontend images changed), optionally
       `docker compose --profile render up -d render-worker`. Coordinate with
@@ -122,13 +123,20 @@ Each entry is one loop iteration: `/lf-next` → approve → `/lf-build` →
       consistency replaced the incoherent weir-depth derivation. Operator
       eye gate: `gate_phase6b_visual.md` ($0), queued under B-1. Slice
       limits (360° crests, one bore size, basin-only) in LIMITATIONS §11.
-- [ ] **W-3 — Phase 6 slice C: extrusion and array masses + segmentation.**
-      `basin_rect`, `stepped_monolith`, `water_wall`, `torus_ring`,
-      `blade_fin_array`, `lotus_petal_array`, and split-line segmentation
-      against `fabrication.max_module_m` — which unlocks the three
-      driverless costing lines (per-slab purchase, seam welding,
-      install/transport). **Gate C:** a 24-element polar array inside a
-      3-primitive assembly, byte-identical STEP across two processes.
+- [x] **W-3 — Phase 6 slice C1 — BUILT 2026-08-26, auto gate PASS at $0
+      (ADR-055).** Six masses (registry 4 → 10), arrays fusing in index
+      order with the tangency band refused, conservative seats for rect
+      footprints and the torus chord. THE GATE C COMPOSITION proven:
+      24-blade array in a 3-primitive assembly, byte-identical STEP
+      `956436c1…` across two processes. Eye gate `gate_phase6c_visual.md`
+      queued under B-1. **Correction (plan §8.1):** segmentation was
+      wrongly bolted onto this entry — it is costing-driver work and is
+      now its own item below.
+- [ ] **W-3b — Phase 6 slice C2: segmentation.** Split-line planes
+      against `fabrication.max_module_m` → modules → seams → per-module
+      BOM lines; unlocks the three driverless costing lines (per-slab
+      purchase, seam welding, install/transport) and the seam rate.
+      Plan it WITH the costing tie-off (W-7) — the consumers live there.
 - [ ] **W-4 — Phase 6 slice D: free-form.** `basin_elliptical`,
       `basin_spline`, `spline_loft_mass`. **Gate D:** a free-form mass
       composed with two library primitives — *or* an honest LIMITATIONS
@@ -179,6 +187,13 @@ Pick one up when a slice finishes early. Each is one commit.
       done behind his back. (LIMITATIONS §13)
 - [ ] **D-8 — The Council panel has no `use_precedents` toggle** though the
       API supports it. (LIMITATIONS §17)
+- [ ] **D-10 — Gate examples with a built-in expiry.** Slice C1 broke two
+      older gates by widening the registry: 6a1 pinned the EXACT four
+      primitives, 6a2 used `water_wall` as its example "unknown" primitive
+      until C1 made it real. Both corrected 2026-08-26 (ADR-055; 6a1 on
+      the operator's ruling). Sweep the other gates for the same pattern
+      — frozen sets and hard-coded not-yet-built names — before slice D
+      widens the registry again.
 - [ ] **D-9 — Five export tests assume the render worker is DOWN** and fail
       with it running (`assert 'included' == 'unavailable'`; three in
       `test_export_package.py`, two in `test_assembly_api.py`). Found

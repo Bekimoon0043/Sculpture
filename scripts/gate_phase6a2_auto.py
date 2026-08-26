@@ -341,11 +341,17 @@ def main() -> int:
     def _spec(elements) -> dict:
         return {"massing": {"elements": elements}}
 
+    # The example unknown must be a name the registry does NOT have. It was
+    # `water_wall` until slice C1 made that real (2026-08-26) — the gate
+    # then failed because the platform correctly ACCEPTED it. `basin_spline`
+    # is a slice-D primitive: not built, so it is a true unknown today. When
+    # slice D lands, this example moves again — that is the check working,
+    # not rotting: the gate must always name something outside the registry.
     _expect(
         "unknown primitive refused, naming the live registry",
-        _spec([{"element_id": "x1", "primitive": "water_wall",
+        _spec([{"element_id": "x1", "primitive": "basin_spline",
                 "material_id": "basalt_slab", "parameters": {}}]),
-        "water_wall", "live registry",
+        "basin_spline", "live registry",
     )
     _expect(
         "duplicate element_id refused",

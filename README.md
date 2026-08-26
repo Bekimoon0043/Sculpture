@@ -36,7 +36,11 @@ assembler refuses knife-edge seats with the signed tolerance arithmetic
 weir-crest, coping and pool-edge rims drawn INTO the revolved profile,
 and nozzle rings bored by trusted code with the count and bore taken
 verbatim from the spec's hydraulic network — never invented, refused
-when the water plan and the geometry disagree.
+when the water plan and the geometry disagree. Slice C1 (ADR-055) takes
+the library to TEN primitives — rectangular basins, stepped monoliths,
+water walls, torus rings, and the blade-fin and lotus-petal arrays —
+with a 24-blade array proven to fuse into ONE watertight body that
+exports byte-identical STEP across two processes.
 
 Rendering and the vision-critique loop (Phase 5), the remaining primitive
 library work (Phase 6), exports beyond STEP/GLB, and DesignDNA/recovery
