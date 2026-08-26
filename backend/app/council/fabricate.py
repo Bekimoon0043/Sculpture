@@ -235,6 +235,11 @@ class FabricationOutcome:
     artifacts: dict[str, Any] | None = None
     validation: dict[str, Any] | None = None
     error: str | None = None
+    #: Phase 6 slice A2: the DesignRow id persisted for a passing ASSEMBLY
+    #: fabrication (viewable in the Designer, exportable via Phase 9A).
+    #: None for cascade fabrications and when the bridge failed (the
+    #: failure is recorded in the program row's artifacts_json).
+    design_id: str | None = None
 
 
 def fabricate_spec(
@@ -272,9 +277,22 @@ def fabricate_spec(
         / "fabrications" / session_id
     )
 
+    # Two-tier prompt surface (slice A2, plan §3): full parameter detail
+    # only for the primitives THIS spec names; the index always lists all.
+    # Selection is computed here, never chosen by the model. Unknown or
+    # legacy primitive names fall back to the full surface inside
+    # registry_surface().
+    used_primitives = [
+        el.get("primitive")
+        for el in (spec.get("massing", {}).get("elements") or [])
+        if isinstance(el, dict)
+    ]
+
     for attempt in range(1, max_attempts + 1):
         out.attempts = attempt
-        prompt = prompts.fabrication_prompt(spec_json, failure_history)
+        prompt = prompts.fabrication_prompt(
+            spec_json, failure_history, used_primitives=used_primitives
+        )
         # optional=True (ADR-023): a provider failure is a failed ATTEMPT,
         # not a crashed fabrication — the error becomes the repair digest.
         outcome = orchestrator._call(
@@ -362,6 +380,12 @@ def fabricate_spec(
             out.final_status = "collection_failed"
             continue
         row.artifacts_json = json.dumps(artifacts, sort_keys=True)
+        # Slice A2: keep the manifest on the program row for every attempt
+        # that produced one — forensics for failed attempts, lineage for the
+        # passing one. NULL for cascade programs.
+        sandbox_params = result.params or {}
+        if sandbox_params.get("schema") == "assembly_manifest_v1":
+            row.manifest_json = json.dumps(sandbox_params, sort_keys=True)
 
         # 4. Phase 2 validation gate — trusted code, real numbers.
         if validator is not None:
@@ -400,12 +424,41 @@ def fabricate_spec(
         # 5. PASS
         row.status = "passed"
         row.error_digest = None
+        validation_json = row.validation_json
+        # The program row is persisted FIRST: the design's
+        # generated_program_id is a foreign key onto it.
         _persist_program(orchestrator, row)
         out.program_ids.append(program_id)
+        # Slice A2 bridge: a passing ASSEMBLY fabrication becomes a real
+        # DesignRow through the SAME persistence path the operator API
+        # uses, so it is viewable in the Designer and exportable via
+        # Phase 9A. A bridge failure is honest and loud — the fabrication
+        # still passed (the sandbox artifacts exist), but the missing
+        # design record is stated in artifacts_json, never invented.
+        if sandbox_params.get("schema") == "assembly_manifest_v1":
+            try:
+                design = _persist_fabricated_assembly(
+                    orchestrator, spec_id, program_id, sandbox_params,
+                    artifacts,
+                )
+                out.design_id = design["design_id"]
+                artifacts["design_id"] = design["design_id"]
+                artifacts["design_step_sha256"] = design["step_sha256"]
+            except Exception as exc:
+                artifacts["design_bridge_error"] = str(exc)
+                log.error(
+                    "assembly design bridge FAILED for program %s: %s "
+                    "(fabrication itself passed; the design record is "
+                    "missing, not faked)", program_id, exc,
+                )
+            _update_program_artifacts(
+                orchestrator, program_id,
+                json.dumps(artifacts, sort_keys=True),
+            )
         out.success = True
         out.final_status = "passed"
         out.artifacts = artifacts
-        out.validation = json.loads(row.validation_json)
+        out.validation = json.loads(validation_json)
         return out
 
     out.error = f"no passing program after {max_attempts} attempts"
@@ -415,6 +468,102 @@ def fabricate_spec(
 def _persist_program(orchestrator, row: GeneratedProgramRow) -> None:
     with orchestrator._db.get_session() as s:
         s.add(row)
+
+
+def _update_program_artifacts(
+    orchestrator, program_id: str, artifacts_json: str
+) -> None:
+    """Amend a persisted program row with the bridge outcome (design id or
+    honest bridge error) — the row itself was committed before the bridge
+    ran, because the design's generated_program_id FK points at it."""
+    with orchestrator._db.get_session() as s:
+        stored = s.get(GeneratedProgramRow, program_id)
+        stored.artifacts_json = artifacts_json
+
+
+# ---------------------------------------------------------------------------
+# Slice A2: fabrication -> design bridge (trusted rebuild + shared persist)
+# ---------------------------------------------------------------------------
+
+
+def _plan_from_manifest(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    """Reconstruct the assembly plan from an assembly_manifest_v1.
+
+    The manifest carries every element's VALIDATED parameters (defaults
+    resolved) and every joint's type/parent/overlap — enough to rebuild the
+    identical solid in trusted code. Deterministic: elements arrive sorted
+    by element_id from the assembler and stay that way.
+    """
+    joints_by_child = {j["child"]: j for j in manifest.get("joints", [])}
+    plan: list[dict[str, Any]] = []
+    for el in manifest["elements"]:
+        entry: dict[str, Any] = {
+            "element_id": el["element_id"],
+            "primitive": el["primitive"],
+            "parameters": dict(el["parameters"]),
+        }
+        joint = joints_by_child.get(el["element_id"])
+        if joint is not None:
+            entry["joint"] = {
+                "type": joint["type"],
+                "parent": joint["parent"],
+                "overlap_mm": joint["overlap_mm"],
+            }
+        plan.append(entry)
+    return plan
+
+
+def _persist_fabricated_assembly(
+    orchestrator,
+    spec_id: str,
+    program_id: str,
+    manifest: dict[str, Any],
+    artifacts: dict[str, Any],
+) -> dict[str, Any]:
+    """Rebuild the assembly in TRUSTED backend code and persist it through
+    the same helper the operator API uses (routes_assembly).
+
+    The sandbox already built and validated this geometry; rebuilding here
+    (deterministic — same registry, same parameters, same seed) is what
+    yields the per-element solids for the scene GLB and guarantees the
+    stored STEP comes from the one shared export path. The sandbox's own
+    STEP sha256 rides along in the record for cross-image comparison.
+    """
+    from app.api.routes_assembly import (
+        AssemblyBuildRequest,
+        persist_assembly_design,
+    )
+    from app.geometry import assemble
+
+    t0 = time.perf_counter()
+    plan = _plan_from_manifest(manifest)
+    fabrication = {
+        k: v
+        for k, v in (manifest.get("fabrication_limits") or {}).items()
+        if v is not None
+    } or None
+    seed = int(manifest.get("seed", 0))
+    request = AssemblyBuildRequest(
+        elements=plan, fabrication=fabrication, seed=seed, strict=True
+    )
+    solid, rebuilt_manifest, element_solids = assemble(
+        plan,
+        seed=seed,
+        fabrication=fabrication,
+        strict=True,
+        return_solids=True,
+    )
+    return persist_assembly_design(
+        request,
+        solid,
+        rebuilt_manifest,
+        element_solids,
+        t0=t0,
+        db=orchestrator._db,
+        spec_id=spec_id,
+        generated_program_id=program_id,
+        sandbox_step_sha256=artifacts.get("step_sha256"),
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -196,9 +196,13 @@ def test_undeclared_interference_refused():
 
 
 def test_floating_body_refused_with_real_numbers():
-    # A 100 mm column centred over a hollow plinth's 300 mm hole: the
-    # declared joint never touches — the fatal silent failure (a mesh of
-    # two closed bodies would still be "watertight") caught at the B-rep.
+    # A 100 mm column centred over a hollow plinth's 300 mm hole. Before
+    # ADR-053 this fell through to the B-rep interference proof ("does NOT
+    # interfere"); the bearing check now refuses it EARLIER and cheaper,
+    # with the seat arithmetic (-100.0 mm: the hole edge is 150 mm out,
+    # the column reaches only 50). Same intent, better refusal. The B-rep
+    # interference proof remains in place as the construction-level
+    # backstop for shapes the annulus arithmetic cannot foresee.
     plan = [
         {"element_id": "p1", "primitive": "plinth",
          "parameters": {"top_diameter_mm": 500, "height_mm": 300,
@@ -210,7 +214,9 @@ def test_floating_body_refused_with_real_numbers():
     ]
     with pytest.raises(ConstraintViolation) as exc:
         assemble(plan)
-    assert "does NOT interfere" in str(exc.value)
+    text = str(exc.value)
+    assert "-100.0 mm radial seat" in text
+    assert "15 mm floor" in text  # bronze on concrete: cross-material MAX
 
 
 def test_plan_structure_violations_are_aggregated():
@@ -311,3 +317,59 @@ def test_validate_assembly_counts_disjoint_bodies(tmp_path):
     report = validate_assembly(out, manifest)
     assert report.body_count == 2
     assert not report.passed
+
+
+# --- ADR-053: the stack_on seat is a bearing, not a lip ---------------------
+
+
+def _hollow_plinth_basin_plan(plinth_wall_mm: float):
+    """The exact shape the operator built live on 2026-08-26 (design
+    a3006a42): basin ⌀2000 stacked on a hollow plinth ⌀2200. At wall 102
+    the plinth's inner mouth is ⌀1996 and the basin bears on a 2 mm lip."""
+    return [
+        {"element_id": "p1", "primitive": "plinth",
+         "parameters": {"top_diameter_mm": 2200, "height_mm": 800,
+                        "wall_mm": plinth_wall_mm,
+                        "material_id": "basalt_slab"}},
+        {"element_id": "b1", "primitive": "basin_round",
+         "parameters": {"diameter_mm": 2000, "height_mm": 450, "wall_mm": 40,
+                        "floor_mm": 160, "material_id": "basalt_slab"},
+         "joint": {"type": "stack_on", "parent": "p1"}},
+    ]
+
+
+def test_stack_on_knife_edge_seat_refused_with_real_numbers():
+    with pytest.raises(ConstraintViolation) as exc:
+        assemble(_hollow_plinth_basin_plan(102), seed=7)
+    text = str(exc.value)
+    assert "2.0 mm" in text            # the measured seat
+    assert "10 mm floor" in text       # basalt §2.1 floor
+    assert "1996" in text              # the parent's inner mouth, named
+    assert "Thicken the parent wall" in text
+
+
+def test_stack_on_wide_seat_passes_and_fuses():
+    # wall 150 -> inner mouth 1900 -> 50 mm seat >= the 10 mm floor
+    solid, manifest = assemble(_hollow_plinth_basin_plan(150), seed=7)
+    assert manifest["body_count_brep"] == 1
+    assert manifest["joints"][0]["intersection_volume_mm3"] > 0
+    vc = manifest["volume_conservation"]
+    assert vc["delta_pct"] <= vc["tolerance_pct"]
+
+
+def test_stack_on_offset_child_keeps_full_disc_bearing():
+    """A laterally offset child on a SOLID parent keeps full support while
+    its base stays inside the parent's top face — the offset must not be
+    mistaken for a hole reaching in (solid parent has no hole)."""
+    plan = [
+        {"element_id": "p1", "primitive": "plinth",
+         "parameters": {"top_diameter_mm": 900, "height_mm": 300,
+                        "material_id": "basalt_slab"}},
+        {"element_id": "c1", "primitive": "sculptural_column",
+         "parameters": {"diameter_mm": 200, "height_mm": 400,
+                        "material_id": "basalt_slab"},
+         "joint": {"type": "stack_on", "parent": "p1",
+                   "x_offset_mm": 300}},
+    ]
+    solid, manifest = assemble(plan, seed=7)
+    assert manifest["body_count_brep"] == 1

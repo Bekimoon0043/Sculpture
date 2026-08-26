@@ -105,6 +105,10 @@ const THUMBS_KEY = "lf_thumbs_v1";
 const VIEWS_KEY = "lf_saved_views_v1";
 const THUMBS_CAP = 40;
 
+//: Per-browser convenience (like thumbnails/saved views): which design the
+//: operator had open, restored on reload if it still exists in scope.
+const ACTIVE_DESIGN_KEY = "lf_active_design";
+
 function loadThumbs(): Record<string, string> {
   try {
     return JSON.parse(localStorage.getItem(THUMBS_KEY) ?? "{}");
@@ -175,6 +179,9 @@ interface DesignerWorkspaceProps {
   /** False while another view is shown — the workspace stays mounted but
    *  its keyboard map must not swallow keys meant for that view. */
   active: boolean;
+  /** A stepper click asking for a right-rail tab (Build → design,
+   *  Validate → checks, Export → output). The counter re-applies repeats. */
+  tabRequest?: { tab: string; n: number } | null;
   onFatal: (message: string) => void;
   /** Pipeline facts the App shell derives the stepper/status bar from. */
   onPipelineChange: (facts: {
@@ -187,6 +194,7 @@ interface DesignerWorkspaceProps {
 export default function DesignerWorkspace({
   intake,
   active,
+  tabRequest,
   onFatal,
   onPipelineChange,
 }: DesignerWorkspaceProps) {
@@ -204,6 +212,18 @@ export default function DesignerWorkspace({
   const [addOpen, setAddOpen] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>("design");
   const [historyCollapsed, setHistoryCollapsed] = useState(true);
+
+  // Stepper deep-link: Validate/Export must visibly open their surface.
+  useEffect(() => {
+    if (!tabRequest) return;
+    if (
+      tabRequest.tab === "design" ||
+      tabRequest.tab === "checks" ||
+      tabRequest.tab === "output"
+    ) {
+      setRightTab(tabRequest.tab);
+    }
+  }, [tabRequest]);
 
   // What the viewport shows.
   const [activeDesignId, setActiveDesignId] = useState<string | null>(null);
@@ -346,21 +366,34 @@ export default function DesignerWorkspace({
             parent_design_id: s.parent_design_id,
           }))
         );
-        const newest = list.designs[0];
+        // Reopen the design the operator was WORKING ON, not whatever is
+        // newest in the shared database — with concurrent sessions building,
+        // "newest" is often someone else's design (operator report,
+        // 2026-08-26). Falls back to newest when the remembered design is
+        // gone or belongs to another project scope.
+        let remembered: string | null = null;
         try {
-          const m = await getDesignManifest(newest.design_id);
+          remembered = localStorage.getItem(ACTIVE_DESIGN_KEY);
+        } catch {
+          remembered = null;
+        }
+        const reopened =
+          list.designs.find((s) => s.design_id === remembered) ??
+          list.designs[0];
+        try {
+          const m = await getDesignManifest(reopened.design_id);
           if (cancelled) return;
           setHistory(historyOf(docFromRequest(m.request)));
-          setActiveDesignId(newest.design_id);
+          setActiveDesignId(reopened.design_id);
           setBuiltElements(m.manifest.elements);
           setLastBuiltJson(JSON.stringify(docFromRequest(m.request)));
           setReloadToken((t) => t + 1);
         } catch {
           setHistory(historyOf(starterDoc(d)));
         }
-        const v = await getDesignValidation(newest.design_id).catch(() => null);
+        const v = await getDesignValidation(reopened.design_id).catch(() => null);
         if (!cancelled && v) applyValidation(v);
-        const e = await getAssemblyExports(newest.design_id).catch(() => null);
+        const e = await getAssemblyExports(reopened.design_id).catch(() => null);
         if (!cancelled && e) setExports(e);
       } else {
         setHistory(historyOf(starterDoc(d)));
@@ -466,6 +499,17 @@ export default function DesignerWorkspace({
   useEffect(() => {
     onPipelineChange({ designId: activeDesignId, overallStatus, exports });
   }, [activeDesignId, overallStatus, exports, onPipelineChange]);
+
+  // Remember the open design so a reload comes back to IT, not to whatever
+  // some other session built most recently (per-browser, like thumbnails).
+  useEffect(() => {
+    if (!activeDesignId) return;
+    try {
+      localStorage.setItem(ACTIVE_DESIGN_KEY, activeDesignId);
+    } catch {
+      /* storage unavailable — reload falls back to newest */
+    }
+  }, [activeDesignId]);
 
   // ------------------------------------------------------------- edits
   const dispatch = useCallback((action: Parameters<typeof apply>[1]) => {
@@ -1234,7 +1278,10 @@ export default function DesignerWorkspace({
             />
           </ErrorBoundary>
           <div className="ws-buildopts">
-            <label className="param-row">
+            <label
+              className="param-row"
+              title="Determinism seed — the same seed and parameters always rebuild byte-identical STEP"
+            >
               <span className="param-name">seed</span>
               <input
                 key={`seed:${doc.seed}`}
@@ -1250,7 +1297,10 @@ export default function DesignerWorkspace({
               />
               <span className="param-unit">determinism</span>
             </label>
-            <label className="param-row">
+            <label
+              className="param-row"
+              title="Gate profile — the validation thresholds this design is checked against"
+            >
               <span className="param-name">gate profile</span>
               <select
                 value={doc.gateProfileId}
@@ -1267,7 +1317,10 @@ export default function DesignerWorkspace({
               <span className="param-unit" />
             </label>
             {intake && (
-              <label className="param-row intake-toggle">
+              <label
+                className="param-row intake-toggle"
+                title="Validation — a confirmed intake supplies the site facts (wind, bearing, water) to the gates"
+              >
                 <span className="param-name">site context</span>
                 <span className="toggle-cell">
                   <input

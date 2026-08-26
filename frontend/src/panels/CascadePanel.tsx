@@ -47,6 +47,11 @@ export default function CascadePanel({
   return (
     <div className="panel cascade-panel">
       <h2>Cascade parameters</h2>
+      <p className="hint">
+        Legacy single-primitive tool (Phases 2–4) with its own separate
+        artifact — what you see here is the last cascade built, not your
+        assembly. Assembly designs live under <strong>Build</strong>.
+      </p>
       {Object.entries(defaults.parameters).map(([name, spec]) => {
         if (spec.type === "str") {
           // material_id: a select over materials.yaml entries

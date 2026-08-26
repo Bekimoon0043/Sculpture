@@ -7,11 +7,129 @@ and exportable — passes live at slice A2.
 
 ---
 
-## PHASE 6 GATE: PASS - slice A1 only (auto, 2026-08-20); A2/B/C/D not built
+## PHASE 6 GATE: PASS - slices A1 (2026-08-20) and A2 auto (2026-08-26); B/C/D not built
 
-This verdict covers `gate_phase6a1_auto.py`, the only Phase 6 gate that
-exists. Phase 6 as a whole is NOT closed: slices A2 (AI + surfaces),
-B (rim treatments + fixtures), C and D are not built.
+`gate_phase6a1_auto.py` and `gate_phase6a2_auto.py` both PASS at $0. Phase 6
+as a whole is NOT closed: the operator's LIVE gate (`gate_phase6_visual.md`
+— a brief needing three primitives, through Council → fabrication, viewable
+and exportable) has not been run, and slices B (rim treatments + fixtures),
+C and D are not built.
+
+## Slice A2 — the fabrication → design bridge (BUILT, auto gate PASS 2026-08-26, $0)
+
+**Scope (a tie-off, honestly):** the original A2 was largely consumed
+piecemeal before this slice — the primitive-agnostic API and manifest
+persistence by Phase 7A, the frontend by Phases 14–15, the mapper and
+designer index on 2026-08-21. What A2 actually built is the piece none of
+them provided: a passing assembly fabrication now becomes a real design
+record. Decisions: ADR-052.
+
+### What was built
+
+| piece | where |
+|---|---|
+| shared persistence helper (one path, one identity) | `routes_assembly.persist_assembly_design` |
+| fabrication bridge (trusted rebuild from the manifest) | `fabricate._persist_fabricated_assembly` |
+| lineage columns (additive, ADR-023 patches) | `designs.generated_program_id`, `generated_programs.manifest_json` |
+| two-tier prompt surface (index always, detail per spec) | `prompts.registry_surface(used_primitives)` |
+| honest bridge failure (`design_bridge_error`, never a fake) | `fabricate.py` step 5 |
+| tests (6, real geometry, scripted sandbox per ADR-005) | `tests/test_fabricate_assembly.py` |
+
+### Gate evidence (verbatim, 2026-08-26)
+
+```
+docker compose exec backend python -m pytest tests/test_fabricate_assembly.py -q
+6 passed in 46.10s
+
+docker compose exec backend python scripts/gate_phase6a2_auto.py
+full surface: 11267 chars (~2816 tokens)
+3-primitive surface: 8144 chars (~2036 tokens)
+persisted design: da77bd5e-aa95-40db-b8d4-ae918bd1c95c
+bridge-path STEP sha256: 57e3bc901a71c97bdfdd767b948c9c7af4ebab0780554454f13cf653320c74b2
+API-path STEP sha256:    57e3bc901a71c97bdfdd767b948c9c7af4ebab0780554454f13cf653320c74b2
+ok   — byte-identical STEP across two separate processes
+PASS — Phase 6 slice A2 auto gate: all sections passed at $0, no network,
+no AI-written code executed.
+```
+
+The Phase 2 canonical hash `e1a59fa6…` is re-asserted by the gate's §1 and
+unchanged. One defect was found by the first test run and fixed: the bridge
+originally ran before the program row was committed, so the design's
+`generated_program_id` FK had no target — the honest-failure path caught it
+(`design_bridge_error: FOREIGN KEY constraint failed`) exactly as designed.
+
+Full suite (verbatim, 2026-08-26, render worker RUNNING):
+
+```
+docker compose exec backend python -m pytest tests/ -q
+5 failed, 364 passed, 2 warnings in 855.14s (0:14:15)
+```
+
+The 5 failures are PRE-EXISTING and environment-dependent, not a slice A2
+regression: they hardcode the render worker being DOWN
+(`assert 'included' == 'unavailable'`) and were reproduced identically on
+pristine image code with none of this slice's files present
+(`docker compose run --rm backend ... 5 failed in 74.58s`). Recorded as
+debt D-9 in NEXT.md. Every test in areas this slice touched passes.
+
+### Found live by the operator, fixed in the same slice (ADR-053)
+
+The operator's screenshots of design `a3006a42` (2026-08-26) exposed a
+constraint gap: a ⌀2,000 basin on a hollow ⌀2,200/102 plinth passed every
+check while bearing 1,550 kg on a **2 mm basalt lip** (the plinth's inner
+mouth is ⌀1,996; the stored intersection volume, 125,538 mm³, is exactly
+that 2 mm × 10 mm rim ring). Interference proved the fuse, never the seat.
+
+Fix: stack_on now enforces a **bearing floor** — the worst-angle radial
+seat must be at least the signed §2.1 material joint floor (cross-material
+MAX), computed from new per-primitive `base_annulus_mm` /
+`stack_top_annulus_mm` helpers, refused with the arithmetic and the
+levers. Three new tests reproduce the exact live case (2.0 mm refused,
+50 mm at wall 150 passes, offset-on-solid keeps full bearing). One gate
+needle changed and is recorded in ADR-053 §3: the A1 "floating body" case
+is now refused earlier by the seat check (−100.0 mm) — protection
+unchanged, refusal moved left. Verbatim after the fix (2026-08-26):
+
+```
+pytest tests/test_assembly.py tests/test_fabricate_assembly.py -q
+29 passed in 31.40s
+gate_phase6a1_auto: PASS — all sections passed at $0.   (exit 0)
+gate_phase6a2_auto: PASS — … (exit 0, incl. "knife-edge stack seat
+refused (ADR-053): b1: … 2.0 mm radial seat, below the 10 mm floor")
+npm run build: ✓ built in 3.98s
+```
+
+Two UI defects from the same screenshots were fixed with it: the 220 px
+left rail clipped its form labels to stray glyphs (rows now name +
+full-width control, hints moved to tooltips), and the check table rendered
+`element_masses_kg` as a truncated JSON blob (composite values now render
+as readable key: value pairs and wrap).
+
+Three navigation defects the operator then reported were fixed the same
+day (`npm run build` ✓ 2.23s):
+
+- **Clicking Validate or Export did nothing visible** — Build, Validate
+  and Export all navigate to the same Designer view, and no signal said
+  which right-rail surface was meant. The stepper now deep-links the tab
+  (Build → Design, Validate → Checks, Export → Output), and a repeat
+  click re-applies it.
+- **A reload opened "another design"** — the workspace always opened the
+  NEWEST design in the shared database, which with concurrent sessions
+  building is often someone else's. It now remembers the design the
+  operator had open (per-browser, like thumbnails) and reopens it when it
+  still exists in the current project scope; otherwise it falls back to
+  newest.
+- **The Cascade tool looked like a wrong design** — it is the legacy
+  Phase 2–4 single-primitive tool with its own separate artifact, and now
+  says so in its header instead of leaving the operator to wonder.
+
+### What A2 does NOT claim
+
+No live multi-primitive fabrication has happened. The operator's gate is
+`gate_phase6_visual.md` (projected ≈$0.90–1.10 live). Mixed-material
+costing moved to the costing tie-off (W-7) — see LIMITATIONS §11 for why.
+Stored pre-ADR-053 designs (including `a3006a42`) are not retro-flagged —
+they are refused with instructions on their next rebuild (LIMITATIONS §11).
 
 ## Slice A1 — the assembly core (CLOSED, auto gate PASS 2026-08-20, $0)
 

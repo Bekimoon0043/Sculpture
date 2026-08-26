@@ -269,8 +269,8 @@ export default function ValidationPanel({
                                 <div className="check-basis">basis: {row.basis}</div>
                               )}
                             </td>
-                            <td className="num">{formatValue(row.value)}</td>
-                            <td className="num">{formatValue(row.limit)}</td>
+                            <td className={numClass(row.value)}>{formatValue(row.value)}</td>
+                            <td className={numClass(row.limit)}>{formatValue(row.limit)}</td>
                             <td className={`verdict ${rstatus}`}>
                               {STATUS_LABEL[rstatus]}
                             </td>
@@ -298,7 +298,7 @@ export default function ValidationPanel({
           {rowsFrom(validation).map((row) => (
             <tr key={row.check}>
               <td>{row.check}</td>
-              <td className="num">{formatValue(row.value)}</td>
+              <td className={numClass(row.value)}>{formatValue(row.value)}</td>
               <td className={row.passed ? "pass" : "fail"}>
                 {row.passed ? "PASS" : "FAIL"}
               </td>
@@ -311,13 +311,25 @@ export default function ValidationPanel({
   );
 }
 
+function numClass(value: unknown): string {
+  // Composite values (per-element masses, cross-checks) wrap into readable
+  // lines; scalar numbers keep the tabular nowrap treatment (2026-08-04).
+  return typeof value === "object" && value !== null ? "num num-wrap" : "num";
+}
+
 function formatValue(value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "number") {
     return value.toLocaleString(undefined, { maximumFractionDigits: 3 });
   }
-  if (Array.isArray(value) || typeof value === "object") {
-    return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return value.map((v) => formatValue(v)).join(", ");
+  }
+  if (typeof value === "object") {
+    // e.g. element_masses_kg — per-key readable pairs, never a JSON blob
+    return Object.entries(value as Record<string, unknown>)
+      .map(([k, v]) => `${k}: ${formatValue(v)}`)
+      .join(" · ");
   }
   return String(value);
 }

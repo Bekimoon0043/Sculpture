@@ -190,14 +190,28 @@ def candidates_summary(specs: list[dict]) -> str:
 # Phase 4 — GEOMETRIST code generation (the fabrication stage)
 # ---------------------------------------------------------------------------
 
-def registry_surface() -> str:
+def registry_surface(used_primitives=None) -> str:
     """The fabrication API documentation embedded in every code-gen prompt.
 
     Generated from the LIVE registry so the prompt can never drift from the
     code (Phase 6 widens the vocabulary by editing registry.py — this text
     follows automatically).
+
+    Two-tier (slice A2, plan §3): the INDEX always lists every primitive;
+    full parameter tables are emitted only for ``used_primitives`` — the
+    ids the Design Spec names, computed in code, never chosen by the model.
+    With no usable selection (None, empty, or only unknown/legacy names)
+    the FULL surface is emitted, so cascade fabrications and pre-A2
+    callers are unchanged. Deterministic for a given selection: the same
+    spec produces byte-identical surface text on every attempt (ADR-024's
+    static prefix within a fabrication run).
     """
     from app.geometry.registry import CASCADE_PARAMETERS, PRIMITIVES
+
+    detail_ids = sorted(set(used_primitives or ()) & set(PRIMITIVES))
+    if not detail_ids:
+        detail_ids = sorted(PRIMITIVES)
+    cascade_detail = "tiered_cascade" in detail_ids
 
     lines = [
         "FABRICATION API (module `registry` — the ONLY geometry vocabulary "
@@ -271,19 +285,22 @@ def registry_surface() -> str:
         "  material_id, per-element mass and fabrication limit evidence.",
         "",
         "PARAMETERS (all keys optional except as constrained; omit to use "
-        "the default):",
+        "the default; detailed below for the primitives THIS spec uses — "
+        "the index above lists everything):",
     ]
-    for name, spec in CASCADE_PARAMETERS.items():
-        rng = ""
-        if spec.get("min") is not None or spec.get("max") is not None:
-            rng = f" [{spec['min']}..{spec['max']}]"
-        lines.append(
-            f"  {name} ({spec['type']}, {spec['unit']}, default "
-            f"{spec['default']}{rng}) — {spec['notes']}"
-        )
-    for primitive_id, module in sorted(PRIMITIVES.items()):
+    if cascade_detail:
+        for name, spec in CASCADE_PARAMETERS.items():
+            rng = ""
+            if spec.get("min") is not None or spec.get("max") is not None:
+                rng = f" [{spec['min']}..{spec['max']}]"
+            lines.append(
+                f"  {name} ({spec['type']}, {spec['unit']}, default "
+                f"{spec['default']}{rng}) — {spec['notes']}"
+            )
+    for primitive_id in detail_ids:
         if primitive_id == "tiered_cascade":
             continue
+        module = PRIMITIVES[primitive_id]
         lines.append("")
         lines.append(f"  {primitive_id}:")
         for name, spec in module.PARAMETERS.items():
@@ -306,18 +323,28 @@ def registry_surface() -> str:
         "  Assembly E. fused result must have body_count 1 and pass volume",
         "     conservation against declared joint intersections",
         "  Assembly F. max_lift_kg and max_module_m are checked per element",
-        "  1. basin_diameter_mm >= widest_dish + 2*basin_wall_mm + "
-        "min_clearance_mm",
-        "     (widest_dish = tier_top_diameter_mm + (tiers-1)"
-        "*tier_diameter_step_mm)",
-        "  2. basin_wall_mm inside the material's WALL ENVELOPE below",
-        "  3. lip_fillet_mm < dish_depth_mm / 2",
-        "  4. column_diameter_mm >= bore_diameter_mm + 2*column_wall_mm",
-        "     (column_wall_mm defaults to basin_wall_mm; set it "
-        "independently — per-member walls, ADR-032)",
-        "  5. lip_fillet_mm < basin_wall_mm",
-        "  6. tier_spacing_mm >= dish_depth_mm",
-        "  7. min_clearance_mm >= the material's CLEARANCE FLOOR below",
+        "  Assembly G. stack_on children must land on a REAL SEAT: the",
+        "     radial bearing at the joint plane >= the material joint floor",
+        "     (a lip narrower than the tolerance stack can vanish in",
+        "     fabrication — e.g. a basin must not perch on a hollow",
+        "     plinth's thin rim)",
+    ]
+    if cascade_detail:
+        lines += [
+            "  1. basin_diameter_mm >= widest_dish + 2*basin_wall_mm + "
+            "min_clearance_mm",
+            "     (widest_dish = tier_top_diameter_mm + (tiers-1)"
+            "*tier_diameter_step_mm)",
+            "  2. basin_wall_mm inside the material's WALL ENVELOPE below",
+            "  3. lip_fillet_mm < dish_depth_mm / 2",
+            "  4. column_diameter_mm >= bore_diameter_mm + 2*column_wall_mm",
+            "     (column_wall_mm defaults to basin_wall_mm; set it "
+            "independently — per-member walls, ADR-032)",
+            "  5. lip_fillet_mm < basin_wall_mm",
+            "  6. tier_spacing_mm >= dish_depth_mm",
+            "  7. min_clearance_mm >= the material's CLEARANCE FLOOR below",
+        ]
+    lines += [
         "",
         "SLICE A1 WORKING COMPOSITION EXAMPLE:",
         "  elements = [",
@@ -341,21 +368,26 @@ def registry_surface() -> str:
         "      fabrication_limits = registry.fabrication_limits_from_spec(spec)",
         "      solid, manifest = registry.assemble(elements, seed=seed,",
         "          fabrication=fabrication_limits)",
-        "",
-        "UNITS AND SOLVING ORDER — read this before choosing numbers:",
-        "  * min_clearance_mm is DIAMETRAL: the physical radial gap between",
-        "    the widest dish rim and the basin inner wall is HALF of it.",
-        "  * Constraint 1 is satisfied EXACTLY at equality, and equality at",
-        "    clearance 0 means the dish rim TOUCHES the basin wall. That",
-        "    fuses to a solid that is not watertight and the build is",
-        "    rejected. Never drive min_clearance_mm down to make constraint",
-        "    1 fit: it has a hard per-material floor (constraint 7).",
-        "  * When the basin diameter is fixed by the brief, constraint 1",
-        "    binds the DISHES, not the clearance. Solve it in this order:",
-        "      widest_dish <= basin_diameter_mm - 2*basin_wall_mm"
-        " - min_clearance_mm",
-        "    then pick tier_top_diameter_mm and tier_diameter_step_mm so",
-        "    that tier_top + (tiers-1)*step lands at or under that number.",
+    ]
+    if cascade_detail:
+        lines += [
+            "",
+            "UNITS AND SOLVING ORDER — read this before choosing numbers:",
+            "  * min_clearance_mm is DIAMETRAL: the physical radial gap between",
+            "    the widest dish rim and the basin inner wall is HALF of it.",
+            "  * Constraint 1 is satisfied EXACTLY at equality, and equality at",
+            "    clearance 0 means the dish rim TOUCHES the basin wall. That",
+            "    fuses to a solid that is not watertight and the build is",
+            "    rejected. Never drive min_clearance_mm down to make constraint",
+            "    1 fit: it has a hard per-material floor (constraint 7).",
+            "  * When the basin diameter is fixed by the brief, constraint 1",
+            "    binds the DISHES, not the clearance. Solve it in this order:",
+            "      widest_dish <= basin_diameter_mm - 2*basin_wall_mm"
+            " - min_clearance_mm",
+            "    then pick tier_top_diameter_mm and tier_diameter_step_mm so",
+            "    that tier_top + (tiers-1)*step lands at or under that number.",
+        ]
+    lines += [
         "",
         "MATERIAL ENVELOPES (materials.yaml — ADR-027 walls, ADR-029 "
         "clearance floors):",
@@ -396,11 +428,17 @@ _PROGRAM_CONTRACT = """PROGRAM CONTRACT (the sandbox runner enforces it exactly)
 
 
 def fabrication_prompt(
-    spec_json: str, failure_history: list[str] | None = None
+    spec_json: str,
+    failure_history: list[str] | None = None,
+    used_primitives=None,
 ) -> str:
     """GEOMETRIST code-generation prompt. Static prefix first (ADR-024):
-    API surface + contract are identical across attempts and sessions; the
-    spec and repair history ride after the cache break.
+    API surface + contract are identical across every attempt of one
+    fabrication run (the selection depends only on the spec), so repair
+    attempts read the prefix from cache; two runs over specs with
+    different primitive vocabularies have different prefixes by design
+    (slice A2 two-tier surface). The spec and repair history ride after
+    the cache break.
 
     ``failure_history`` carries EVERY prior attempt's failure digest,
     oldest first (live-run defect 2026-08-10: with only the LAST digest the
@@ -413,7 +451,7 @@ def fabrication_prompt(
         "program that builds the geometry using ONLY the fabrication API. "
         "Respond with ONLY the Python program — no markdown fences, no "
         "prose. The first line must be code or a comment.\n\n"
-        f"{registry_surface()}\n\n{_PROGRAM_CONTRACT}"
+        f"{registry_surface(used_primitives)}\n\n{_PROGRAM_CONTRACT}"
         f"{CACHE_BREAK}"
         f"DESIGN SPEC (JSON):\n{spec_json}"
     )

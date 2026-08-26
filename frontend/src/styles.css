@@ -209,6 +209,14 @@ td.num {
      was clipped at the right edge, 2026-08-04) */
   white-space: nowrap;
 }
+td.num.num-wrap {
+  /* composite values (element_masses_kg, volume_crosscheck) render as
+     "key: value" pairs and wrap — a truncated JSON blob is not a number
+     the operator can read (2026-08-26 screenshot) */
+  white-space: normal;
+  word-break: break-word;
+  max-width: 260px;
+}
 .validation-panel {
   overflow-x: auto;
 }
@@ -1437,6 +1445,21 @@ main.designer-main {
   border-top: 1px solid var(--line-soft);
   padding-top: 10px;
   font-size: 13px;
+}
+/* The 220 px left rail cannot fit [name | 110px input | nowrap unit]:
+   the 1fr name column collapsed to a sliver (labels clipped to stray
+   glyphs, 2026-08-26 operator screenshot). In this rail the row is
+   name + full-width control; the unit text moves to a title tooltip. */
+.ws-buildopts .param-row {
+  grid-template-columns: minmax(58px, auto) minmax(0, 1fr);
+}
+.ws-buildopts .param-row input,
+.ws-buildopts .param-row select {
+  width: 100%;
+  min-width: 0;
+}
+.ws-buildopts .param-unit {
+  display: none;
 }
 
 /* --- primitive library --------------------------------------------------- */

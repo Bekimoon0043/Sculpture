@@ -84,6 +84,12 @@ export default function App() {
   const [online, setOnline] = useState(true);
   const [reloadToken, setReloadToken] = useState(0);
   const [view, setView] = useState<View>("designer");
+  //: A stepper click's requested Designer right-rail tab. The counter makes
+  //: repeated clicks on the same step re-apply (state equality would not).
+  const [designerTabRequest, setDesignerTabRequest] = useState<{
+    tab: string;
+    n: number;
+  } | null>(null);
   const [serverBuildMs, setServerBuildMs] = useState<number | null>(null);
   const [lastRebuildMs, setLastRebuildMs] = useState<number | null>(null);
   const rebuildStartRef = useRef<number | null>(null);
@@ -210,12 +216,14 @@ export default function App() {
       { key: "council", label: "Council", state: councilState,
         detail: intake?.council_session_id ? "session run" : "not run", view: "council" },
       { key: "build", label: "Build", state: buildState,
-        detail: designId ? `design ${designId.slice(0, 8)}` : "no design", view: "designer" },
+        detail: designId ? `design ${designId.slice(0, 8)}` : "no design",
+        view: "designer", tab: "design" },
       { key: "validate", label: "Validate", state: validationState,
         detail: overallStatus ? STATUS_LABEL[overallStatus] : "not validated",
-        view: "designer" },
+        view: "designer", tab: "checks" },
       { key: "export", label: "Export", state: exportState,
-        detail: exports?.package_built ? "package sealed" : "no package", view: "designer" },
+        detail: exports?.package_built ? "package sealed" : "no package",
+        view: "designer", tab: "output" },
       { key: "accept", label: "Library", state: libraryState,
         detail: precedentCount > 0
           ? `${precedentCount} precedent${precedentCount === 1 ? "" : "s"}`
@@ -248,7 +256,19 @@ export default function App() {
           <span className="brand-mark">LF</span>
           <span className="brand-name">LuxuryForm Studio</span>
         </div>
-        <PipelineStepper steps={steps} activeView={view} onNavigate={(v) => setView(v as View)} />
+        <PipelineStepper
+          steps={steps}
+          activeView={view}
+          onNavigate={(v, tab) => {
+            setView(v as View);
+            // Build/Validate/Export share the Designer view; the tab is what
+            // makes clicking them DO something (open the matching right-rail
+            // surface), including when the view is already the Designer.
+            if (tab) {
+              setDesignerTabRequest((prev) => ({ tab, n: (prev?.n ?? 0) + 1 }));
+            }
+          }}
+        />
         <nav className="view-tabs">
           {VIEWS.filter((v) => v.group === "tools").map((v) => (
             <button
@@ -317,6 +337,7 @@ export default function App() {
             <DesignerWorkspace
               intake={intake}
               active={view === "designer"}
+              tabRequest={designerTabRequest}
               onFatal={setFatalError}
               onPipelineChange={onPipelineChange}
             />

@@ -333,7 +333,34 @@ def post_assembly_build(request: AssemblyBuildRequest) -> dict[str, Any]:
             status_code=422,
             detail={"violations": exc.violations},
         ) from exc
+    return persist_assembly_design(
+        request, solid, manifest, element_solids, t0=t0
+    )
 
+
+def persist_assembly_design(
+    request: AssemblyBuildRequest,
+    solid: Any,
+    manifest: dict[str, Any],
+    element_solids: dict[str, Any],
+    *,
+    t0: float,
+    db: Any = None,
+    spec_id: str | None = None,
+    generated_program_id: str | None = None,
+    sandbox_step_sha256: str | None = None,
+) -> dict[str, Any]:
+    """Export, validate and persist ONE assembly design — the single
+    persistence path for both the operator API above and the Phase 4/6
+    fabrication loop (slice A2 bridge).
+
+    Two callers, one function, on purpose: the spec_hash, the canonical
+    payload and the STEP bytes must be identical whichever door a design
+    came through, or the same geometry would exist under two identities
+    (ADR-038 keys precedent on the digest). ``spec_id`` /
+    ``generated_program_id`` / ``sandbox_step_sha256`` are fabrication
+    lineage; the API path leaves them None.
+    """
     water, site_overrides = _intake_context(request)
     request_payload = _canonical_payload(request, water, site_overrides)
     profile_id = request.gate_profile_id or DEFAULT_GATE_PROFILE_ID
@@ -372,13 +399,18 @@ def post_assembly_build(request: AssemblyBuildRequest) -> dict[str, Any]:
         "scene_glb_path": str(scene_glb_path),
         "scene_glb_sha256": scene_glb_sha256,
     }
-    db = get_default_db()
+    if sandbox_step_sha256 is not None:
+        # Fabrication lineage: what the ADR-005 sandbox exported for the
+        # same program. Recorded so a cross-image determinism drift is
+        # visible in the stored record, never silently absorbed.
+        artifacts["sandbox_step_sha256"] = sandbox_step_sha256
+    db = db if db is not None else get_default_db()
     with db.get_session() as session:
         session.add(
             DesignRow(
                 id=design_id,
                 created_at=now,
-                spec_id=None,
+                spec_id=spec_id,
                 geometry_hash=step_sha256,
                 parameter_json=json.dumps(
                     _stored_parameters(request_payload, manifest, artifacts),
@@ -392,6 +424,7 @@ def post_assembly_build(request: AssemblyBuildRequest) -> dict[str, Any]:
                 step_path=str(step_path),
                 project_id=request.project_id,
                 parent_design_id=request.parent_design_id,
+                generated_program_id=generated_program_id,
             )
         )
         session.flush()

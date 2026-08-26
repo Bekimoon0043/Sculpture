@@ -85,6 +85,11 @@ _ADDITIVE_COLUMN_PATCHES: dict[tuple[str, str], str] = {
     ("designs", "project_id"): "project_id TEXT REFERENCES projects(id)",
     ("designs", "parent_design_id"):
         "parent_design_id TEXT REFERENCES designs(id)",
+    # Phase 6 slice A2: the fabrication -> design bridge. A passing assembly
+    # fabrication persists a real DesignRow; both sides record the link.
+    ("generated_programs", "manifest_json"): "manifest_json TEXT",
+    ("designs", "generated_program_id"):
+        "generated_program_id TEXT REFERENCES generated_programs(id)",
 }
 
 #: Unique indexes added after a schema version shipped. Same idempotent,

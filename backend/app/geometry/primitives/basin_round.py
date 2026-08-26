@@ -204,3 +204,13 @@ def max_outer_diameter_mm(p) -> float:
 
 def inner_diameter_mm(p) -> float | None:
     return float(p.diameter_mm - 2 * p.wall_mm)
+
+
+def stack_top_annulus_mm(p) -> tuple[float, float]:
+    """(outer, inner) diameter of the rim face a child stands on (ADR-053)."""
+    return float(p.diameter_mm), float(p.diameter_mm - 2 * p.wall_mm)
+
+
+def base_annulus_mm(p) -> tuple[float, float]:
+    """The floor spans the whole base: a full disc (ADR-053)."""
+    return float(p.diameter_mm), 0.0

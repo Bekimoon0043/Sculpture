@@ -238,7 +238,18 @@ piles, and the BOM says on every line which pile a gap belongs to.
 
 ---
 
-## 11. Phase 6 slice A1 scope limits (2026-08-20)
+## 11. Phase 6 slice A1/A2 scope limits (2026-08-20, updated 2026-08-26)
+
+**Update 2026-08-26 (slice A2, ADR-052):** the fabrication → design bridge
+is BUILT and auto-gated. A passing assembly fabrication now persists a real
+design record through the SAME helper the operator API uses (byte-identical
+STEP and spec_hash across both paths, proven in `gate_phase6a2_auto.py`
+§4), with lineage in both directions (`designs.generated_program_id`,
+`generated_programs.manifest_json`) and the two-tier prompt surface
+(measured: 11,267 → 8,144 chars for a 3-primitive spec). The 2026-08-21
+"still missing" list is fully discharged: the primitive-agnostic API +
+manifest persistence landed with Phase 7A, the frontend with Phases 14–15,
+the bridge and two-tier surface with A2.
 
 **Update 2026-08-21:** the Phase 4-to-6 bridge is now partial instead of
 absent: the GEOMETRIST prompt exposes `registry.assemble`, the slice-A1
@@ -249,17 +260,14 @@ index and Design Specs are re-asked when `massing.elements[].primitive`
 names a primitive outside the registry (2026-08-21). A trusted Slice A1
 spec-to-assembly-plan mapper now converts `massing.elements` into
 `registry.assemble` input with unit conversion and parent_id-derived joints.
-Still missing from A2: primitive-agnostic API/frontend surfaces, manifest
-persistence, and mapper widening beyond the current Slice A1 vocabulary.
 
-The assembly core is built and gated offline. What A1 deliberately does
-NOT do:
+What Phase 6 still deliberately does NOT do:
 
-- **The AI cannot use any of it yet.** Slice A2 wires the spec→plan
-  mapping, the two-tier prompt surface, the designer index and spec
-  validation. Today `registry.assemble` is reachable by generated code in
-  principle, but the GEOMETRIST's prompt still documents only
-  `cascade_fountain` — a live fabrication still produces a single cascade.
+- **No live multi-primitive fabrication has happened yet.** The machinery
+  is complete and gated at $0; the operator's live gate
+  (`gate_phase6_visual.md` — brief → Council → fabrication → viewable,
+  exportable assembly) has not been run. Until it passes, first-attempt
+  success for assemblies is unmeasured.
 - **Four primitives.** `tiered_cascade`, `basin_round`, `plinth`,
   `sculptural_column`. Rim treatments and nozzle fixtures are slice B;
   extrusion/array masses slice C; free-form slice D.
@@ -271,18 +279,33 @@ NOT do:
   config-validated but nothing consumes them yet** — the parameters they
   floor (rim profile radii, blade/petal thicknesses) arrive with slices B
   and C. Recorded now because the operator signed them now (ADR-032).
-- **The API and frontend are still cascade-shaped.**
-  `/api/geometry/cascade/*` and the viewport panel know nothing of
-  assemblies; the primitive-agnostic surfaces are budgeted into A2.
-- **The assembly manifest is not yet persisted** — designs/
-  generated_programs gain manifest columns with A2, when fabrication can
-  actually produce one.
+- **The mapper speaks the slice A1 vocabulary.** Its alias table covers
+  the four primitives; a Council spec using parameter names outside it
+  fails loudly at fabrication (a repair digest naming the keys), and
+  widening the table is a $0 edit. Slices B–D grow it with each primitive.
 - **Mixed-material assemblies validate but cannot be costed correctly
-  yet:** the persisted ValidationReport carries one material_id; per-
-  element mass exists only in the (unpersisted) manifest. Reconciled in A2
-  alongside persistence.
-- **The operator's visual gate arrives with A2**, when there is something
-  to look at in the viewport; A1's gate is the $0 auto script only.
+  yet:** costing keys on a single material_id (`build_bom`). Per-element
+  masses ARE now persisted with every design record; the costing
+  restructure that consumes them moved to the costing tie-off (W-7 in
+  NEXT.md) — deliberately NOT built in A2 while the rate card (B-3) is
+  all nulls, because every mixed-material total it produced would be
+  untestable against reality.
+- **A fabricated design lands in Ungrouped.** The bridge sets no
+  project_id (Phase 15E projects are operator-scoped); grouping a
+  fabrication into a project is a later, deliberate act.
+- **Designs persisted before ADR-053 may hide a knife-edge seat.** The
+  stack_on bearing floor (2026-08-26) refuses new builds whose seat is
+  narrower than the material joint floor, but nothing retro-flags stored
+  designs: `a3006a42` (basin ⌀2000 on hollow plinth ⌀2200/102 — a 2 mm
+  lip under 1,550 kg) shows PASS badges in its stored validation and
+  will only be refused, with the numbers and the fix, when it is next
+  rebuilt. **Before quoting or fabricating any pre-2026-08-26 assembly,
+  rebuild it once.**
+- **A hollow plinth is an open tube, top and bottom** (A1 design,
+  unchanged by ADR-053). Whether it should carry a closed top face — the
+  pedestal a basin actually sits on — is an open operator ruling; adding
+  one changes STEP bytes for hollow-plinth designs and so is not done as
+  a quiet fix.
 
 ## 12. Phase 8 validation gate scope limits (2026-08-21)
 
@@ -557,10 +580,12 @@ The shell is a pipeline (ADR-041). What it does NOT do:
   pickability; both are outside the determinism contract (STEP is
   canonical).
 
-- **Variant thumbnails and saved camera views are per-browser**
-  (localStorage), not server state. Clearing site data loses them; the
-  design list itself always comes back from the server. Thumbnails exist
-  only for builds whose geometry was actually on screen in that browser.
+- **Variant thumbnails, saved camera views and the remembered active
+  design are per-browser** (localStorage), not server state. Clearing
+  site data loses them; the design list itself always comes back from the
+  server. Thumbnails exist only for builds whose geometry was actually on
+  screen in that browser; a cleared or different browser falls back to
+  opening the newest design in scope (2026-08-26).
 
 - **Variants lists the newest 50 builds in one project**, un-paginated.
   Restoring and rebuilding records a real parent branch, but the compact tray

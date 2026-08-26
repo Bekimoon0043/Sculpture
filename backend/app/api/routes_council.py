@@ -522,6 +522,9 @@ def fabricate(session_id: str, req: FabricateRequest) -> dict:
         "artifacts": outcome.artifacts,
         "validation": outcome.validation,
         "error": outcome.error,
+        # Slice A2: the persisted DesignRow for a passing assembly
+        # fabrication (viewable/exportable), None otherwise.
+        "design_id": outcome.design_id,
     }
 
 

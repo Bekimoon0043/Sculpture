@@ -179,3 +179,21 @@ def max_outer_diameter_mm(p) -> float:
 
 def inner_diameter_mm(p) -> float | None:
     return None
+
+
+def stack_top_annulus_mm(p) -> tuple[float, float]:
+    """(outer, inner) diameter of the stackable top face (ADR-053).
+
+    Solid: a full disc. Hollow: the open tube's annular rim — which is why
+    a child's seat width must be checked, not assumed."""
+    if p.wall_mm == 0:
+        return float(p.top_diameter_mm), 0.0
+    return float(p.top_diameter_mm), float(p.top_diameter_mm - 2 * p.wall_mm)
+
+
+def base_annulus_mm(p) -> tuple[float, float]:
+    """(outer, inner) diameter of the base footprint (ADR-053)."""
+    outer = base_diameter_mm(p)
+    if p.wall_mm == 0:
+        return outer, 0.0
+    return outer, outer - 2 * float(p.wall_mm)

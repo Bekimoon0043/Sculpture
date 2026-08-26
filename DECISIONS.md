@@ -2790,3 +2790,117 @@ relationship to its source.
 - Project lists and parent lookups are indexed additively.
 - Lineage is explicit but the UI remains a compact horizontal tray, not a full
   graph editor. That honest display limit remains documented.
+
+## ADR-052 - Phase 6 slice A2: one persistence path from fabrication to design (2026-08-26)
+
+### Context
+
+A passing assembly fabrication produced sandbox artifacts and a
+`generated_programs` row — and nothing else. The design was invisible to the
+Designer, the Phase 8 gates and the Phase 9A exporter: "viewable and
+exportable", the operator's Phase 6 gate, had no path from the fabrication
+loop. Meanwhile the operator API already had a complete persistence path
+(`post_assembly_build`), and duplicating it for fabrication would create the
+project's most dangerous silent failure: the same geometry existing under
+two spec hashes — one per code path — breaking ADR-038's
+digest-is-identity rule without any screen looking wrong.
+
+### Decision
+
+1. **One shared helper.** The post-`assemble()` body of the API build route
+   is extracted into `persist_assembly_design(...)`; the API route and the
+   fabrication bridge both call it. spec_hash, canonical payload and STEP
+   bytes are identical whichever door a design came through — asserted, not
+   assumed, in `gate_phase6a2_auto.py` §4.
+2. **The bridge REBUILDS in trusted code** from the sandbox's
+   `assembly_manifest_v1` (which carries every element's validated
+   parameters and every joint), rather than copying sandbox artifacts.
+   Cost: a few seconds of duplicate OCCT work per passing fabrication.
+   Bought: the per-element solids for the pickable scene GLB, the layered
+   validation gates run and persisted, and export through the one proven
+   path. The sandbox's own STEP sha256 is recorded alongside
+   (`sandbox_step_sha256`) so cross-image determinism drift is visible in
+   the stored record, never silently absorbed.
+3. **Lineage in both directions, additively.** `designs` gains
+   `generated_program_id`; `generated_programs` gains `manifest_json`
+   (stored for every attempt that returned a manifest — forensics for
+   failures, lineage for passes). ADR-023 startup patches; all history
+   stays NULL and loads.
+4. **A bridge failure is honest and loud.** The fabrication still passed
+   (the sandbox artifacts exist), so the program row stays `passed`; the
+   missing design record is stated in `artifacts_json.design_bridge_error`
+   and the outcome's `design_id` stays null. Order matters and is a
+   recorded lesson: the program row commits BEFORE the bridge because the
+   design's FK points at it — the first live test run failed exactly there.
+5. **Two-tier prompt surface** (plan §3): index always, parameter tables
+   only for the primitives the spec names, selection computed in code.
+   Measured at four primitives: 11,267 chars full → 8,144 chars for a
+   3-primitive spec (~28% smaller). The saving is modest today; the
+   structure is what matters — it is in place before slices B–D triple the
+   vocabulary, and unknown/legacy names fall back to the full surface so
+   cascade fabrications are unchanged. The ADR-024 static prefix now
+   varies per spec but is byte-identical across attempts of one run
+   (gated), which is where cache hits actually pay.
+
+### Consequences
+
+- A passing assembly fabrication is immediately viewable in the Designer
+  (under Ungrouped), checkable, and exportable — the operator's gate is
+  now reachable live (`gate_phase6_visual.md`).
+- Cascade fabrications are untouched: no design row, NULL manifest_json.
+- Mixed-material costing is still NOT reconciled — moved from A2 to the
+  costing tie-off (W-7) with the rate card work; LIMITATIONS §11 says so.
+
+## ADR-053 - stack_on requires a real seat: the bearing floor (2026-08-26)
+
+### Context
+
+Found in the operator's live use, from their screenshots: design `a3006a42`
+stacked a ⌀2,000 mm basin on a hollow ⌀2,200/102 mm plinth. The plinth's
+inner mouth is ⌀1,996, so the 1,550 kg basin bears on a **2 mm-wide annular
+lip of basalt**. Every existing check passed — the joint's intersection
+volume was positive (125,538 mm³, exactly the 2 mm × 10 mm rim ring), the
+fuse was watertight, body_count 1, volume conservation clean. ADR-029's
+lesson was applied to the overlap DEPTH but never to the seat WIDTH:
+interference proves the fuse, not the bearing. A 2 mm lip is inside the
+±3 mm per-face tolerance the operator signed for basalt — the workshop can
+erase it entirely, and under load it spalls.
+
+### Decision
+
+1. **A stack_on child must land on a radial bearing at least the material
+   joint floor wide** — the SAME signed §2.1 numbers (basalt 10 / concrete
+   15 / bronze 5 / 316L 3 mm, cross-material MAX). Rationale identical to
+   the overlap floor: a seat narrower than the tolerance stack cannot be
+   guaranteed to exist in the fabricated part. No new number was invented
+   (Rule 11: the bound derives from signed arithmetic).
+2. Each primitive now states its joint-plane geometry: `base_annulus_mm`
+   (its footprint) and `stack_top_annulus_mm` (its stackable top face,
+   None where CAN_PARENT_STACK is False). The assembler computes the
+   worst-angle supported width — the parent's outer edge closes in by the
+   lateral offset; a hollow parent's mouth reaches in by it — and refuses
+   below the floor with the full arithmetic and the levers (thicken the
+   parent wall, adjust a diameter, reduce the offset, make the parent
+   solid).
+3. **A side effect, recorded because a gate needle changed:** the A1
+   battery's "floating body" case (a column hanging over a hollow
+   plinth's mouth) is now refused EARLIER by this check (a negative seat)
+   instead of by the late B-rep interference proof. The gate and test
+   needles were updated to the new message — the protection did not
+   weaken, the refusal moved left; the B-rep interference proof stays in
+   the assembler as the construction-level backstop.
+4. Prompt surface gains hard constraint "Assembly G" so the GEOMETRIST is
+   told, not gated blind.
+
+### Consequences
+
+- Design `a3006a42` (and any persisted design like it) is NOT retro-
+  flagged; it will be refused on its next rebuild with the numbers and
+  the fix (at ⌀2,000 on ⌀2,200, a plinth wall >= 110 mm gives the 10 mm
+  seat). LIMITATIONS §11 records this.
+- Geometry of passing builds is unchanged — no hash moves; gates 6a1,
+  6a2 and the canonical `e1a59fa6…` all re-verified PASS.
+- The hollow plinth remains an open tube (A1 design, unchanged). Whether
+  it should grow a closed top face is a separate operator ruling — it
+  would change STEP bytes and is deliberately not bundled into this fix.
+

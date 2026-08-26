@@ -278,6 +278,39 @@ def assemble(
             x = px + float(joint.get("x_offset_mm", 0.0))
             y = py + float(joint.get("y_offset_mm", 0.0))
             z = pz + parent_anchors["top"] - overlap
+            # ADR-053: interference proves the FUSE; it does not prove a
+            # SEAT. The child must land on a real annular bearing at the
+            # joint plane, at least the material joint floor wide — the
+            # same signed §2.1 tolerance stack: a lip narrower than it can
+            # vanish entirely in fabrication. Found live 2026-08-26: a
+            # 2,000 mm basin on a hollow 2,200/102 plinth passed every
+            # check while bearing 1,550 kg on a 2 mm basalt lip.
+            child_out, child_in = child_mod.base_annulus_mm(child_p)
+            parent_out, parent_in = parent_mod.stack_top_annulus_mm(parent_p)
+            d = ((x - px) ** 2 + (y - py) ** 2) ** 0.5
+            # Worst-angle supported width of the child's base ring: the
+            # parent's outer edge closes in by the offset; the parent's
+            # hole edge (when there is one) reaches in by the offset too.
+            outer_support = min(child_out / 2.0, parent_out / 2.0 - d)
+            inner_support = (
+                child_in / 2.0 if parent_in == 0
+                else max(child_in / 2.0, parent_in / 2.0 + d)
+            )
+            bearing = outer_support - inner_support
+            if bearing < floor:
+                violations.append(
+                    f"{eid}: stack_on {parent_id} lands on a {bearing:.1f} mm "
+                    f"radial seat, below the {floor:g} mm floor for "
+                    f"{child_p.material_id} on {parent_p.material_id} "
+                    f"(child base annulus ⌀{child_in:g}..{child_out:g} on "
+                    f"parent top annulus ⌀{parent_in:g}..{parent_out:g} mm"
+                    + (f", lateral offset {d:g} mm" if d else "")
+                    + ") — a seat narrower than the fabrication tolerance "
+                    "stack can vanish in the workshop (signed sheet §2.1). "
+                    "Thicken the parent wall, adjust a diameter, reduce the "
+                    "offset, or make the parent solid"
+                )
+                continue
         else:  # concentric_insert
             if not parent_mod.CAN_PARENT_INSERT:
                 violations.append(

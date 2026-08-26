@@ -21,7 +21,7 @@ LIMITATIONS.md and DECISIONS.md as they stand — not from memory.
 | 3 — the AI Council | **CLOSED** | gate PASS 2026-08-07, live $0.843842 |
 | 4 — fabrication loop (AI writes CAD, sandbox runs) | **CLOSED** | gate PASS 2026-08-17, live $0.046777 |
 | costing engine | **BUILT, gated, starved** | ADR-031; rate card still unfilled (B-3) |
-| 6 — primitive library | **A1 CLOSED; A2 partial; B/C/D not built** | auto PASS 2026-08-20 at $0, ADR-032; envelope sheet SIGNED 2026-08-20 |
+| 6 — primitive library | **A1 CLOSED; A2 BUILT (bridge + two-tier surface); B/C/D not built** | A1 auto PASS 2026-08-20, A2 auto PASS 2026-08-26 ($0, ADR-052); live gate `gate_phase6_visual.md` pending |
 | 7A — assembly surface (API, manifest persistence) | **BUILT** | implemented 2026-08-21, `PHASE_7_COMPLETION_PLAN.md` §7A |
 | 8 — L5 validation gates (structure/fabrication/hydraulics) | **BUILT, auto-gated** | auto PASS 2026-08-21 + 8b re-gate; visual pending |
 | 9A — LUXEXCHANGE export package | **BUILT, auto-gated** | auto PASS 2026-08-21, re-proven 08-24; visual pending |
@@ -48,7 +48,10 @@ LIMITATIONS.md and DECISIONS.md as they stand — not from memory.
       `gate_phase8_visual.md`, `gate_phase9a_visual.md`,
       `gate_phase9b_visual.md`, `gate_phase11_13a_visual.md`,
       `gate_phase14_visual.md`, `gate_phase14b_visual.md`,
-      `gate_phase15_visual.md`. First: `docker compose up --build -d`
+      `gate_phase15_visual.md`, and now `gate_phase6_visual.md` — the
+      Phase 6 LIVE gate (≈$0.90–1.10 spend, the only one that costs
+      money; it is THE operator's gate the phase is named for). First:
+      `docker compose up --build -d`
       (backend AND frontend images changed), optionally
       `docker compose --profile render up -d render-worker`. Coordinate with
       any other live session before rebuilding shared containers.
@@ -75,6 +78,12 @@ LIMITATIONS.md and DECISIONS.md as they stand — not from memory.
       the reports and `registry.py`, still never existed in this repository.
       Same for `SPEC_PHASE2.md`, `PHASE2_PLAN.md`, the "Master Build Order"
       and the "First Action" document.
+- [ ] **B-7 — Ruling: should a hollow plinth carry a CLOSED top face?**
+      Today it is an open tube (A1 design; the open ring in the operator's
+      viewport). Capping it makes it read as a pedestal and widens every
+      stack seat — but it changes STEP bytes for hollow-plinth designs, so
+      it needs an explicit yes, with slice B (profiles) the natural moment.
+      ADR-053 records why it was NOT bundled into the bearing fix.
 
 ---
 
@@ -85,16 +94,23 @@ Each entry is one loop iteration: `/lf-next` → approve → `/lf-build` →
 
 ### Next up
 
-- [ ] **W-1 — Phase 6 slice A2 tie-off: the operator's gate, live.** The
-      surface work planned for A2 has largely landed piecemeal (7A assembly
-      API + manifest persistence; designer index + spec validation and the
-      GEOMETRIST assembly prompt, 2026-08-21; Designer Workspace, Phases
-      14–15). What remains is the gate itself: **a live brief needing three
-      different primitives, through Council → fabrication, producing one
-      watertight assembly, viewable and exportable** — plus mapper widening
-      beyond the A1 vocabulary and reconciling mixed-material costing
-      (LIMITATIONS §11). Budget ≈$0.15–0.20 (plan §7). This closes Phase 6's
-      operator gate for the primitives that exist.
+- [x] **W-1 — Phase 6 slice A2 tie-off — BUILT 2026-08-26, auto gate PASS
+      at $0 (ADR-052).** The fabrication → design bridge (one shared
+      persistence path, byte-identical STEP across both paths and across
+      two processes), lineage columns, two-tier prompt surface (11,267 →
+      8,144 chars measured), honest bridge failure, 6 new tests. What
+      remains is the operator's LIVE gate — `gate_phase6_visual.md`,
+      ≈$0.90–1.10 — now queued under B-1 with the other visual gates.
+      Mixed-material costing moved to W-7 (LIMITATIONS §11 says why).
+      **Same-day additions (ADR-053 + operator-reported fixes):** the
+      operator's screenshots exposed a live design bearing 1,550 kg on a
+      2 mm lip — stack_on now enforces a seat-bearing floor from the
+      signed §2.1 numbers. Plus five UI fixes from live use: rail label
+      clipping, JSON-blob check values, stepper deep-links (Validate →
+      Checks, Export → Output), the workspace reopening the operator's
+      OWN design instead of the shared DB's newest, and the Cascade tool
+      labelled as the legacy single-primitive tool. Rebuild any
+      pre-2026-08-26 assembly before quoting it.
 - [ ] **W-2 — Phase 6 slice B: rim treatments + fixtures.** `weir_edge`,
       `coping_profile`, `pool_edge_detail` as profile modifiers (never
       post-hoc booleans); `nozzle_ring` driven by `service_voids` and
@@ -158,6 +174,13 @@ Pick one up when a slice finishes early. Each is one commit.
       done behind his back. (LIMITATIONS §13)
 - [ ] **D-8 — The Council panel has no `use_precedents` toggle** though the
       API supports it. (LIMITATIONS §17)
+- [ ] **D-9 — Five export tests assume the render worker is DOWN** and fail
+      with it running (`assert 'included' == 'unavailable'`; three in
+      `test_export_package.py`, two in `test_assembly_api.py`). Found
+      2026-08-26 running the full suite with the worker up; reproduced on
+      pristine image code, so it predates slice A2. The 9A GATE already
+      accepts both worker states — the tests should too. Until fixed,
+      "full suite green" is only true with the render worker stopped.
 
 ---
 

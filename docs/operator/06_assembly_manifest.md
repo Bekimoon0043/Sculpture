@@ -65,3 +65,24 @@ Phase 7A passes when:
 - LUXEXCHANGE v1 includes the assembly manifest, validation reports, and
   included geometry artifacts.
 - Unknown primitives fail with HTTP 422 before artifacts are written.
+
+## Fabricated assemblies (Phase 6 slice A2)
+
+When the AI fabrication loop passes with a multi-element assembly, the
+platform now persists it as a design AUTOMATICALLY — the same record shape,
+the same STEP bytes, the same endpoints as a build you run yourself:
+
+- The fabricate response (`POST /api/council/sessions/<id>/fabricate`)
+  carries a `design_id`. Open the **Designer** view: the design is in the
+  builds strip under **Ungrouped builds**, with each element pickable.
+- The record links back to the exact generated program
+  (`generated_program_id`), and the program row stores the manifest the
+  sandbox returned (`manifest_json`) — the full audit trail from brief to
+  geometry survives.
+- The record also stores `sandbox_step_sha256` next to `step_sha256`. They
+  should be IDENTICAL (same registry, same parameters, two containers). If
+  they ever differ, the two Docker images have drifted — report it; the
+  record exists to make that visible.
+- If `design_id` is null on a successful fabrication, the response's
+  `artifacts.design_bridge_error` says why. The fabrication itself still
+  passed; nothing is faked to look complete.

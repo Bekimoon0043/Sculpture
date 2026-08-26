@@ -15,6 +15,10 @@ export interface PipelineStep {
   /** One line shown under the label — the honest status, e.g. "needs input". */
   detail?: string;
   view: string;
+  /** Build/Validate/Export share the Designer view; the tab says which
+   *  right-rail surface the step actually means (2026-08-26: clicking
+   *  Validate/Export visibly did nothing without it). */
+  tab?: string;
 }
 
 const STATE_GLYPH: Record<StepState, string> = {
@@ -31,7 +35,7 @@ export default function PipelineStepper({
 }: {
   steps: PipelineStep[];
   activeView: string;
-  onNavigate: (view: string) => void;
+  onNavigate: (view: string, tab?: string) => void;
 }) {
   return (
     <ol className="pipeline" aria-label="design pipeline">
@@ -45,7 +49,7 @@ export default function PipelineStepper({
               `is-${step.state}`,
               activeView === step.view ? "is-here" : "",
             ].join(" ")}
-            onClick={() => onNavigate(step.view)}
+            onClick={() => onNavigate(step.view, step.tab)}
             title={step.detail ?? step.label}
           >
             <span className="pipeline-glyph" aria-hidden="true">

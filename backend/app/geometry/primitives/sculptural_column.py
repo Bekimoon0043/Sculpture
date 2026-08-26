@@ -223,3 +223,22 @@ def max_outer_diameter_mm(p) -> float:
 
 def inner_diameter_mm(p) -> float | None:
     return None
+
+
+def stack_top_annulus_mm(p) -> tuple[float, float]:
+    """(outer, inner) diameter of the capital face (ADR-053)."""
+    top = top_diameter_mm(p)
+    if p.wall_mm != 0:
+        return top, top - 2 * float(p.wall_mm)
+    if p.bore_mm != 0:
+        return top, float(p.bore_mm)
+    return top, 0.0
+
+
+def base_annulus_mm(p) -> tuple[float, float]:
+    """(outer, inner) diameter of the base footprint (ADR-053)."""
+    if p.wall_mm != 0:
+        return float(p.diameter_mm), float(p.diameter_mm - 2 * p.wall_mm)
+    if p.bore_mm != 0:
+        return float(p.diameter_mm), float(p.bore_mm)
+    return float(p.diameter_mm), 0.0

@@ -207,6 +207,11 @@ def main() -> int:
         lambda: assemble(plan({(2, "parameters"): {"diameter_mm": 500}})),
         "does not fit inside", "min_clearance_mm",
     )
+    # Needle updated 2026-08-26 (ADR-053): this same floating body is now
+    # refused EARLIER by the seat-bearing check, with the arithmetic
+    # (-100.0 mm seat) instead of the late B-rep interference proof. The
+    # protection is unchanged — the refusal moved left; the B-rep proof
+    # remains in the assembler as the construction-level backstop.
     _expect_violation(
         failures, "floating body (declared joint never touches)",
         lambda: assemble([
@@ -219,7 +224,7 @@ def main() -> int:
                             "material_id": "bronze_cast"},
              "joint": {"type": "stack_on", "parent": "p1"}},
         ]),
-        "does NOT interfere",
+        "radial seat", "15 mm floor",
     )
     solid_plinth = [{"element_id": "p1", "primitive": "plinth",
                      "parameters": {"top_diameter_mm": 1000, "height_mm": 1000,

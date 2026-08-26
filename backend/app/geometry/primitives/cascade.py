@@ -517,3 +517,12 @@ def max_outer_diameter_mm(p: CascadeParams) -> float:
 
 def inner_diameter_mm(p: CascadeParams) -> float | None:
     return None
+
+
+def stack_top_annulus_mm(p: CascadeParams) -> None:
+    return None  # not a stack parent (CAN_PARENT_STACK False): the top is a dish rim
+
+
+def base_annulus_mm(p: CascadeParams) -> tuple[float, float]:
+    """The basin floor spans the whole base: a full disc (ADR-053)."""
+    return float(p.basin_diameter_mm), 0.0

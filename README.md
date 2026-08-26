@@ -26,7 +26,13 @@ non-root, no network, read-only filesystem) executes legal ones, a bounded
 repair loop feeds every failure back, and every attempt is persisted with
 full spec -> program -> artifact lineage. On 2026-08-17 the operator's own
 brief produced a watertight 2.6 m basalt cascade (3,432 kg) passing the
-Phase 2 validation gate on the first attempt, for $0.046777.
+Phase 2 validation gate on the first attempt, for $0.046777. Since
+2026-08-26 (Phase 6 slice A2, ADR-052) a passing ASSEMBLY fabrication
+persists as a real design — viewable in the Designer, checkable by the
+layered gates, exportable as a LUXEXCHANGE package — through the same
+byte-identical persistence path the operator's own builds use, and the
+assembler refuses knife-edge seats with the signed tolerance arithmetic
+(ADR-053).
 
 Rendering and the vision-critique loop (Phase 5), the remaining primitive
 library work (Phase 6), exports beyond STEP/GLB, and DesignDNA/recovery

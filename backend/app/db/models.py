@@ -207,6 +207,9 @@ class GeneratedProgramRow(Base):
     error_digest: Mapped[str | None] = mapped_column(Text, nullable=True)
     artifacts_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     validation_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Phase 6 slice A2: the assembly_manifest_v1 the sandbox returned, when
+    #: the program built an assembly. NULL for cascade runs and all history.
+    manifest_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class DesignRow(Base):
@@ -230,6 +233,12 @@ class DesignRow(Base):
     )
     parent_design_id: Mapped[str | None] = mapped_column(
         Text, ForeignKey("designs.id"), nullable=True
+    )
+    #: Phase 6 slice A2: set when this design was persisted by the
+    #: fabrication loop — the passing GEOMETRIST program it came from.
+    #: NULL for operator-built designs and all history.
+    generated_program_id: Mapped[str | None] = mapped_column(
+        Text, ForeignKey("generated_programs.id"), nullable=True
     )
 
 
