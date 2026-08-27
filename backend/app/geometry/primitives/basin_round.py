@@ -39,6 +39,8 @@ PURPOSE = "round tub basin: cylindrical wall + load-bearing floor, one revolved 
 CAN_PARENT_STACK = True      # the rim is a real annular face
 CAN_PARENT_INSERT = True     # the interior seats columns/sculpture
 
+SEGMENTATION_MODE = "planar_grid"   # a continuous mass: saw planes
+                                    # cut real, fabricable modules
 PARAMETERS: dict[str, dict[str, Any]] = {
     "diameter_mm": {
         "unit": "mm",

@@ -252,10 +252,31 @@ def main() -> int:
           "passes the same crane (hollowing, not shrinking)")
     if not (1240 < hollow_mass < 1265):
         failures.append(f"hollow plinth mass {hollow_mass:.1f} kg outside §4.2 arithmetic")
+    # Slice C2 (ADR-056) changed this contract deliberately: an element over
+    # max_module_m is now CUT, and the limits bind on the modules. The check
+    # A1 was making — "a declared workshop limit is enforced, with real
+    # numbers" — is still true and still worth asserting; what had to change
+    # is the case, because the old one no longer refuses.
+    #
+    # D-10, the standing lesson: a gate that pins behaviour a later slice is
+    # scheduled to change has a built-in expiry. The refusal A1's own
+    # semantics preserve EXACTLY is the one where no module limit is
+    # declared, so the platform has no basis on which to cut and says so.
     _expect_violation(
-        failures, "element bigger than max_module_m (segmentation is slice C)",
-        lambda: assemble(solid_plinth, fabrication={"max_module_m": 0.8}),
-        "max_module_m 0.8", "slice C",
+        failures, "element over the crane limit with no module limit declared",
+        lambda: assemble(solid_plinth, fabrication={"max_lift_kg": 2000}),
+        "max_lift_kg 2000", "as one piece", "hollowing",
+    )
+    # And the refusal did not simply move: a shape planar cuts cannot
+    # segment is still refused outright (slice C2's own gate proves the
+    # positive case, that a segmentable element now builds).
+    _expect_violation(
+        failures, "a shape that cannot be segmented is still refused",
+        lambda: assemble(
+            [{"element_id": "a1", "primitive": "lotus_petal_array",
+              "parameters": {"material_id": "bronze_cast"}}],
+            fabrication={"max_module_m": 0.6}),
+        "max_module_m 0.6", "discrete_array",
     )
     print(f"{PASS if not failures else FAIL} — section 4")
 

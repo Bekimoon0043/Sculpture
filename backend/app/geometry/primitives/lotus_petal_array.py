@@ -33,6 +33,10 @@ PURPOSE = "ring of tilted lens petals on a hub disc (lotus sculpture)"
 CAN_PARENT_STACK = False
 CAN_PARENT_INSERT = False
 
+SEGMENTATION_MODE = "discrete_array"  # same as the blade ring: petals are
+                                      # already discrete pieces on a hub, so
+                                      # planar cuts fragment them. Refused
+                                      # by name (LIMITATIONS.md 11).
 PARAMETERS: dict[str, dict[str, Any]] = {
     "hub_diameter_mm": {
         "unit": "mm", "default": 500, "min": 150, "max": 1500,

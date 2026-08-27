@@ -89,6 +89,8 @@ PURPOSE = (
 CAN_PARENT_STACK = False
 CAN_PARENT_INSERT = False
 
+SEGMENTATION_MODE = "planar_grid"   # a continuous mass: saw planes
+                                    # cut real, fabricable modules
 # ---------------------------------------------------------------------------
 # The registry — PHASE2_PLAN.md §3 verbatim + min_clearance_mm (SPEC_PHASE2
 # §1) + column_wall_mm (slice A1 per-member walls, ADR-032)

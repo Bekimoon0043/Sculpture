@@ -48,10 +48,11 @@ Validation an assembly gets that a single solid never needed (plan §4):
     the fused volume within VOLUME_CONSERVATION_TOLERANCE_PCT — a larger
     discrepancy means UNINTENDED interference between elements that do not
     share a declared joint;
-  * per-element mass against fabrication.max_lift_kg and bounding box
+  * per-MODULE mass against fabrication.max_lift_kg and bounding box
     against fabrication.max_module_m — computed per spec from the declared
     limits, never tabulated (plan §5; the two dead schema fields become
-    load-bearing here).
+    load-bearing here). Slice C2 (ADR-056) put segmentation between the
+    element and the limit: what a crane lifts is a module, not an element.
 
 SECURITY NOTE: this module is reachable from sandboxed AI code via
 registry.assemble — keep its public surface benign (no file, network, or
@@ -65,6 +66,14 @@ from typing import Any
 from app.core.config import Material
 from app.geometry.primitives import PRIMITIVES
 from app.geometry.primitives.base import ConstraintViolation, load_materials
+from app.geometry.segmentation import (
+    MODE_DISCRETE_ARRAY,
+    MODE_PLANAR_GRID,
+    joint_contact_mm,
+    refused_result,
+    segment_solid,
+    whole_element_result,
+)
 
 #: |sum(members) - sum(intersections) - fused| / fused, in percent. The
 #: volumes are exact B-rep quadratures of the SAME solids that get fused,
@@ -72,6 +81,125 @@ from app.geometry.primitives.base import ConstraintViolation, load_materials
 VOLUME_CONSERVATION_TOLERANCE_PCT = 0.2
 
 _JOINT_TYPES = ("stack_on", "concentric_insert")
+
+
+def build_segmentation(
+    ordered_ids: list[str],
+    by_id: dict[str, dict[str, Any]],
+    validated: dict[str, Any],
+    solids: dict[str, Any],
+    joints: list[dict[str, Any]],
+    materials: dict[str, Material],
+    *,
+    max_module_m: float | None,
+    joint_solids: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Per-element modules + both classes of seam (slice C2, ADR-056).
+
+    An element is CUT only when it exceeds the declared module limit. An
+    element inside the limit is one module and costs no boolean, so the
+    common build path is untouched.
+
+    With no ``max_module_m`` declared the platform has no basis on which to
+    choose a split, so every element ships whole and says so. That keeps
+    the pre-C2 behaviour exactly: without a module limit an over-mass
+    element is still refused, because nothing here can invent the limit it
+    would have been cut to.
+    """
+    limit_mm = float(max_module_m) * 1000.0 if max_module_m is not None else None
+    per_element: dict[str, Any] = {}
+    not_segmentable: list[str] = []
+
+    for eid in ordered_ids:
+        module = PRIMITIVES[by_id[eid]["primitive"]]
+        mode = getattr(module, "SEGMENTATION_MODE", MODE_PLANAR_GRID)
+        density = float(materials[validated[eid].material_id].density_kg_per_m3)
+        solid = solids[eid]
+        bb = solid.bounding_box()
+        worst = max(float(bb.size.X), float(bb.size.Y), float(bb.size.Z))
+
+        if limit_mm is None or worst <= limit_mm + 1e-6:
+            result = whole_element_result(
+                solid, density_kg_per_m3=density, mode=mode)
+        elif mode == MODE_DISCRETE_ARRAY:
+            not_segmentable.append(eid)
+            result = refused_result(
+                solid, density_kg_per_m3=density, mode=mode,
+                refusal=(
+                    f"bounding box {float(bb.size.X):.0f} x "
+                    f"{float(bb.size.Y):.0f} x {float(bb.size.Z):.0f} mm "
+                    f"exceeds max_module_m {float(max_module_m):g} m "
+                    f"({limit_mm:g} mm), and {by_id[eid]['primitive']} is "
+                    f"{MODE_DISCRETE_ARRAY}: it is already a ring of separate "
+                    "pieces on a hub, so saw planes through it produce "
+                    "fragments, not modules. Reduce the array's diameter, or "
+                    "model the hub and the blades as separate elements"
+                ),
+            )
+        else:
+            result = segment_solid(
+                solid, limit_mm, density_kg_per_m3=density)
+        per_element[eid] = result.as_dict()
+
+    split_count = sum(e["seam_count"] for e in per_element.values())
+    split_length = sum(e["seam_length_mm"] for e in per_element.values())
+    split_area = sum(e["seam_area_mm2"] for e in per_element.values())
+
+    # Element-to-element joints are seams too: a basin sunk into a plinth is
+    # a real run of bedding or weld. The contact plane sits at the child's
+    # base plus the declared overlap — both already recorded above — so the
+    # same cut-and-pair machinery measures it.
+    joint_length = 0.0
+    joint_area = 0.0
+    joint_records: list[dict[str, Any]] = []
+    for joint in joints:
+        child = str(joint["child"])
+        contact_z = float(solids[child].bounding_box().min.Z) + \
+            float(joint["overlap_mm"])
+        length, area = joint_contact_mm(
+            (joint_solids or {}).get(child), contact_z)
+        joint_length += length
+        joint_area += area
+        joint_records.append({
+            "child": child, "parent": str(joint["parent"]),
+            "type": joint["type"], "contact_z_mm": round(contact_z, 6),
+            "length_mm": round(length, 6), "area_mm2": round(area, 6),
+        })
+
+    module_count = sum(e["module_count"] for e in per_element.values())
+    heaviest = max(
+        (m["mass_kg"] for e in per_element.values() for m in e["modules"]),
+        default=0.0,
+    )
+    if max_module_m is None:
+        basis = ("no fabrication.max_module_m declared — each element ships "
+                 "as one module; nothing was cut")
+    else:
+        basis = (f"fabrication.max_module_m = {float(max_module_m):g} m "
+                 f"({limit_mm:g} mm), axis-aligned planar grid")
+    return {
+        "schema": "assembly_segmentation_v1",
+        "basis": basis,
+        "max_module_mm": limit_mm,
+        "elements": per_element,
+        "module_count": module_count,
+        "heaviest_module_kg": round(heaviest, 6),
+        "not_segmentable": not_segmentable,
+        "seams": {
+            "split": {"count": split_count,
+                      "length_mm": round(split_length, 6),
+                      "area_mm2": round(split_area, 6)},
+            # Joint seams carry a real area as well as a run: both are read
+            # off the actual contact face of the overlap solid, so neither
+            # is inferred from intersection volume / overlap depth (which
+            # is right for a prismatic overlap and wrong for a tapered one).
+            "joint": {"count": len(joint_records),
+                      "length_mm": round(joint_length, 6),
+                      "area_mm2": round(joint_area, 6),
+                      "joints": joint_records},
+            "total_length_mm": round(split_length + joint_length, 6),
+        },
+    }
 
 
 def _resolve_plan(elements: list[dict[str, Any]], violations: list[str]):
@@ -284,8 +412,12 @@ def assemble(
     not a bad parameter.
 
     ``fabrication``: optional {"max_lift_kg": float, "max_module_m": float}
-    — the Design Spec's declared workshop limits. Checked per ELEMENT
-    (today every element is one piece; segmentation is slice C).
+    — the Design Spec's declared workshop limits. Checked per MODULE since
+    slice C2 (ADR-056): an element over ``max_module_m`` is cut into
+    modules by the kernel and the limits bind on those, so a 5 m basin
+    that no crane could pick now builds as nine liftable pieces. With no
+    ``max_module_m`` declared nothing is cut and each element is its own
+    module, which is exactly the pre-C2 behaviour.
 
     ``strict`` (ADR-034 — diagnostic build mode):
 
@@ -528,12 +660,18 @@ def assemble(
 
     # --- prove every declared joint interferes BEFORE the fuse --------------
     sum_intersections = 0.0
+    # The overlap solids are kept, not discarded: slice C2 measures the
+    # joint seam off the SAME intersection this proof computes, so the two
+    # can never disagree about whether two elements touch.
+    joint_solids: dict[str, Any] = {}
     for j in joints:
         try:
             inter = solids[j["child"]] & solids[j["parent"]]
             inter_vol = float(inter.volume) if inter is not None else 0.0
         except Exception:
+            inter = None
             inter_vol = 0.0
+        joint_solids[str(j["child"])] = inter
         j["intersection_volume_mm3"] = inter_vol
         if inter_vol <= 0.0:
             violations.append(
@@ -615,31 +753,64 @@ def assemble(
             "bbox_max_mm": bb_max,
             "centroid_mm": {"x": float(com.X), "y": float(com.Y), "z": float(com.Z)},
         })
-        if max_lift is not None and mass > float(max_lift):
-            hint = ""
-            wall = getattr(p, "wall_mm", None)
-            if wall == 0:
-                hint = (
-                    " — this element is SOLID; hollowing (wall_mm inside the "
-                    "material envelope) cuts mass at the same silhouette "
-                    "(signed sheet §4.2: a 1.0x1.0 m basalt plinth drops "
-                    "2121 -> 1252 kg at a 180 mm wall)"
-                )
-            limit_violations.append(
-                f"{eid}: mass {mass:.1f} kg > max_lift_kg "
-                f"{float(max_lift):g} (volume {vol:.0f} mm3 x density "
-                f"{mat.density_kg_per_m3:g} kg/m3, {p.material_id})" + hint
-            )
-        if max_module is not None:
-            limit_mm = float(max_module) * 1000.0
-            worst = max(dims)
-            if worst > limit_mm:
+    # --- segmentation (slice C2, ADR-056) -----------------------------------
+    # An oversized element is no longer refused outright: it is CUT, by the
+    # kernel, into modules that are then what the workshop limits bind on.
+    # This must happen before the limit checks below, because "does it fit
+    # the truck" and "can the crane lift it" are questions about a MODULE.
+    segmentation = build_segmentation(
+        ordered_ids, by_id, validated, solids, joints, materials,
+        max_module_m=max_module, joint_solids=joint_solids,
+    )
+    for eid in ordered_ids:
+        p = validated[eid]
+        mat = materials[p.material_id]
+        seg = segmentation["elements"][eid]
+        modules = seg["modules"]
+        limit_mm = float(max_module) * 1000.0 if max_module is not None else None
+
+        if seg.get("refusal"):
+            limit_violations.append(f"{eid}: {seg['refusal']}")
+        elif limit_mm is not None:
+            over = [m for m in modules if max(m["bbox_mm"]) > limit_mm + 1e-6]
+            for m in over:
+                b = m["bbox_mm"]
                 limit_violations.append(
-                    f"{eid}: bounding box {dims[0]:.0f} x {dims[1]:.0f} x "
-                    f"{dims[2]:.0f} mm exceeds max_module_m "
-                    f"{float(max_module):g} m ({limit_mm:g} mm) — "
-                    "segmentation arrives in slice C; an oversized element "
-                    "is refused, never silently produced"
+                    f"{eid}: module {m['index']} of {len(modules)} still "
+                    f"measures {b[0]:.0f} x {b[1]:.0f} x {b[2]:.0f} mm after "
+                    f"segmentation, over max_module_m {float(max_module):g} m "
+                    f"({limit_mm:g} mm) — axis-aligned planes cannot reduce "
+                    "this shape further; split it into separate elements"
+                )
+
+        if max_lift is not None:
+            for m in modules:
+                if m["mass_kg"] <= float(max_lift):
+                    continue
+                piece = (
+                    "as one piece" if len(modules) == 1
+                    else f"module {m['index']} of {len(modules)}"
+                )
+                hint = ""
+                wall = getattr(p, "wall_mm", None)
+                if wall == 0:
+                    hint = (
+                        " — this element is SOLID; hollowing (wall_mm inside "
+                        "the material envelope) cuts mass at the same "
+                        "silhouette (signed sheet §4.2: a 1.0x1.0 m basalt "
+                        "plinth drops 2121 -> 1252 kg at a 180 mm wall)"
+                    )
+                elif len(modules) == 1 and max_module is None:
+                    hint = (
+                        " — no fabrication.max_module_m was declared, so this "
+                        "element ships whole; declare a module limit and it "
+                        "is cut into pieces the crane can take"
+                    )
+                limit_violations.append(
+                    f"{eid}: mass {m['mass_kg']:.1f} kg {piece} > max_lift_kg "
+                    f"{float(max_lift):g} (volume {m['volume_mm3']:.0f} mm3 x "
+                    f"density {mat.density_kg_per_m3:g} kg/m3, "
+                    f"{p.material_id})" + hint
                 )
     # Geometric/material violations always raise. Limit breaches raise only
     # in strict mode (ADR-034) — otherwise they ride out in the manifest.
@@ -662,6 +833,10 @@ def assemble(
             "max_lift_kg": max_lift,
             "max_module_m": max_module,
         },
+        # Slice C2 (ADR-056): what the workshop actually makes and lifts.
+        # Absent from manifests written before 2026-08-27; every reader
+        # treats absence as "not measured", never as zero modules.
+        "segmentation": segmentation,
         # ADR-034: empty in strict mode by construction (it would have
         # raised). Non-empty only on a diagnostic build, where the Phase 8
         # fabrication gate turns each entry into a failing row.

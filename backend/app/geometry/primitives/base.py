@@ -6,6 +6,12 @@ Every primitive is one module exposing the same surface:
     PURPOSE               str — one line, feeds the A2 two-tier prompt index
     CAN_PARENT_STACK      bool — may a child stack_on this primitive?
     CAN_PARENT_INSERT     bool — may a child concentric_insert into it?
+    SEGMENTATION_MODE     str — how an OVERSIZED instance becomes fabricable
+                     modules (slice C2, ADR-056). "planar_grid": a continuous
+                     mass, cut by axis-aligned saw planes. "discrete_array":
+                     already a ring of separate pieces on a hub, so a saw
+                     plane makes fragments rather than modules — refused by
+                     name, never silently fragmented.
     PARAMETERS            dict — unit/default/min/max/type/notes per parameter
     validate(raw, materials=None) -> params model (ConstraintViolation on breach)
     build(params) -> build123d Solid — ONE watertight solid, origin at the

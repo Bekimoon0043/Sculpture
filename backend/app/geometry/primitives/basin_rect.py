@@ -34,6 +34,8 @@ CAN_PARENT_STACK = False   # the rim is a rectangular ring: the circular
                            # seat model would misstate it (LIMITATIONS §11)
 CAN_PARENT_INSERT = False  # concentric_insert assumes a circular interior
 
+SEGMENTATION_MODE = "planar_grid"   # a continuous mass: saw planes
+                                    # cut real, fabricable modules
 PARAMETERS: dict[str, dict[str, Any]] = {
     "length_mm": {
         "unit": "mm", "default": 2000, "min": 500, "max": 4000,

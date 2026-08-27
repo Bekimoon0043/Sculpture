@@ -22,6 +22,7 @@ produce one and says which lines stopped it.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -209,12 +210,17 @@ class _Builder:
                     f"cannot be derived from mass or volume"
                 ),
                 blocker=(
-                    f"buy_price is quoted per {unit}; converting geometry to a "
-                    f"{unit} count requires nesting into "
-                    f"stock_size_mm and {NEEDS_SEGMENTATION}. "
-                    f"Either supply buy_price per kg or per m3 (both are "
-                    f"computable from the validation report today), or wait "
-                    f"for segmentation."
+                    f"buy_price is quoted per {unit}, and a {unit} count is "
+                    f"NOT what segmentation produces (ADR-056). Two things "
+                    f"are still missing, neither of them segmentation: "
+                    f"materials.yaml {self.material_id}.stock_size_mm carries "
+                    f"a length and a width but no THICKNESS, so a stock "
+                    f"volume cannot be formed; and nesting a formed shell "
+                    f"onto flat stock needs the surface unrolled, which the "
+                    f"kernel does not do for a doubly-curved revolve. "
+                    f"Supply buy_price per kg or per m3 and this line "
+                    f"computes immediately — it is the largest line on the "
+                    f"BOM."
                 ),
                 rate_path=path,
             )
@@ -383,24 +389,139 @@ class _Builder:
                  "monolithic_pick": self.d.monolithic,
                  "days": round(days, 3)})
 
-        self._blocked(
-            "install_transport", "Install — transport", "install",
-            NOT_COMPUTABLE,
-            formula="<trip count> x rate per trip",
-            blocker=("a trip count needs the module count and its packing, and "
-                     + NEEDS_SEGMENTATION),
-            rate_path="install.transport")
+        self.transport()
+
+    def transport(self) -> None:
+        """Trips — real since slice C2 (ADR-056).
+
+        A load runs out of weight or it runs out of bed, whichever comes
+        first, so the trip count is the worse of the two. Both capacities
+        are the operator's numbers and neither is defaulted: without them
+        this is a MISSING_RATE (his to supply), not a NOT_COMPUTABLE
+        (ours to build). That transition is the whole point of the slice.
+        """
+        inst = self.c.install
+        if self.d.module_count is None:
+            self._blocked(
+                "install_transport", "Install — transport", "install",
+                NOT_COMPUTABLE,
+                formula="max(ceil(mass / payload), ceil(modules / per trip)) "
+                        "x rate",
+                blocker=(self.d.unavailable or {}).get(
+                    "module_count", NEEDS_SEGMENTATION),
+                rate_path="install.transport")
+            return
+
+        payload = scalar("install.truck_payload_kg", inst.truck_payload_kg,
+                         "kg per trip")
+        per_trip = scalar("install.modules_per_trip", inst.modules_per_trip,
+                          "modules per trip")
+        for capacity in (payload, per_trip):
+            if isinstance(capacity, MissingRate):
+                self._blocked(
+                    "install_transport", "Install — transport", "install",
+                    MISSING_RATE,
+                    formula=(f"{self.d.module_count} modules, "
+                             f"{self.d.mass_kg:,.1f} kg -> <trips> x rate"),
+                    blocker=f"costing.yaml {capacity.path} is null — "
+                            "supply a number",
+                    rate_path=capacity.path)
+                return
+
+        by_weight = math.ceil(self.d.mass_kg / payload.value)
+        by_bulk = math.ceil(self.d.module_count / per_trip.value)
+        trips = max(by_weight, by_bulk)
+        binding = "weight" if by_weight >= by_bulk else "bed space"
+        self._money(
+            "install_transport", "Install — transport", "install", trips,
+            (f"max(ceil({self.d.mass_kg:,.1f} kg / {payload.value:g} kg) = "
+             f"{by_weight}, ceil({self.d.module_count} modules / "
+             f"{per_trip.value:g}) = {by_bulk}) = {trips} trip(s), "
+             f"bound by {binding}"),
+            resolve("install.transport", inst.transport),
+            {"module_count": self.d.module_count,
+             "mass_kg": round(self.d.mass_kg, 1),
+             "trips": trips, "binding": binding})
 
     def seams(self) -> None:
-        self._blocked(
-            "seam_welding", "Fabrication — seams", "fabrication",
-            NOT_COMPUTABLE,
-            formula="<seam length m> x rate",
-            blocker=("seam length is zero until the solid is split into "
-                     "modules, and " + NEEDS_SEGMENTATION +
-                     ". No seam rate exists in costing.yaml either — add one "
-                     "when segmentation lands"),
-            rate_path="(no seam rate in costing.yaml v1)")
+        """Joining the modules — real since slice C2 (ADR-056).
+
+        The seam is MEASURED off the cut faces the kernel actually
+        produced, both the run and the bedded area, so the rate's own
+        per-unit decides which drives the line: a welded 316L seam is
+        billed per metre of run, a bedded basalt joint per square metre
+        of face. The platform never picks for the workshop.
+        """
+        path = f"materials.{self.material_id}.seam"
+        entry = self.rates.seam if self.rates is not None else None
+        if entry is None:
+            self._blocked(
+                "seam_welding", "Fabrication — seams", "fabrication",
+                MISSING_RATE,
+                formula="<seam> x rate",
+                blocker=(f"costing.yaml has no {path} entry — add a seam "
+                         f"amount/currency/per block under "
+                         f"materials.{self.material_id}, quoted per m (run) "
+                         f"or per m2 (bedded face)"),
+                rate_path=path)
+            return
+
+        if self.d.seam_length_m is None:
+            self._blocked(
+                "seam_welding", "Fabrication — seams", "fabrication",
+                NOT_COMPUTABLE,
+                formula="<seam> x rate",
+                blocker=(self.d.unavailable or {}).get(
+                    "seam_length_m", NEEDS_SEGMENTATION),
+                rate_path=path)
+            return
+
+        rate = resolve(path, entry)
+        unit = entry.per
+        joint_m = self.d.joint_seam_length_m or 0.0
+        if unit == "m":
+            qty = self.d.seam_length_m
+            qty_text = (f"seam run {qty:,.3f} m ({qty - joint_m:,.3f} m from "
+                        f"segmentation cuts + {joint_m:,.3f} m at element "
+                        f"joints)")
+            used = {"seam_length_m": round(qty, 3),
+                    "joint_seam_length_m": round(joint_m, 3)}
+        elif unit == "m2":
+            if self.d.seam_area_m2 is None:
+                self._blocked(
+                    "seam_welding", "Fabrication — seams", "fabrication",
+                    NOT_COMPUTABLE,
+                    formula="<seam area m2> x rate",
+                    blocker=(self.d.unavailable or {}).get(
+                        "seam_area_m2", NEEDS_SEGMENTATION),
+                    rate_path=path)
+                return
+            qty = self.d.seam_area_m2
+            qty_text = (f"bedded seam face {qty:,.4f} m2 (segmentation cut "
+                        f"faces + element joint contact faces, both measured "
+                        f"off the real geometry)")
+            used = {"seam_area_m2": round(qty, 4)}
+        else:
+            self._blocked(
+                "seam_welding", "Fabrication — seams", "fabrication",
+                NOT_COMPUTABLE,
+                formula=f"<unsupported seam unit {unit!r}>",
+                blocker=(f"a seam is quoted per m (run) or per m2 (bedded "
+                         f"face); costing.yaml {path} says per {unit!r}"),
+                rate_path=path)
+            return
+
+        if self.d.seam_length_m == 0.0:
+            self._blocked(
+                "seam_welding", "Fabrication — seams", "fabrication",
+                NOT_APPLICABLE,
+                formula=f"{qty_text} x rate",
+                blocker=("this design has no seams: one module and no "
+                         "element joints, so there is nothing to join"),
+                rate_path=path)
+            return
+        self._money("seam_welding", "Fabrication — seams", "fabrication",
+                    qty, qty_text, rate, used)
 
 
 def build_bom(costing: CostingConfig, drivers: CostDrivers, material_id: str,

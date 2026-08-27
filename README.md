@@ -40,7 +40,16 @@ when the water plan and the geometry disagree. Slice C1 (ADR-055) takes
 the library to TEN primitives — rectangular basins, stepped monoliths,
 water walls, torus rings, and the blade-fin and lotus-petal arrays —
 with a 24-blade array proven to fuse into ONE watertight body that
-exports byte-identical STEP across two processes.
+exports byte-identical STEP across two processes. Slice C2 (2026-08-27,
+ADR-056) ends the flat refusal of anything bigger than the workshop: an
+element over `fabrication.max_module_m` is CUT by the kernel into
+numbered modules, and the crane and truck limits bind on the MODULES, so
+a 5 m basalt basin weighing 11,346 kg as one piece — previously refused
+outright — now builds as 9 pieces of at most 1,472 kg, volume conserved
+to 0.0000000000%, with the seams counted once per interface and matched
+to hand arithmetic. The crane line on the BOM prices the heaviest module
+instead of the whole fountain, and the seam and transport lines move from
+"we cannot compute this" to "supply the rate".
 
 Rendering and the vision-critique loop (Phase 5), the remaining primitive
 library work (Phase 6), exports beyond STEP/GLB, and DesignDNA/recovery

@@ -41,6 +41,8 @@ PURPOSE = "standalone solid/hollow column or tapered shaft, optional plumbing bo
 CAN_PARENT_STACK = True      # the capital face carries stacked elements
 CAN_PARENT_INSERT = False
 
+SEGMENTATION_MODE = "planar_grid"   # a continuous mass: saw planes
+                                    # cut real, fabricable modules
 PARAMETERS: dict[str, dict[str, Any]] = {
     "diameter_mm": {
         "unit": "mm",

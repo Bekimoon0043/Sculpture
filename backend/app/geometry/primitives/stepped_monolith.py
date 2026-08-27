@@ -29,6 +29,8 @@ PURPOSE = "solid stack of shrinking rectangular steps (ziggurat mass)"
 CAN_PARENT_STACK = True    # the top step is a real flat face
 CAN_PARENT_INSERT = False
 
+SEGMENTATION_MODE = "planar_grid"   # a continuous mass: saw planes
+                                    # cut real, fabricable modules
 PARAMETERS: dict[str, dict[str, Any]] = {
     "base_length_mm": {
         "unit": "mm", "default": 1200, "min": 300, "max": 3000,

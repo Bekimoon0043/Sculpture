@@ -211,30 +211,60 @@ in git history (section numbers are never reused).
 The engine is built, gated and honest. What it cannot yet do splits into two
 piles, and the BOM says on every line which pile a gap belongs to.
 
-- **The rate card is empty.** 33 null entries in `config/costing.yaml`. Every
+**Update 2026-08-27 (slice C2, ADR-056):** segmentation is BUILT, so two
+of the three driverless lines now have real drivers. `costing.yaml` is at
+`2026-08-v2` and the rate card is **39 null entries, up from 33** — a
+per-material `seam` rate (4) plus `install.truck_payload_kg` and
+`install.modules_per_trip`. That growth is the price of two lines moving
+from "ours to build" to "yours to supply".
+
+- **The rate card is empty.** 39 null entries in `config/costing.yaml`. Every
   one is named by `GET /api/costing/rate-card` and by the BOM itself. No cost
   is computed from a null rate and none is defaulted to zero, so **no real
   design can produce a total today** — the gate proves the machinery is
   honest about that, not that a client-ready quote exists.
-- **Three cost lines have no DRIVER yet — ours to build, not a missing
-  rate**: `material_purchase` when `buy_price` is quoted per slab or sheet
-  (needs nesting into `stock_size_mm`), `seam_welding` (no seams until there
-  are modules) and `install_transport` (a trip count needs a module count).
-  All three need segmentation against `fabrication.max_module_m` — Phase 6.
+- **ONE cost line still has no DRIVER — and segmentation is not what it is
+  waiting for.** `material_purchase` when `buy_price` is quoted per slab or
+  sheet needs two things neither of which segmentation provides:
+  `materials.yaml` records `stock_size_mm` as a length and a width with **no
+  thickness**, so a stock volume cannot be formed; and nesting a formed
+  shell onto flat sheet needs the surface UNROLLED, which the kernel does
+  not do for a doubly-curved revolve. The BOM's blocker text names both.
+  (`seam_welding` and `install_transport` were on this list until slice C2
+  and are now `missing_rate` — the operator's number, not our code.)
 - **Consequence for filling in the rate card**: basalt is quoted `per: slab`
-  and 316L `per: sheet` in the template, and neither unit is computable
-  today. **Quoting basalt per m3 or per kg makes the largest line on the BOM
-  work immediately**; quoting per slab defers it to segmentation.
-- **There is no seam rate in costing.yaml v1.** One is needed when
-  segmentation lands.
+  and 316L `per: sheet` in the template, and neither unit is computable.
+  **Quoting basalt per m3 or per kg makes the largest line on the BOM work
+  immediately** — this is unchanged by slice C2 and is still the single
+  biggest win available.
+- **The seam rate exists as of `costing.yaml` 2026-08-v2**, per material,
+  quoted `per: m` (the seam RUN) or `per: m2` (the bedded FACE). Both
+  drivers are measured off the real cut faces; the unit decides which one
+  bills, so the platform never guesses which the workshop means.
 - **The budget constraint binds at the BOM boundary**, not inside
   `registry.validate_params` (ADR-031 records why: the sandbox has no rate
   card and the geometrist has no rates in its prompt). An over-budget design
   is refused with real numbers and cannot be exported as a quote; it is not
   refused at geometry-build time.
-- **Crane pick weight equals total mass** because every design today is one
-  fused solid. It becomes the heaviest ELEMENT once assemblies exist
-  (Phase 6); the driver records `monolithic: true` so the change is visible.
+- ~~**Crane pick weight equals total mass**~~ — **DISCHARGED 2026-08-27
+  (slice C2).** On the assembly path the pick weight is the heaviest
+  MODULE, measured. A 13.7-tonne stacked fountain now quotes a 2,375 kg
+  pick. On the single-solid Phase 2 path it is still the whole mass, which
+  is correct — one fused solid is lifted as one piece — and the driver
+  still records `monolithic` so which case you are in stays visible.
+- **Costing keys on ONE material.** A mixed-material assembly is refused
+  with HTTP 409 naming every material and its elements, rather than priced
+  at whichever material reached the report first. Per-element costing is
+  the costing tie-off (NEXT.md W-7).
+- **Two latent defects were found by making the assembly path work, both
+  now fixed and regression-tested** (ADR-056): `GET /api/costing/bom/{id}`
+  returned HTTP 500 for every assembly ever built, because an assembly
+  stores an `AssemblyValidationReport` (no `material_id`, no single
+  `mass_kg`) and the route parsed every stored report as a
+  `ValidationReport`; and `GET /api/costing/bom/{id}.txt` — the rendered
+  document handed to a client — returned 404 for every design, because it
+  was registered AFTER `/bom/{design_id}` and the greedy path parameter
+  swallowed the `.txt`.
 
 ---
 
@@ -283,9 +313,53 @@ What Phase 6 still deliberately does NOT do:
   phyllotaxis); the lens petal is circular arcs, not a sculpted spline;
   `water_wall` has no notch weir (the ruling was asked twice and not
   given) and its 3x thickness floor is judgement pending a real
-  cantilever check. **Segmentation against `max_module_m` is NOT built**
-  — an oversized element is still refused, never split; that work moved
-  to its own C2 slice beside the costing tie-off (W-7).
+  cantilever check. ~~Segmentation against `max_module_m` is NOT built~~
+  — **BUILT 2026-08-27, slice C2 (ADR-056); see the block below.**
+
+- **Slice C2 scope limits (2026-08-27, ADR-056).** An element over
+  `fabrication.max_module_m` is now CUT into modules by the kernel, and
+  both workshop limits bind on the modules rather than the element. What
+  it deliberately does NOT do:
+  - **Only axis-aligned planar grids.** A round basin split three ways
+    becomes a 3x3 waffle. A stone mason might cut RADIAL pie segments
+    instead, and for axisymmetric vessels that is probably the better
+    answer — it needs the operator's ruling on how the yard actually
+    cuts, and is proposed as its own slice. Flagged as the slice's
+    weakest decision in ADR-056 and in `gate_phase6c2_visual.md` §2.
+  - **Planes are evenly spaced**, which minimises the heaviest module.
+    A workshop buying fixed stock may prefer full slabs plus a remnant.
+  - **`blade_fin_array` and `lotus_petal_array` are NOT segmentable** and
+    are refused by name. They are already rings of discrete pieces on a
+    hub, so saw planes fragment them: measured, a 24-blade array at a
+    0.8 m limit yields 25 solids whose lightest is 0.9 kg against a
+    heaviest of 2,685.7 kg. Their real decomposition — hub plus N
+    separately-made blades — is not built; the count would be exact from
+    `blade_count`, but the blade-root seam needs its own measurement and
+    its own proof.
+  - **No minimum-module (sliver) floor exists**, deliberately: every
+    `planar_grid` shape measured produced sane masses, and inventing a
+    threshold nobody derived would hide the case it was meant to catch.
+    A too-small module is VISIBLE in the printed module masses.
+  - **A grid over 256 predicted cells is refused** with the arithmetic
+    rather than attempted. A guard against a runaway limit (a 6 m basin
+    at 0.1 m predicts 17,500 cells), not an engineering bound.
+  - **Segmentation is driven by `max_module_m` only.** With no module
+    limit declared nothing is cut, each element is its own module, and an
+    over-mass element is refused exactly as before — the platform will
+    not invent the limit it would have cut to. `max_lift_kg` alone does
+    not trigger a split.
+  - **Plane order is not bit-exact.** The connected components and every
+    engineering number are order-independent to better than 1e-9
+    relative, but OCCT's split is not bit-identical under reordering
+    (measured: 1666.6666666666677 vs 1666.6666666666667 mm). Production
+    always cuts x-y-z; byte-identity is claimed and gated only for the
+    same code path across processes. The STEP hash is untouched —
+    segmentation cuts COPIES and never touches the fused solid.
+  - **Designs built before 2026-08-27 carry no segmentation block.** They
+    are not treated as monolithic (that would price a 9-module basin as
+    one 11-tonne lift); the fabrication gate returns `needs_input` asking
+    for a rebuild, and the BOM says the same. **Rebuild any older
+    assembly once before quoting it.**
 - **Slice B scope limits (2026-08-26, ADR-054):** weir crests are
   full-perimeter (360°) only — a partial-arc NOTCH weir breaks
   axisymmetry and needs a cut, deferred to slice C/D with its own proof;

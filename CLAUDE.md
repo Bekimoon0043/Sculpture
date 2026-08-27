@@ -56,8 +56,11 @@ to the loop is `docs/operator/06_the_loop.md`; the queue itself is `NEXT.md`.
 - Keep `NEXT.md`, `LIMITATIONS.md`, `DECISIONS.md` and the phase report current in the same commit as the change.
 - After any change touching `backend/`, tell the operator to rebuild: `docker compose up --build -d`.
 - Gates: every `scripts\gate_*_auto.py` runs at $0 with no network. Run the
-  whole set before and after any change to `backend/`; twelve pass as of
-  2026-08-24. `gate_phase9b_auto.py` additionally needs the render-worker
+  whole set before and after any change to `backend/`; **seventeen of the eighteen pass as of
+  2026-08-27** (all but `gate_phase9b_auto`, which needs the render
+  worker up) (render worker held down for the run, and re-verify it is
+  still down when the run ENDS — a mid-run manual start silently flips the
+  D-9 export tests). `gate_phase9b_auto.py` additionally needs the render-worker
   container up.
 - The Hub status file regenerates with `python scripts\generate_hub_status.py --out "E:\Burook platform development\Luxurycon\AI-Team-Hub\luxuryform_status.json"`.
 
@@ -120,8 +123,8 @@ variant history, additive nullable project/parent design references, explicit
 root-to-branch persistence and cross-project rejection before CAD work. Existing
 designs remain Ungrouped. Backend/frontend auto gate PASS; visual gate pending.
 
-Fourteen auto gates, all $0 and offline:
-`gate_phase2/3/4/5/6a1/costing/8/8b/9a/9b/11/13a/14/15_auto.py`.
+Auto gates, all $0 and offline:
+`gate_phase2/3/4/5/6a1/6a2/6b/6c/6c2/costing/8/8b/9a/9b/11/13a/14/15_auto.py`.
 Note `gate_phase9b_auto.py` and the Blender-tier sections of
 `gate_phase9a_auto.py` need the render-worker container running
 (`docker compose --profile render up -d render-worker`); both still cost $0 and
@@ -135,7 +138,9 @@ which sections it covered.
 Awaiting the operator's visual gates: `gate_phase8_visual.md`,
 `gate_phase9a_visual.md`, `gate_phase11_13a_visual.md`,
 `gate_phase9b_visual.md`, `gate_phase5_visual.md`, `gate_phase14_visual.md`,
-`gate_phase14b_visual.md`.
+`gate_phase14b_visual.md`, `gate_phase15_visual.md`, `gate_phase6_visual.md`
+(the live one, ~$1), `gate_phase6b_visual.md`, `gate_phase6c_visual.md`,
+`gate_phase6c2_visual.md`.
 
 **Phase 9B.5 + Phase 5 live run 2026-08-24 (ADR-045)** — USD/USDZ/FBX/ABC
 are produced by the render worker (not sealed into LUXEXCHANGE: they are not
@@ -144,9 +149,21 @@ providers: 3 rounds, $0.042916, 5 agreed deltas applied, geometry rebuilt and
 measurably changed. Reproduce with `scripts/run_vision_critique.py`; size the
 iteration count with `scripts/measure_render.py`.
 
+**Phase 6 slice C2 (segmentation) auto gate PASS 2026-08-27** (ADR-056) —
+an element over `fabrication.max_module_m` is CUT by the kernel into
+modules and both workshop limits bind on the modules, so an 11,346 kg
+basin that was refused now builds as 9 pieces of at most 1,472 kg.
+Volume conserved to 0.0000000000%; module counts measured, never
+predicted; seams counted once per interface and matched to hand
+arithmetic. Two costing lines moved from `not_computable` to
+`missing_rate` and `crane_pick_kg` became the heaviest MODULE. It also
+fixed three latent defects: costing returned HTTP 500 for every assembly,
+the rendered BOM document 404'd for every design, and the LUXEXCHANGE
+digest lost reproducibility the moment a real BOM was sealed into it.
+
 Not started: **Phase 10** (vision critique of renders — no longer blocked,
 now that 9B is built), **Phase 13 slices B+** (resumable job runner — see
-LIMITATIONS.md §16). Phase 6 slices B–D remain open. Phase 5 is built and
+LIMITATIONS.md §16). Phase 6 slice D remains open. Phase 5 is built and
 auto-gated; only its live-spend visual gate is outstanding.
 
 Nothing in the project still needs a large download: the Blender tarball is

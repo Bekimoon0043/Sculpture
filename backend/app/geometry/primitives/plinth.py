@@ -42,6 +42,8 @@ PURPOSE = "solid or hollow pedestal frustum; the base other elements stack on"
 CAN_PARENT_STACK = True
 CAN_PARENT_INSERT = False    # no floor to seat an insert on (hollow = open tube)
 
+SEGMENTATION_MODE = "planar_grid"   # a continuous mass: saw planes
+                                    # cut real, fabricable modules
 PARAMETERS: dict[str, dict[str, Any]] = {
     "top_diameter_mm": {
         "unit": "mm",

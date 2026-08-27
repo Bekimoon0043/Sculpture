@@ -7,7 +7,276 @@ and exportable — passes live at slice A2.
 
 ---
 
-## PHASE 6 GATE: PASS - slices A1 (2026-08-20), A2, B and C1 auto (2026-08-26); C2/D not built
+## PHASE 6 GATE: PASS - slices A1 (2026-08-20), A2/B/C1 (2026-08-26), C2 (2026-08-27); D not built
+
+## Slice C2 — segmentation (BUILT, auto gate PASS 2026-08-27, $0)
+
+`scripts/gate_phase6c2_auto.py` — 12 sections, exit 0, no network, no AI
+call, no AI-written code executed. ADR-056.
+
+### What it makes true
+
+A fountain bigger than the crane or the truck stops being refused and
+starts arriving as numbered modules.
+
+    5 m basalt basin (d5000, wall 150, h700)
+      as one piece   : 4,202,272,873 mm3 = 11,346.1 kg   -> previously REFUSED
+      at max_module_m 2.4 m, max_lift_kg 2000:
+                       9 modules, heaviest 1,472.2 kg    -> BUILDS
+      volume delta   : 0.0000000000 %
+
+### Gate evidence, verbatim numbers
+
+| check | measured |
+|---|---|
+| canonical STEP, all four | `e1a59fa6…`, `529014af…`, `6038d26f…`, `956436c1…` unmoved |
+| conservation, 9-module cut | delta `0.0000000000 %` (ceiling 1e-6 %) |
+| widest / heaviest module | 1,666.7 mm of 2,400 mm; 1,472.2 kg of 2,000 kg |
+| count measured, not predicted | hollow tube grid 3x3x2 predicts **18**, truly **16** |
+| seam area vs hand arithmetic | 1,830,000.000000 vs 1,830,000.000000 mm2 |
+| seam length vs hand arithmetic | 25,600.000000 vs 25,600.000000 mm |
+| interfaces, not cut faces | 4 quarters -> **4** interfaces (not 8); 0 unmatched |
+| joint seam = contact face | 12,566.371 mm (annulus), not 15,707.963 mm (child outline) |
+| determinism | segmentation byte-identical across PIDs 233 / 248 |
+| array refusal | `a1` refused by name; a naive grid would report **25** pieces, lightest 0.9 kg vs heaviest 2,685.7 kg (2,984x) |
+| crane pick | 2,375.0 kg of a 13,721.2 kg assembly |
+| seam line | `not_computable` -> `missing_rate` @ `materials.basalt_slab.seam` |
+| transport line | `not_computable` -> `missing_rate` @ `install.truck_payload_kg` |
+| filled-card arithmetic | seam 62.679 m x 300 ETB/m = 18,803.62 ETB; trips `max(ceil(13,721.2/12000)=2, ceil(10/4)=3) = 3`, bound by bed space |
+| rate card | 33 -> **39** null entries; `costing.yaml` `2026-08-v2` |
+| costing route on an assembly | HTTP **200** (was 500); mass 13,721.181 = manifest 13,721.181 |
+| mixed material | HTTP **409** naming `basalt_slab`, `bronze_cast` |
+| segmentation cost | 187 ms (9 modules), 324–713 ms (16 modules); ceiling 256 cells |
+
+### Three defects this slice had to fix, none of them planned
+
+1. **`GET /api/costing/bom/{id}` returned HTTP 500 for every assembly ever
+   built.** An assembly stores an `AssemblyValidationReport`, which by
+   design carries no `material_id` and no single `mass_kg`; the route
+   parsed every stored report as a `ValidationReport`. Costing had been
+   unreachable for assemblies since Phase 7A and nothing recorded it. The
+   first diagnosis (row selection) was wrong and is recorded in ADR-056.
+2. **`GET /api/costing/bom/{id}.txt` returned 404 for every design** — the
+   rendered document handed to a client. It was registered after
+   `/bom/{design_id}` and FastAPI's greedy path parameter swallowed the
+   `.txt`. Route order is now load-bearing and regression-tested.
+3. **The LUXEXCHANGE package digest stopped being reproducible.** Making
+   costing work meant the package finally sealed a real `costing/bom.json`
+   — which stamps a wall-clock `generated_at`. The guarantee (ADR-035/037)
+   had a latent hole that was masked only because assembly costing was
+   broken. The sealed BOM is now stamped with the design's own creation
+   time. Caught by the existing Phase 9A tests, not by a new one.
+
+### Scope, honestly
+
+- **Axis-aligned planar grids only.** A round basin splits into a 3x3
+  waffle; a mason might cut radial pie segments. Flagged as the slice's
+  weakest decision and put to the operator in `gate_phase6c2_visual.md` §2.
+- **`material_purchase` is NOT unlocked**, contrary to the W-3b entry that
+  scoped this slice. A slab count needs a stock THICKNESS that
+  `materials.yaml` does not carry, and a sheet count needs a curved shell
+  unrolled. Two of three lines, not three.
+- **Arrays are refused, not decomposed.** Their real answer (hub + N
+  blades) is D-12 in NEXT.md.
+- **Pre-2026-08-27 designs carry no segmentation** and are asked to be
+  rebuilt rather than guessed at.
+- Full scope limits: LIMITATIONS.md §11 (slice C2 block) and §10.
+
+### Gate transcript, verbatim
+
+`docker compose exec -T backend python scripts/gate_phase6c2_auto.py` — exit code 0, 2026-08-27:
+
+```
+------------------------------------------------------------------------
+[1/12] CANONICAL GUARDS — segmentation moved no bytes
+------------------------------------------------------------------------
+cascade        : e1a59fa6fd8ef05074373b9098feb62f10e186f9875c38679304e45f10ee6e13
+ok   — Phase 2 canonical cascade byte-identical
+A1 composition : 529014af672a282b6626cece8eebc777f5d839a34be02c9a031b5813cf22ddbd
+ok   — A1 gate-composition assembly byte-identical
+default basin  : 6038d26f28cd61b0c01ae9fde00ff2841b34ad0d6228cc7c4bbdbdd1eeacf0f0
+ok   — default basin byte-identical
+C1 composition : 956436c12891d3bd471888a139d640e4e23cd764c7977d253de21cb0a0b97985
+ok   — C1 24-blade composition byte-identical
+
+------------------------------------------------------------------------
+[2/12] CONSERVATION, EXACTLY — nothing is lost in the cut
+------------------------------------------------------------------------
+element        : 4,202,272,873 mm3 = 11,346.1 kg as ONE piece
+modules        : 9 summing to 4,202,272,873.258047 mm3
+delta          : 0.0000000000 % (ceiling 1e-6 %)
+ok   — module volumes sum back to the element exactly: 0.0000000000%
+ok   — an 11-tonne basin now yields liftable modules: 11,346.1 kg -> 9 modules
+  module 0:   1,472.2 kg   bbox   1666.7 x   1666.7 x  700.0 mm
+  module 1:   1,083.1 kg   bbox   1523.7 x   1523.7 x  700.0 mm
+  module 2:   1,083.1 kg   bbox   1523.7 x   1523.7 x  700.0 mm
+  module 3:   1,472.2 kg   bbox   1666.7 x   1666.7 x  700.0 mm
+  module 4:   1,125.0 kg   bbox   1666.7 x   1666.7 x  150.0 mm
+  module 5:   1,472.2 kg   bbox   1666.7 x   1666.7 x  700.0 mm
+  module 6:   1,083.1 kg   bbox   1523.7 x   1523.7 x  700.0 mm
+  module 7:   1,472.2 kg   bbox   1666.7 x   1666.7 x  700.0 mm
+  module 8:   1,083.1 kg   bbox   1523.7 x   1523.7 x  700.0 mm
+
+------------------------------------------------------------------------
+[3/12] EVERY MODULE FITS — both declared limits, per module
+------------------------------------------------------------------------
+widest module  : 1,666.7 mm  (limit 2,400 mm)
+heaviest module: 1,472.2 kg  (limit 2,000 kg)
+ok   — every module inside max_module_m: worst 1,666.7 mm
+ok   — every module inside max_lift_kg: worst 1,472.2 kg
+ok   — the assembler BUILDS what it used to refuse (strict mode): 9 modules, heaviest 1,472.2 kg
+
+------------------------------------------------------------------------
+[4/12] MEASURED, NOT PREDICTED — the tube's centre cells are bore
+------------------------------------------------------------------------
+grid           : {'x': 3, 'y': 3, 'z': 2} predicts 18 cells
+measured       : 16 connected solids
+ok   — the module count is measured, not n_x*n_y*n_z: predicted 18, measured 16
+ok   — and it still conserves volume exactly: 0.0000000000%
+
+------------------------------------------------------------------------
+[5/12] SEAM ARITHMETIC — hand-checkable, and counted once
+------------------------------------------------------------------------
+hand arithmetic: area 457,500.0 mm2, perimeter 6,400.0 mm, per interface
+kernel         : 4 interfaces, 1,830,000.0 mm2, 25,600.0 mm
+ok   — 4 quarters share 4 interfaces, not 8 cut faces: 4 modules, 4 interfaces
+ok   — seam AREA matches hand arithmetic: 1,830,000.000000 vs 1,830,000.000000 mm2
+ok   — seam LENGTH matches hand arithmetic: 25,600.000000 vs 25,600.000000 mm
+ok   — no cut face went unpaired: 0 unmatched
+joint seam     : 12,566.371 mm (annulus pi x (2200+1800) = 12,566.371 mm; the child's own outline would be 15,707.963 mm)
+ok   — a joint seam is the contact face, not the child outline: 12,566.371 mm
+
+------------------------------------------------------------------------
+[6/12] DETERMINISM — two processes, and plane order
+------------------------------------------------------------------------
+process 494: 1735 chars of canonical JSON
+process 509: 1735
+ok   — segmentation byte-identical across two processes
+plane order z-y-x vs x-y-z: 9 vs 9 modules, 50112.361663 vs 50112.361663 mm seam
+ok   — plane order changes no engineering number
+
+------------------------------------------------------------------------
+[7/12] THE ARRAY REFUSAL — fragments are not modules
+------------------------------------------------------------------------
+refusal: a1: bounding box 2300 x 2300 x 600 mm exceeds max_module_m 0.8 m (800 mm), and blade_fin_array is discrete_array: it is already a ring of separate pieces on a hub, so saw planes through it produce fra
+ok   — an oversized blade ring is refused BY NAME
+a naive grid would have reported 25 'modules', lightest 0.9 kg against heaviest 2,685.7 kg (2,984x) — blade tips, not fabricable pieces
+ok   — the platform did NOT report those fragments as modules: 25 fragments from a 3x3 grid, refused
+
+------------------------------------------------------------------------
+[8/12] DRIVERS AND THE BOM — whose homework is it now
+------------------------------------------------------------------------
+drivers: modules 10, seam 62.679 m / 4.7879 m2, crane pick 2,375.0 kg of 13,721.2 kg total
+ok   — the crane picks a MODULE, not the whole fountain: 2,375.0 kg vs 13,721.2 kg
+ok   — module count and seam length are real numbers
+  seam_welding         missing_rate     materials.basalt_slab.seam
+ok   — seam_welding is now the OPERATOR's to supply, not ours to build: missing_rate / materials.basalt_slab.seam
+  install_transport    missing_rate     install.truck_payload_kg
+ok   — install_transport is now the OPERATOR's to supply, not ours to build: missing_rate / install.truck_payload_kg
+  material_purchase    not_computable   (still ours + his: stock thickness and nesting, NOT segmentation)
+ok   — material_purchase is honestly still not computable
+  seam_welding: seam run 62.679 m (50.112 m from segmentation cuts + 12.566 m at element joints) x 300 ETB/m = 18,803.62 ETB
+ok   — seam_welding computes against a filled card
+  install_transport: max(ceil(13,721.2 kg / 12000 kg) = 2, ceil(10 modules / 4) = 3) = 3 trip(s), bound by bed space x 8000 ETB/trip = 24,000.00 ETB
+ok   — install_transport computes against a filled card
+ok   — the rate card names the six new nulls: 39 entries (33 before slice C2)
+
+------------------------------------------------------------------------
+[9/12] THE ROUTE — it returned HTTP 500 for every assembly
+------------------------------------------------------------------------
+ok   — assembly build returns 200: 200
+GET /api/costing/bom/4fee7af8... -> 200
+ok   — costing an ASSEMBLY returns 200, not 500: 200
+drivers.mass_kg 13,721.181 vs manifest total 13,721.181 kg
+ok   — the BOM costs the SAME mass the manifest measured: 13,721.181 vs 13,721.181
+ok   — the rendered document says what ships
+
+------------------------------------------------------------------------
+[10/12] MIXED MATERIAL — refused, never mispriced
+------------------------------------------------------------------------
+-> 409 mixed_material_assembly: design assembly_design_record_v1 uses 2 materials and the BOM prices one. Refusing rather than quoting every element at one material's rate
+ok   — a mixed-material assembly is refused with 409: 409
+ok   — and the refusal names both materials: ['basalt_slab', 'bronze_cast']
+
+------------------------------------------------------------------------
+[11/12] BUDGET — segmentation is cheap enough to sit on the build
+------------------------------------------------------------------------
+ok   — no wall-clock timing in the b1 manifest block
+ok   — no wall-clock timing in the p1 manifest block
+  5 m basin: 9 module(s) in 308 ms
+  hollow tube: 16 module(s) in 389 ms
+  the refused-grid ceiling is 256 cells
+ok   — no element takes more than 10 s to segment: worst 389 ms
+  refusal: segmentation refused: a 5000 x 5000 x 700 mm element at a 100 mm module limit needs a 50 x 50 x 7 grid = 17500 cells, over the 256-cell ceiling. Raise fabricati
+ok   — a runaway module limit is refused with the numbers
+
+------------------------------------------------------------------------
+[12/12] VERDICT
+------------------------------------------------------------------------
+PASS — Phase 6 slice C2 auto gate: all sections passed at $0, no network, no AI-written code executed.
+```
+
+### Full roster and suite on the C2 code — reported as measured, not as hoped
+
+```
+17 of the 18 scripts/gate_*_auto.py: exit 0, 0 FAIL
+  costing, 2, 3, 4, 5, 6a1, 6a2, 6b, 6c, 6c2, 8, 8b, 9a, 11, 13a, 14, 15
+NOT RUN: gate_phase9b_auto — requires the render-worker container UP.
+gate_phase14_auto was run in BOTH halves:
+  container  -> "sections run: geometry"   exit 0
+  host --frontend-only -> "sections run: frontend"  exit 0
+```
+
+The gate roster is robust to render-worker state: 9a reports the four
+Blender formats `unavailable` with the worker down and `included` with it
+up, and passes either way (ADR-045). **The pytest suite is not**, and it
+did not come out clean:
+
+```
+docker compose exec backend python -m pytest -q
+=========================== short test summary info ============================
+FAILED tests/test_export_package.py::test_package_manifest_is_honest_about_what_is_missing
+1 failed, 432 passed, 2 warnings in 796.34s (0:13:16)
+```
+
+```
+        assert statuses["STEP"] == "included"
+        assert statuses["DWG"] == "impossible"
+>       assert statuses["USD"] == "unavailable"
+E       AssertionError: assert 'included' == 'unavailable'
+E         - unavailable
+E         + included
+tests/test_export_package.py:348: AssertionError
+```
+
+That is the pre-existing **D-9** condition — five export tests assume the
+render worker is DOWN — and not a defect in this slice: the test exercises
+no segmentation, costing or manifest code C2 touched. The worker was
+verified down before the run (`stop` at 07:55:24) and was started
+externally at **08:12:30**, about ten minutes into a run that began
+~08:02:12.
+
+Retried on the single file with the worker stopped and re-verified at both
+ends. It was contaminated the same way:
+
+```
+=== worker state BEFORE the run ===
+/luxuryform-render-worker-1 exited exit=137 finished=2026-08-27T12:22:30Z
+1 failed, 18 passed in 236.81s (0:03:56)
+=== worker state AFTER the run ===
+/luxuryform-render-worker-1 running started=2026-08-27T12:25:35Z
+```
+
+The worker restarted at 12:25:35 — three minutes into a four-minute run.
+Four such restarts are now on record, each ~3 minutes after a
+`docker compose stop`; `RestartPolicy=no`, `RestartCount=0`. Attribution is
+reopened at **D-9** in `NEXT.md`, and **D-9b** records the plain fact that
+**this code has no clean full-suite run**. No gate and no test was edited
+to make any of this pass.
+
+### Cost
+
+$0.00 — no AI call; every number above measured offline by the kernel.
 
 ## Slice C1 — extrusion and array masses (BUILT, auto gate PASS 2026-08-26, $0)
 

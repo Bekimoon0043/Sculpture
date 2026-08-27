@@ -346,3 +346,25 @@ def test_package_manifest_is_honest_about_what_is_missing(tmp_path):
     assert statuses["STEP"] == "included"
     assert statuses["DWG"] == "impossible"
     assert statuses["USD"] == "unavailable"
+
+
+def test_the_sealed_bom_carries_no_wall_clock_reproducible_bom():
+    """Regression for the hole slice C2 exposed (ADR-056).
+
+    The package seals costing/bom.json, and a BOM stamps generated_at.
+    While costing raised for every assembly the package simply omitted
+    the BOM, so the digest stayed stable for the wrong reason. The moment
+    costing worked, two exports of one design produced two digests.
+
+    The sealed BOM must therefore be stamped with the DESIGN's creation
+    time, not "now".
+    """
+    from app.api.routes_costing import _bom_for
+
+    import inspect
+
+    sig = inspect.signature(_bom_for)
+    assert "reproducible" in sig.parameters, (
+        "_bom_for must offer a reproducible stamp for the sealed package")
+    assert sig.parameters["reproducible"].default is False, (
+        "the interactive endpoints keep wall-clock timestamps")

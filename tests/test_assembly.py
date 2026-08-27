@@ -281,14 +281,34 @@ def test_hollow_plinth_passes_the_same_crane():
     assert manifest["elements"][0]["mass_kg"] == pytest.approx(1252, abs=2)
 
 
-def test_max_module_refused_before_segmentation_exists():
+def test_max_module_now_segments_instead_of_refusing():
+    """Slice C2 (ADR-056) changed this contract deliberately.
+
+    Until 2026-08-27 an element over max_module_m was refused outright.
+    It is now CUT, and the limit binds on the modules that come out.
+    """
     plan = [{"element_id": "p1", "primitive": "plinth",
              "parameters": {"top_diameter_mm": 1500, "height_mm": 1200,
                             "material_id": "basalt_slab"}}]
+    _, manifest = assemble(plan, fabrication={"max_module_m": 1.0})
+    seg = manifest["segmentation"]["elements"]["p1"]
+    assert seg["module_count"] > 1
+    assert manifest["fabrication_limit_violations"] == []
+    limit_mm = 1000.0
+    for module in seg["modules"]:
+        assert max(module["bbox_mm"]) <= limit_mm + 1e-6
+
+
+def test_an_element_that_cannot_be_segmented_is_still_refused():
+    """The refusal did not go away — it moved to the shapes where a saw
+    plane genuinely cannot produce modules."""
+    plan = [{"element_id": "a1", "primitive": "lotus_petal_array",
+             "parameters": {"material_id": "bronze_cast"}}]
     with pytest.raises(ConstraintViolation) as exc:
-        assemble(plan, fabrication={"max_module_m": 1.0})
-    assert "exceeds max_module_m 1" in str(exc.value)
-    assert "slice C" in str(exc.value)
+        assemble(plan, fabrication={"max_module_m": 0.6})
+    text = str(exc.value)
+    assert "exceeds max_module_m 0.6" in text
+    assert "discrete_array" in text
 
 
 # ---------------------------------------------------------------------------

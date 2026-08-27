@@ -9,11 +9,11 @@
 #
 # Format rules:
 #   - keep entries in the currency you actually pay in (per-entry currency);
-#   - `per` units: kg | m3 | sheet | slab | hour | piece | m2 | crew_day | day | trip
+#   - `per` units: kg | m3 | sheet | slab | hour | piece | m | m2 | crew_day | day | trip
 #   - material keys under `materials:` must match config/materials.yaml ids;
 #   - one dated fx_rates block converts to USD for USD-normalized reporting.
 
-costing_version: "2026-08-v1"
+costing_version: "2026-08-v2"
 meta:
   default_currency: USD
   notes: "operator-provided rates, Addis Ababa 2026"
@@ -29,6 +29,9 @@ materials:
       hours_per_m3: null
       mold_pattern: { amount: null, currency: ETB, per: piece } # cast only; null else
     finishing: { amount: null, currency: ETB, per: m2 }         # polish/patina/seal
+    # Joining two modules (slice C2, ADR-056). `per: m` bills the seam RUN,
+    # `per: m2` the bedded FACE — quote whichever your shop works in.
+    seam: { amount: null, currency: ETB, per: m }
   basalt_slab:
     buy_price: { amount: null, currency: ETB, per: slab }       # slab or m3
     waste_factor_pct: null
@@ -39,6 +42,7 @@ materials:
       hours_per_m3: null
       mold_pattern: { amount: null, currency: ETB, per: piece }
     finishing: { amount: null, currency: ETB, per: m2 }
+    seam: { amount: null, currency: ETB, per: m }
   stainless_316l_sheet:
     buy_price: { amount: null, currency: ETB, per: sheet }      # sheet or kg
     waste_factor_pct: null
@@ -49,6 +53,7 @@ materials:
       hours_per_m3: null
       mold_pattern: { amount: null, currency: ETB, per: piece }
     finishing: { amount: null, currency: ETB, per: m2 }
+    seam: { amount: null, currency: ETB, per: m }
   cast_concrete_c35_45:
     buy_price: { amount: null, currency: ETB, per: m3 }
     waste_factor_pct: null
@@ -59,6 +64,7 @@ materials:
       hours_per_m3: null
       mold_pattern: { amount: null, currency: ETB, per: piece }
     finishing: { amount: null, currency: ETB, per: m2 }
+    seam: { amount: null, currency: ETB, per: m }
 
 workshop:
   overhead_pct: null                      # power, consumables, space
@@ -69,6 +75,10 @@ install:
   days_per_tonne: null
   crane_day_rate: { amount: null, currency: ETB, per: day }     # null if none
   transport: { amount: null, currency: ETB, per: trip }
+  # Trip capacity (slice C2, ADR-056). The trip count binds on whichever
+  # runs out first: the truck's weight limit or its bed.
+  truck_payload_kg: null                  # heaviest load one trip carries
+  modules_per_trip: null                  # how many modules fit on the bed
 
 contingency_pct: null
 markup_pct: null

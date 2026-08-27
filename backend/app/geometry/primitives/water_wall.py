@@ -35,6 +35,8 @@ PURPOSE = "freestanding spill wall with a weir crest along its length"
 CAN_PARENT_STACK = False   # the top is a spill crest, not a seat
 CAN_PARENT_INSERT = False
 
+SEGMENTATION_MODE = "planar_grid"   # a continuous mass: saw planes
+                                    # cut real, fabricable modules
 #: 3x the ADR-027 vessel-wall floor (ADR-055 §5, judgement — the weakest
 #: number in the slice, explicitly flagged for the operator's correction).
 _THICKNESS_FLOOR_FACTOR = 3.0

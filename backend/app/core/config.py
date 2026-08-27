@@ -244,7 +244,7 @@ class BudgetConfig(BaseModel):
 # --- costing.yaml (Phase 3 operator amendment: rates schema designed NOW) ----
 
 _CURRENCY_RE = r"^[A-Z]{3}$"
-_COST_PER_UNITS = ("kg", "m3", "sheet", "slab", "hour", "piece", "m2",
+_COST_PER_UNITS = ("kg", "m3", "sheet", "slab", "hour", "piece", "m", "m2",
                    "crew_day", "day", "trip")
 _FABRICATION_METHODS = ("cnc_mill", "hand_carve", "cast", "sheet_fabricate")
 
@@ -286,6 +286,12 @@ class MaterialRates(BaseModel):
     waste_factor_pct: float | None = Field(default=None, ge=0)
     fabrication: FabricationRates
     finishing: CostAmount
+    #: Joining two modules, per material (slice C2, ADR-056). Per material
+    #: because bedding a basalt joint and welding a 316L seam are different
+    #: work. `per: m` bills the seam RUN, `per: m2` the bedded FACE — the
+    #: unit decides which measured driver is used, so the platform never
+    #: guesses which one the workshop means.
+    seam: CostAmount | None = None
 
 
 class InstallRates(BaseModel):
@@ -294,6 +300,11 @@ class InstallRates(BaseModel):
     days_per_tonne: float | None = Field(default=None, ge=0)
     crane_day_rate: CostAmount   # amount null if none
     transport: CostAmount
+    #: Trip capacity (slice C2, ADR-056). A trip count binds on whichever
+    #: runs out first — the truck's weight limit or its bed. Both are the
+    #: operator's numbers; neither is defaulted.
+    truck_payload_kg: float | None = Field(default=None, gt=0)
+    modules_per_trip: int | None = Field(default=None, ge=1)
 
 
 class FxRate(BaseModel):
@@ -348,6 +359,10 @@ class CostingConfig(BaseModel):
             if m.fabrication.hours_per_m3 is None:
                 missing.append(f"materials.{mid}.fabrication.hours_per_m3")
             amount(f"materials.{mid}.finishing", m.finishing)
+            if m.seam is None:
+                missing.append(f"materials.{mid}.seam")
+            else:
+                amount(f"materials.{mid}.seam", m.seam)
             # machine / mold_pattern stay legitimately null by method — not flagged
         if self.workshop.get("overhead_pct") is None:
             missing.append("workshop.overhead_pct")
@@ -357,6 +372,10 @@ class CostingConfig(BaseModel):
         if self.install.days_per_tonne is None:
             missing.append("install.days_per_tonne")
         amount("install.transport", self.install.transport)
+        if self.install.truck_payload_kg is None:
+            missing.append("install.truck_payload_kg")
+        if self.install.modules_per_trip is None:
+            missing.append("install.modules_per_trip")
         if self.contingency_pct is None:
             missing.append("contingency_pct")
         if self.markup_pct is None:

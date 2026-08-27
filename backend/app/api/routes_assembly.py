@@ -835,11 +835,16 @@ def _upsert_export_rows(
 
 
 def _costing_for(design_id: str) -> tuple[dict[str, Any] | None, str | None]:
-    """BOM for the package, or an honest reason it could not be computed."""
+    """BOM for the package, or an honest reason it could not be computed.
+
+    reproducible=True: the sealed BOM is stamped with the design's own
+    creation time, never the wall clock, so two exports of one design
+    produce the same package digest (ADR-035/037, hole found in ADR-056).
+    """
     try:
         from app.api.routes_costing import _bom_for
 
-        _, bom, _params = _bom_for(design_id)
+        _, bom, _params = _bom_for(design_id, reproducible=True)
         return bom.as_dict(), None
     except HTTPException as exc:
         return None, f"costing unavailable: {exc.detail}"

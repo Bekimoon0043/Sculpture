@@ -3058,3 +3058,205 @@ roadmap will later make known, has a built-in expiry. Frozen-set
 assertions belong to the newest slice's gate; older gates assert what
 their own slice made true.
 
+## ADR-056 - Phase 6 slice C2: segmentation, and the drivers it feeds (2026-08-27)
+
+### Context
+
+NEXT.md W-3b: split-line planes against `fabrication.max_module_m` ->
+modules -> seams -> per-module BOM lines, to unlock the three costing
+lines that had no DRIVER (LIMITATIONS §10). Until this slice, an element
+wider than the declared module limit was REFUSED: a 5 m basalt basin is
+11,346 kg as one piece, no crane in Addis picks it, and the platform's
+answer was no.
+
+Kernel capability verified live against the INSTALLED build123d 0.11.1
+on 2026-08-27 (`split(objects, bisect_by=Plane, keep=Keep.BOTH)`,
+`Keep.BOTH`, `Face.normal_at`, `Face.area`, `Shape.faces/vertices/edges`
+— live import and a real cut, not recall; ADR-009). `to_tuple()` is
+deprecated in that version and is not used.
+
+### Decisions
+
+1. **Segmentation is a real cut, and every number is measured off the
+   pieces.** No count is derived from a bounding box. The module COUNT is
+   the number of connected solids after cutting, never `n_x*n_y*n_z` —
+   proven necessary: a hollow plinth on a 3x3x2 grid predicts 18 modules
+   and truly yields **16**, because the centre cells are bore. A
+   predicted count overstates both the crane picks and the seams, and
+   does it silently.
+
+2. **The limits move from the ELEMENT to the MODULE.** `max_lift_kg` and
+   `max_module_m` now bind on what the workshop actually makes. This is a
+   deliberate widening: designs that were refused now build. The refusal
+   did not disappear — it moved to the shapes where a saw plane genuinely
+   cannot produce modules, and to modules that are still over a limit
+   after cutting. With no `max_module_m` declared nothing is cut and each
+   element is its own module, which is exactly the pre-C2 behaviour: the
+   platform will not invent the limit it would have cut to.
+
+3. **Primitives declare `SEGMENTATION_MODE`**, beside `CAN_PARENT_STACK`
+   and `CAN_PARENT_INSERT`. `planar_grid` for the eight continuous
+   masses; `discrete_array` for `blade_fin_array` and
+   `lotus_petal_array`, which are REFUSED BY NAME rather than fragmented.
+   Measured, and the reason the mode exists: a 24-blade array at a 0.8 m
+   limit produces **25 solids from a 3x3 grid, lightest 0.9 kg against a
+   heaviest of 2,685.7 kg** — chopped-off blade tips, not fabricable
+   pieces. Their real decomposition is hub + N blades; that is a later
+   slice, and it is in LIMITATIONS §11 as a named gap, not built badly.
+
+4. **A seam is an INTERFACE, counted once.** Four quarters of a basin
+   share four interfaces, not the eight cut faces they carry between
+   them. The two halves are paired by (centre, area) at micrometre
+   precision, since OCCT cuts both from the same plane. A face present on
+   only one side is a pre-existing face lying in the cut plane, not a
+   seam; it is excluded, and the count of such faces is reported so the
+   coincidence is visible rather than silent. Both the RUN and the bedded
+   AREA are measured, and the rate's own `per` unit decides which drives
+   the line — a welded 316L seam is billed per metre, a bedded basalt
+   joint per square metre. The platform never picks for the workshop.
+
+5. **A joint seam is the CONTACT footprint, not the child's outline.**
+   The first implementation sectioned the child at the contact plane and
+   reported, for a 5 m basin on a hollow 2.2 m plinth, `pi x 5000 =
+   15.708 m` of joint where the two solids only meet over the plinth's
+   top annulus, `pi x (2200+1800) = 12.566 m`. Caught by running the real
+   route, not by a test that agreed with the code. It is now measured on
+   the overlap solid the joint proof already computes — the same
+   intersection, so the two can never disagree about whether two elements
+   touch. Measuring the real face also makes the bedded area exact rather
+   than inferred from volume/overlap, which is right for a prismatic
+   overlap and wrong for a tapered one.
+
+6. **Determinism is claimed only where it holds.** Same input, same code
+   path, two separate processes: byte-identical, and the gate proves it.
+   Plane ORDER is a different question, and the honest answer is
+   measured: cutting z-y-x gave a module extent of 1666.6666666666677 mm
+   where x-y-z gave 1666.6666666666667 mm. The connected components are
+   the same and every engineering number agrees to better than 1e-9
+   relative, but OCCT's split is not bit-exact under reordering, so
+   order-independence is asserted as a geometric identity and not as
+   byte-identity. Amendment 1 is untouched either way: segmentation cuts
+   COPIES to measure them and never touches the fused solid the STEP is
+   exported from. All four canonical hashes re-proven unmoved.
+
+7. **Nothing wall-clock goes in the manifest.** The first
+   implementation put a per-element `duration_ms` in the segmentation
+   block. The manifest is SEALED INTO the LUXEXCHANGE package, so the
+   package content digest changed on every export and Phase 9A's
+   reproducibility guarantee (ADR-035/037) silently died. Caught by the
+   existing `test_export_package_is_reproducible_and_self_verifying` on
+   2026-08-27 — two digests that should have matched and did not. Timing
+   is now read off the SegmentResult object; the gate asserts the
+   manifest block carries no `duration_ms` at all. Every other number in
+   the block is rounded to 6 dp (a nanometre, a microgram — orders below
+   the finest tolerance in materials.yaml), so trivial float jitter
+   cannot move a digest either.
+
+### The defect this slice had to fix first
+
+`GET /api/costing/bom/{design_id}` returned **HTTP 500 for every assembly
+design in the database** — verified against the live backend on all four
+`assembly_built` designs before any code was written. Costing has been
+unreachable for assemblies since Phase 7A and nothing recorded it.
+
+The first diagnosis was wrong and is recorded because the correction
+matters: it looked like row selection (an assembly stores four validation
+rows and the newest is a Phase 8 layered report). Selecting by gate name
+did not fix it. The real cause is deeper: **an assembly does not produce a
+`ValidationReport` at all.** It produces an `AssemblyValidationReport`,
+which deliberately carries no `material_id` and no single `mass_kg` —
+"a fused mesh has no single material, so a single mass_kg would be fiction
+for mixed-material assemblies" (validate.py, Phase 6 A1). Costing was
+written for the Phase 2 single-solid shape and had never met the other
+one. Three report shapes share the `validation_reports` table; the route
+now maps gate name to report class explicitly.
+
+`gate_costing_auto.py` never caught this because it builds BOMs from a
+synthetic report and never goes through the route. The new gate's §9 does.
+
+### Consequences
+
+- **Full roster 2026-08-27: 17 of the 18 `gate_*_auto.py` scripts PASS,
+  0 FAIL.** The eighteenth, `gate_phase9b_auto`, was NOT run: it requires
+  the render-worker container UP, and this run deliberately held it down.
+  `gate_phase14_auto` was run in both halves (container `geometry` and
+  host `--frontend-only`), both exit 0.
+- **The full pytest suite has NOT had a clean run on this code, and that
+  is recorded here rather than glossed.** `432 passed, 1 failed in
+  796.34s`; the failure is
+  `test_export_package.py::test_package_manifest_is_honest_about_what_is_missing`,
+  asserting `statuses["USD"] == "unavailable"` and getting `"included"`.
+  That is the known D-9 condition — five export tests assume the render
+  worker is DOWN — and NOT a defect in this slice: the test does not
+  touch segmentation, costing or the manifest block C2 added. The worker
+  was verified down before the run and was started externally at 08:12:30,
+  about ten minutes into a run that began ~08:02:12. A repeat on
+  `tests/test_export_package.py` alone (`1 failed, 18 passed in 236.81s`)
+  was contaminated the same way at 12:25:36. **No gate and no test was
+  edited to accommodate this** — D-9 stays open in NEXT.md and the honest
+  status of the suite on this code is 432 of 433 with one environment-
+  dependent failure outstanding.
+- Gate `gate_phase6c2_auto.py` PASS at $0, offline: four canonical hashes
+  unmoved; conservation 0.0000000000% on a 9-module cut; every module
+  inside both limits; 18-predicted/16-measured proven; the quartered
+  basin's seam area (4 x 457,500 mm2) and perimeter (4 x 6,400 mm)
+  asserted against hand arithmetic with 4 interfaces not 8; byte-identical
+  segmentation across two PIDs; the array refused by name; both costing
+  lines moved from `not_computable` to `missing_rate`; the route returning
+  200 with the same mass the manifest measured.
+- **`config/costing.yaml` -> `2026-08-v2`.** Six new nulls: a per-material
+  `seam` rate (4) and `install.truck_payload_kg` + `install.modules_per_trip`
+  (2). The rate card goes **33 -> 39** entries. B-3 grows by six, and that
+  is the price of two lines becoming real.
+- **`crane_pick_kg` stops meaning "the whole fountain"** — the last bullet
+  of LIMITATIONS §10 is discharged.
+- **`material_purchase` is NOT unlocked**, contrary to W-3b's wording. A
+  slab count needs a stock THICKNESS that `materials.yaml` does not carry,
+  and a sheet count needs a curved shell unrolled onto flat stock, which
+  the kernel does not do for a doubly-curved revolve. The blocker text now
+  names those two instead of blaming segmentation. Quoting basalt per m3
+  or per kg still makes the largest BOM line compute immediately.
+- **Mixed-material assemblies are refused for costing** with HTTP 409
+  naming every material and its elements, rather than priced at whichever
+  material reached the report first. Per-element costing stays W-7.
+- Two older tests AND one older gate asserted the contract this slice
+  deliberately changed. All three were reported red BEFORE any edit and
+  rewritten to assert the NEW truth; none was weakened:
+  `test_max_module_refused_before_segmentation_exists`; a gate row
+  predicting `ceil(5000/2000) = 3` modules; and **`gate_phase6a1_auto`
+  §4**, whose check was literally labelled "element bigger than
+  max_module_m (segmentation is slice C)" and asserted the string "slice
+  C" in the refusal. A1's real intent — "a declared workshop limit is
+  enforced, with real numbers" — is still true, so the check now uses the
+  refusal A1's own semantics preserve exactly (over the crane limit with
+  NO module limit declared, which still refuses with the §4.2 hollowing
+  arithmetic) plus a second case proving the refusal did not merely
+  vanish (a `discrete_array` shape planar cuts cannot segment). **This is
+  the third time D-10 has bitten** — a gate that pins behaviour a later
+  slice is scheduled to change has a built-in expiry, and the phrase
+  "segmentation is slice C" sitting inside an assertion was the tell.
+- A pre-C2 manifest with an oversized element now yields `needs_input`
+  asking for a rebuild rather than a predicted count.
+
+### Judgement values, flagged so the operator knows which to correct
+
+1. **Axis-aligned planar grid, not radial.** The weakest decision here. A
+   round basin split three ways becomes a 3x3 waffle; a stone mason might
+   cut radial pie segments. Chosen because it is the only pattern that
+   works for every shape in the library (walls, rect basins, monoliths)
+   and because it is exactly measurable. Radial segmentation for
+   axisymmetric vessels needs the operator's ruling on how the yard
+   actually cuts, and is proposed as its own slice.
+2. **Even spacing, not maximum-size-first.** Even spacing minimises the
+   heaviest module, and the heaviest module is what binds against both
+   limits. A workshop buying fixed stock may prefer full slabs plus a
+   remnant.
+3. **`MAX_PREDICTED_CELLS = 256`.** A guard against a runaway limit (a 6 m
+   basin at 0.1 m predicts 60x60x9 cells and would hang the build), sized
+   against the 25-solid case measured at 0.92 s. A ceiling, not an
+   engineering bound; refused loudly with the arithmetic.
+4. **No invented sliver floor.** Deliberately absent: every `planar_grid`
+   shape measured produced sane module masses, and the fragment problem is
+   confined to the two array primitives, which are refused by mode. A
+   module too small to be real will be VISIBLE in the printed masses
+   rather than hidden behind a threshold nobody derived.

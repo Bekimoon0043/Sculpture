@@ -31,6 +31,8 @@ PURPOSE = "solid torus ring (halo/ring sculpture, overflow trough core)"
 CAN_PARENT_STACK = False   # the top is a curve, not a face
 CAN_PARENT_INSERT = False
 
+SEGMENTATION_MODE = "planar_grid"   # a continuous mass: saw planes
+                                    # cut real, fabricable modules
 PARAMETERS: dict[str, dict[str, Any]] = {
     "major_diameter_mm": {
         "unit": "mm", "default": 1200, "min": 300, "max": 3000,

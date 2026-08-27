@@ -32,6 +32,13 @@ PURPOSE = "radial blade/fin ring on a cylindrical hub (kinetic silhouette)"
 CAN_PARENT_STACK = False
 CAN_PARENT_INSERT = False
 
+SEGMENTATION_MODE = "discrete_array"  # a saw plane through a blade ring
+                                      # makes fragments, not modules: at a
+                                      # 0.8 m limit a 24-blade array gives
+                                      # 25 solids, smallest 0.9 kg against
+                                      # a largest of 2,685.7 kg. Refused by
+                                      # name; the real decomposition is hub
+                                      # + N blades (LIMITATIONS.md 11).
 PARAMETERS: dict[str, dict[str, Any]] = {
     "hub_diameter_mm": {
         "unit": "mm", "default": 400, "min": 150, "max": 1500,

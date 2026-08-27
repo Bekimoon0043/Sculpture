@@ -366,14 +366,58 @@ def test_fabrication_gate_flags_an_overweight_element(unsigned, profiles):
     assert report.status == "fail"
 
 
-def test_oversized_element_reports_how_many_modules_it_would_need(unsigned, profiles):
+def test_an_oversized_element_in_a_pre_segmentation_manifest_asks_for_a_rebuild(
+        unsigned, profiles):
+    """A manifest written before slice C2 has no segmentation block.
+
+    The gate must not answer "3 modules" from ceil(5000/2000) — that is
+    exactly the predicted number segmentation replaced with a measured
+    one, and a hollow shape makes it wrong. It asks for the rebuild.
+    """
     big = _manifest()
     big["elements"][1]["bbox_mm"] = [5000, 800, 250]  # limit is 2.0 m
+    assert "segmentation" not in big
     report = validate_fabrication_gate(big, **_kwargs(unsigned, profiles))
     rows = {r["check"]: r for r in report.check_rows()}
     assert rows["basin_01.module_bbox_mm"]["status"] == "fail"
-    assert rows["basin_01.module_split_count"]["value"] == 3  # ceil(5000/2000)
+    split = rows["basin_01.module_split_count"]
+    assert split["status"] == "needs_input"
+    assert "rebuild" in split["message"]
     assert report.status == "fail"
+
+
+def test_a_segmented_element_reports_its_measured_modules(unsigned, profiles):
+    """With a segmentation block the gate reports what was measured, and
+    the lift row prices the heaviest MODULE, not the whole element."""
+    big = _manifest()
+    big["elements"][1]["bbox_mm"] = [5000, 5000, 700]   # limit is 2.0 m
+    big["elements"][1]["mass_kg"] = 11346.1
+    big["segmentation"] = {
+        "schema": "assembly_segmentation_v1",
+        "elements": {"basin_01": {
+            "mode": "planar_grid",
+            "grid": {"x": 3, "y": 3, "z": 1},
+            "predicted_cells": 9,
+            "module_count": 9,
+            "seam_length_mm": 8420.0,
+            "modules": [
+                {"index": i, "mass_kg": 1472.2, "volume_mm3": 545255768.7,
+                 "bbox_mm": [1666.67, 1666.67, 700.0],
+                 "bbox_min_mm": [0.0, 0.0, 0.0]}
+                for i in range(9)
+            ],
+        }},
+    }
+    report = validate_fabrication_gate(big, **_kwargs(unsigned, profiles))
+    rows = {r["check"]: r for r in report.check_rows()}
+    assert rows["basin_01.module_bbox_mm"]["status"] == "pass"
+    assert rows["basin_01.module_bbox_mm"]["value"] == pytest.approx(1666.67)
+    split = rows["basin_01.module_split_count"]
+    assert split["status"] == "pass"
+    assert split["value"] == 9
+    assert "8.42 m of seam" in split["message"]
+    # the crane picks 1,472 kg, not 11,346 kg
+    assert rows["basin_01.mass_kg"]["value"] == pytest.approx(1472.2)
 
 
 def test_bore_aspect_ratio_is_measured(unsigned, profiles):

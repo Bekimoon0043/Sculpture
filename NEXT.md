@@ -5,10 +5,11 @@ the start of every session (`/lf-orient`) and rewritten at the end of every
 slice (`/lf-close`). If this file and a phase plan disagree, this file is
 stale and must be corrected in the same commit as the work.
 
-Last updated: 2026-08-26 — rewritten from the repo after the 2026-08-26 merge
-to main (`99569b2`) surfaced 17 commits of work (Phases 6A1 through 15E) that
-the previous version of this file predated. Derived from the phase reports,
-LIMITATIONS.md and DECISIONS.md as they stand — not from memory.
+Last updated: 2026-08-27 — Phase 6 slice C2 (segmentation) closed. Previous
+rewrite 2026-08-26, after the merge to main (`99569b2`) surfaced 17 commits
+of work (Phases 6A1 through 15E) that the version before it predated.
+Derived from the phase reports, LIMITATIONS.md and DECISIONS.md as they
+stand — not from memory.
 
 ---
 
@@ -20,8 +21,8 @@ LIMITATIONS.md and DECISIONS.md as they stand — not from memory.
 | 2 — geometry kernel, STEP/GLB, determinism | **CLOSED** | gate PASS 2026-08-04, canonical hash `e1a59fa6…` |
 | 3 — the AI Council | **CLOSED** | gate PASS 2026-08-07, live $0.843842 |
 | 4 — fabrication loop (AI writes CAD, sandbox runs) | **CLOSED** | gate PASS 2026-08-17, live $0.046777 |
-| costing engine | **BUILT, gated, starved** | ADR-031; rate card still unfilled (B-3) |
-| 6 — primitive library | **A1 CLOSED; A2 + B + C1 BUILT (10 primitives); C2/D not built** | auto gates PASS 2026-08-20 / 2026-08-26 (ADR-052–055); pending: live gate `gate_phase6_visual.md`, eye gates 6b + 6c |
+| costing engine | **BUILT, gated, starved; reaches assemblies since 2026-08-27** | ADR-031/056; rate card still unfilled (B-3, now 39 nulls) |
+| 6 — primitive library | **A1 CLOSED; A2 + B + C1 + C2 BUILT (10 primitives, segmentation); D not built** | auto gates PASS 2026-08-20 / 2026-08-26 / 2026-08-27 (ADR-052–056); pending: live gate `gate_phase6_visual.md`, eye gates 6b + 6c + 6c2 |
 | 7A — assembly surface (API, manifest persistence) | **BUILT** | implemented 2026-08-21, `PHASE_7_COMPLETION_PLAN.md` §7A |
 | 8 — L5 validation gates (structure/fabrication/hydraulics) | **BUILT, auto-gated** | auto PASS 2026-08-21 + 8b re-gate; visual pending |
 | 9A — LUXEXCHANGE export package | **BUILT, auto-gated** | auto PASS 2026-08-21, re-proven 08-24; visual pending |
@@ -34,8 +35,15 @@ LIMITATIONS.md and DECISIONS.md as they stand — not from memory.
 | 14 + 14b — Designer Workspace, Blender-style controls | **BUILT, auto-gated** | auto PASS 2026-08-24, ADR-044/046; visual pending |
 | 15 A–E — designer UX, draft preview, projects/variants | **BUILT, auto-gated** | auto PASS 2026-08-24, ADR-047–051; visual pending |
 
-**Latest full roster (2026-08-24, clean rebuild): 12 auto gates PASS, 0 FAIL;
-361 tests passed.** Total live spend recorded since Phase 4 closed: $0.042916
+**Latest full roster (2026-08-27, clean rebuild): 17 of the 18
+`gate_*_auto.py` scripts PASS, 0 FAIL.** Only `gate_phase9b_auto` was
+not run — it requires the worker up. The gate roster is robust to
+render-worker state (9a reports the four Blender formats `unavailable`
+with it down and `included` with it up, and passes either way, ADR-045),
+so this result stands regardless; **the pytest SUITE is not, and its
+outstanding failure is recorded at D-9 below rather than rounded off.** Note `gate_phase14_auto` is SPLIT: the
+container run covers `geometry`, and `python scripts\gate_phase14_auto.py
+--frontend-only` on the host covers `frontend`; both were run, both PASS. Total live spend recorded since Phase 4 closed: $0.042916
 (Phase 5 run) plus a possible ~$0.84 unverified incident exposure (B-2).
 
 ---
@@ -51,8 +59,11 @@ LIMITATIONS.md and DECISIONS.md as they stand — not from memory.
       `gate_phase15_visual.md`, `gate_phase6_visual.md` — the Phase 6
       LIVE gate (≈$0.90–1.10 spend, the only one that costs money; it is
       THE operator's gate the phase is named for) — and
-      `gate_phase6b_visual.md` (treatments + nozzles by eye, $0) and
-      `gate_phase6c_visual.md` (the six new masses by eye, $0). First:
+      `gate_phase6b_visual.md` (treatments + nozzles by eye, $0),
+      `gate_phase6c_visual.md` (the six new masses by eye, $0) and
+      `gate_phase6c2_visual.md` (segmentation, $0 — **it carries the one
+      question only the operator can answer: does your shop cut a round
+      basin on a square grid or radially?**). First:
       `docker compose up --build -d`
       (backend AND frontend images changed), optionally
       `docker compose --profile render up -d render-worker`. Coordinate with
@@ -62,11 +73,17 @@ LIMITATIONS.md and DECISIONS.md as they stand — not from memory.
       Docker leaked real `.env` keys past the test fixture; the local audit
       rows died with the test temp DB, so only the consoles hold the truth).
       Asked for in `PHASE_6_REPORT.md`; still unanswered.
-- [ ] **B-3 — Fill `config/costing.yaml`.** *Blocks: any client-facing
-      quote.* The rate card is still null-filled; `GET /api/costing/rate-card`
-      names every missing entry. **Biggest single win: quote basalt per m³ or
-      per kg** (per-slab defers the largest BOM line to Phase 6 slice C
-      segmentation).
+- [ ] **B-3 — Fill `config/costing.yaml`** (now `2026-08-v2`, **39 null
+      entries, up from 33**). *Blocks: any client-facing quote.* `GET
+      /api/costing/rate-card` names every one. Slice C2 added six: a
+      per-material `seam` rate (quote it `per: m` for a welded run or
+      `per: m2` for a bedded face — whichever your shop works in) plus
+      `install.truck_payload_kg` and `install.modules_per_trip`. Those six
+      are the price of the seam and transport lines becoming real.
+      **Biggest single win is unchanged: quote basalt per m³ or per kg.**
+      Per-slab is NOT unlocked by segmentation and never was — it needs a
+      slab THICKNESS (absent from materials.yaml) and shell unrolling
+      (LIMITATIONS §10, ADR-056).
 - [ ] **B-4 — Verify token prices** against the three providers' price pages
       and bump `pricing_version` in `config/pricing.yaml` (currently
       `2026-08-v3`). *Blocks: trusting any cost number.* Fix D-3 in the same
@@ -132,11 +149,26 @@ Each entry is one loop iteration: `/lf-next` → approve → `/lf-build` →
       queued under B-1. **Correction (plan §8.1):** segmentation was
       wrongly bolted onto this entry — it is costing-driver work and is
       now its own item below.
-- [ ] **W-3b — Phase 6 slice C2: segmentation.** Split-line planes
-      against `fabrication.max_module_m` → modules → seams → per-module
-      BOM lines; unlocks the three driverless costing lines (per-slab
-      purchase, seam welding, install/transport) and the seam rate.
-      Plan it WITH the costing tie-off (W-7) — the consumers live there.
+- [x] **W-3b — Phase 6 slice C2 — BUILT 2026-08-27, auto gate PASS at $0
+      (ADR-056).** An element over `fabrication.max_module_m` is now CUT by
+      the kernel into modules, and both workshop limits bind on the modules:
+      a 5 m basalt basin that weighs 11,346 kg as one piece and was
+      previously REFUSED now builds as 9 modules, heaviest 1,472 kg.
+      Volume conserved to 0.0000000000%; the module count is measured
+      (a hollow tube's 3x3x2 grid predicts 18 pieces and truly yields 16);
+      the quartered basin's seam area and perimeter match hand arithmetic
+      exactly, counted once per interface, not once per cut face.
+      `blade_fin_array`/`lotus_petal_array` are refused by name rather
+      than fragmented (a naive grid gives 25 pieces, lightest 0.9 kg).
+      **Two of three** costing lines moved from `not_computable` to
+      `missing_rate`; `crane_pick_kg` is now the heaviest MODULE.
+      **Plan corrections recorded openly (ADR-056):** per-slab purchase is
+      NOT unlocked by segmentation (see B-3); and the slice had to fix two
+      latent defects first — `/api/costing/bom/{id}` returned HTTP 500 for
+      every assembly ever built, and `/api/costing/bom/{id}.txt` (the
+      document handed to a client) returned 404 for every design. Eye gate
+      `gate_phase6c2_visual.md` queued under B-1, and it carries a real
+      question for the operator about how the yard cuts.
 - [ ] **W-4 — Phase 6 slice D: free-form.** `basin_elliptical`,
       `basin_spline`, `spline_loft_mass`. **Gate D:** a free-form mass
       composed with two library primitives — *or* an honest LIMITATIONS
@@ -155,9 +187,13 @@ Each entry is one loop iteration: `/lf-next` → approve → `/lf-build` →
       transient only; kill-and-resume gate at every boundary asserting an
       identical final `content_digest`; per-job status UI naming the failure
       class and one next action; retry spend as its own dashboard line.
-- [ ] **W-7 — Costing tie-off.** After B-3 and W-3: seam rate, intake budget
-      wired to the binding budget check (LIMITATIONS §15), per-element
-      costing for mixed materials, first client-ready quote.
+- [ ] **W-7 — Costing tie-off.** After B-3 (the rate card, including the
+      six new entries): intake budget wired to the binding budget check
+      (LIMITATIONS §15), **per-element costing for mixed materials** — an
+      assembly with two materials is refused with HTTP 409 today rather
+      than mispriced — and the first client-ready quote. The seam rate and
+      the module/seam drivers landed with W-3b; what is left here is
+      money, not measurement.
 - [ ] **W-8 — Final acceptance run** against the completion gate in
       `PHASE_7_COMPLETION_PLAN.md`: brief → spec → assembly → gates → render
       → critique → deltas → re-solve → export package → DesignDNA precedent,
@@ -194,6 +230,24 @@ Pick one up when a slice finishes early. Each is one commit.
       the operator's ruling). Sweep the other gates for the same pattern
       — frozen sets and hard-coded not-yet-built names — before slice D
       widens the registry again.
+      **It bit a THIRD time on 2026-08-27 (ADR-056):** `gate_phase6a1_auto`
+      §4 asserted "element bigger than max_module_m (segmentation is slice
+      C)" and matched the literal string `"slice C"` in the refusal — so
+      the slice that built segmentation turned it red. Corrected to assert
+      the refusals A1's own semantics still preserve. **The tell is a
+      roadmap phrase inside an assertion** ("slice C", "not built yet",
+      "arrives in"). Grep the gates for those strings before slice D.
+- [ ] **D-11 — Radial segmentation for round vessels.** Today a round
+      basin is cut on an axis-aligned square grid; a stone mason would
+      more likely cut pie segments. Needs the operator's ruling first
+      (`gate_phase6c2_visual.md` §2 asks it). Not a defect — the grid is
+      geometrically exact and works for every shape in the library — but
+      probably not how the yard works. (ADR-056, LIMITATIONS §11)
+- [ ] **D-12 — `blade_fin_array`/`lotus_petal_array` have no module
+      decomposition.** Refused by name when oversized, which is honest but
+      is not the answer. The real one is hub + N blades, and the count is
+      exact from `blade_count`; what it needs is the blade-root seam
+      measured and proven. (ADR-056)
 - [ ] **D-9 — Five export tests assume the render worker is DOWN** and fail
       with it running (`assert 'included' == 'unavailable'`; three in
       `test_export_package.py`, two in `test_assembly_api.py`). Found
@@ -201,6 +255,39 @@ Pick one up when a slice finishes early. Each is one commit.
       pristine image code, so it predates slice A2. The 9A GATE already
       accepts both worker states — the tests should too. Until fixed,
       "full suite green" is only true with the render worker stopped.
+      **Update 2026-08-27:** a SIXTH test joins them intermittently —
+      `test_export_package_is_reproducible_and_self_verifying` failed on
+      two different digests in a full worker-up suite run, but PASSES when
+      `test_assembly_api.py` is run alone with the worker up, and passes
+      with the worker stopped. So it is load-sensitive, not deterministic:
+      under a loaded 4-core box a Blender-tier convert job apparently
+      lands in one export and not the other, and the format statuses are
+      sealed into the manifest. Fix it with the other five — the package
+      digest should not depend on whether an explicitly
+      NON-reproducible tier happened to finish.
+      **Attribution is NOT closed — reopened 2026-08-27.** The operator
+      confirmed he started `luxuryform-render-worker-1` himself twice via
+      Docker Desktop (~06:59 and ~07:19 local). But it has now happened
+      FOUR times, each roughly three minutes after a
+      `docker compose stop render-worker`: starts at 12:12:30, 12:17:29
+      and 12:25:36 (docker `TimeNano` events). The 12:25:36 start landed
+      three minutes into a four-minute
+      `pytest tests/test_export_package.py` run and flipped that run's
+      result. It is not a restart policy (`RestartPolicy=no`,
+      `RestartCount=0`). A concurrent Claude session sharing these
+      containers is the likely cause and has been asked directly.
+      **Two lessons, both binding on any future suite claim:**
+      (a) pin and re-verify the render-worker state at the END of a run,
+      not just the start; (b) these containers are SHARED — check
+      `ListAgents` and coordinate before assuming you own the worker.
+- [ ] **D-9b — The C2 code has no clean full-suite run.** Best measured
+      result on it: `432 passed, 1 failed in 796.34s`, the failure being
+      the D-9 test above. Every attempt to get a clean one was
+      contaminated by the worker restarts described in D-9. Nothing was
+      edited to make it pass. Close this by fixing D-9 (make the five
+      tests accept both worker states, as the 9A gate already does),
+      then re-running the suite once — not by re-running it hoping for
+      a quiet window.
 
 ---
 

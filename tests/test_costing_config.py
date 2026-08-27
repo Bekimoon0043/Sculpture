@@ -28,7 +28,9 @@ from app.core.config import (
 
 def test_costing_template_loads_and_versions(config):
     costing = config.costing
-    assert costing.costing_version == "2026-08-v1"
+    # bumped to v2 by slice C2 (ADR-056): the card gained a per-material
+    # seam rate and the two truck capacities a trip count needs.
+    assert costing.costing_version == "2026-08-v2"
     assert costing.meta["default_currency"] == "USD"
 
 
@@ -73,11 +75,14 @@ def test_filled_copy_passes_require_filled(config):
         fill_amount(m["fabrication"]["labor"])
         m["fabrication"]["hours_per_m3"] = 40.0
         fill_amount(m["finishing"])
+        fill_amount(m["seam"])
     data["workshop"]["overhead_pct"] = 15.0
     fill_amount(data["install"]["crew_day_rate"])
     data["install"]["crew_size"] = 3
     data["install"]["days_per_tonne"] = 1.5
     fill_amount(data["install"]["transport"])
+    data["install"]["truck_payload_kg"] = 12000.0
+    data["install"]["modules_per_trip"] = 4
     data["contingency_pct"] = 10.0
     data["markup_pct"] = 25.0
     data["fx_rates"]["ETB"] = {"rate": 140.0, "as_of": "2026-08-04"}

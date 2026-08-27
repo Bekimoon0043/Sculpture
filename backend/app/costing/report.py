@@ -41,6 +41,27 @@ def render_bom(bom: Bom, budget: BudgetCheck | None = None) -> str:
     a("COST DRIVERS (measured by the validation gate — not re-measured here)")
     for k, v in bom.drivers.items():
         a(f"  {k:20} {v}")
+    # Slice C2 (ADR-056): say in one line what the workshop actually makes
+    # and what the crane actually picks, because "9 modules, heaviest 1.5 t"
+    # is the sentence the operator reads before anything else on this page.
+    count = bom.drivers.get("module_count")
+    if isinstance(count, int) and count >= 1:
+        a("")
+        a("WHAT SHIPS")
+        pick = bom.drivers.get("crane_pick_kg")
+        a(f"  modules              {count}")
+        a(f"  heaviest single pick {pick} kg"
+          + ("  (the whole piece — nothing is split)" if count == 1 else
+             "  (a module, not the assembled fountain)"))
+        seam = bom.drivers.get("seam_length_m")
+        if seam is not None:
+            joint = bom.drivers.get("joint_seam_length_m") or 0.0
+            a(f"  seam to join         {seam:,.3f} m run"
+              f"  ({float(seam) - float(joint):,.3f} m cut + "
+              f"{float(joint):,.3f} m at element joints)")
+            area = bom.drivers.get("seam_area_m2")
+            if area is not None:
+                a(f"  bedded seam face     {area:,.4f} m2")
     if bom.fx_used:
         a("")
         a("FX")

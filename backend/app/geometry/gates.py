@@ -852,6 +852,22 @@ def validate_fabrication_gate(
                     message=f"{name} must meet the {e.get('material_id')} wall floor",
                 )
 
+        # --- segmentation: what the workshop actually makes (ADR-056) -----
+        # Since slice C2 the lift and envelope questions are about a MODULE,
+        # not an element: a 5 m basin no crane could pick ships as nine
+        # pieces. `seg` is absent from manifests written before 2026-08-27,
+        # and absence is treated as "one module, not measured" — never as
+        # zero modules, which would read as a free design.
+        seg_all = manifest.get("segmentation") or {}
+        seg = (seg_all.get("elements") or {}).get(eid) or {}
+        seg_modules = seg.get("modules") or []
+        seg_measured = bool(seg_modules)
+        module_count = len(seg_modules) if seg_measured else 1
+        heaviest = (max(float(m["mass_kg"]) for m in seg_modules)
+                    if seg_measured else mass)
+        widest = (max(max(float(v) for v in m["bbox_mm"]) for m in seg_modules)
+                  if seg_measured else (max(dims) if dims else 0.0))
+
         # --- lift mass ---------------------------------------------------
         if max_lift is None:
             b.needs_input(
@@ -862,12 +878,15 @@ def validate_fabrication_gate(
                 units="kg",
             )
         else:
+            picked = ("the whole element" if module_count == 1
+                      else f"the heaviest of {module_count} modules")
             b.add(
                 f"{eid}.mass_kg",
-                ok=mass <= float(max_lift), value=round(mass, 2),
+                ok=heaviest <= float(max_lift), value=round(heaviest, 2),
                 limit=float(max_lift), units="kg",
-                basis="Design Spec fabrication.max_lift_kg",
-                message="element mass must be liftable and transportable as one module",
+                basis=(f"Design Spec fabrication.max_lift_kg; pick weight is "
+                       f"{picked} (element total {mass:.1f} kg)"),
+                message="the heaviest single module must be liftable",
             )
 
         # --- module envelope + split feasibility -------------------------
@@ -881,30 +900,61 @@ def validate_fabrication_gate(
             )
         elif dims:
             limit_mm = float(max_module) * 1000.0
-            worst = max(dims)
             b.add(
                 f"{eid}.module_bbox_mm",
-                ok=worst <= limit_mm, value=[round(v, 2) for v in dims],
+                ok=widest <= limit_mm, value=round(widest, 2),
                 limit=round(limit_mm, 2), units="mm",
-                basis="Design Spec fabrication.max_module_m x 1000",
-                message="element bounding box must fit the maximum module envelope",
+                basis=(f"Design Spec fabrication.max_module_m x 1000; "
+                       f"longest edge of the largest of {module_count} "
+                       f"module(s) (element bbox "
+                       f"{dims[0]:.0f} x {dims[1]:.0f} x {dims[2]:.0f} mm)"),
+                message="every module must fit the maximum module envelope",
             )
-            if worst > limit_mm:
-                needed = math.ceil(worst / limit_mm)
+            refusal = seg.get("refusal")
+            if widest > limit_mm and not seg_measured:
+                # A manifest written before 2026-08-27 carries no
+                # segmentation block. The honest answer is not a module
+                # count computed from the bbox — that is the predicted
+                # number segmentation exists to replace — it is "rebuild
+                # this and I will measure it" (LIMITATIONS.md §11).
+                b.needs_input(
+                    f"{eid}.module_split_count",
+                    missing="a rebuild of this design on the current platform",
+                    basis="manifest carries no segmentation block",
+                    units="modules",
+                    message=(
+                        f"this element is {widest:.0f} mm against a "
+                        f"{limit_mm:.0f} mm module limit, and this manifest "
+                        "predates segmentation, so how many modules it splits "
+                        "into has never been measured"
+                    ),
+                )
+            elif refusal:
+                b.add(
+                    f"{eid}.module_split_count",
+                    ok=False, value=module_count, limit=1, units="modules",
+                    basis=f"segmentation mode {seg.get('mode')!r}",
+                    message=refusal,
+                )
+            elif module_count > 1:
                 joint_count = sum(
                     1 for j in joints
                     if str(j.get("child")) == eid or str(j.get("parent")) == eid
                 )
+                grid = seg.get("grid") or {}
+                seam_m = float(seg.get("seam_length_mm") or 0.0) / 1000.0
                 b.add(
                     f"{eid}.module_split_count",
-                    ok=False, value=needed, limit=1, units="modules",
-                    basis=f"ceil(longest edge {worst:.0f} mm / module limit "
-                          f"{limit_mm:.0f} mm)",
+                    ok=True, value=module_count, limit=None, units="modules",
+                    basis=(f"measured connected solids after an "
+                           f"{grid.get('x')} x {grid.get('y')} x "
+                           f"{grid.get('z')} planar cut "
+                           f"(predicted cells {seg.get('predicted_cells')})"),
                     message=(
-                        f"this element would have to ship as {needed} modules, but "
-                        f"segmentation is not built (slice C). It carries "
-                        f"{joint_count} declared joint(s), so a split plane must also "
-                        f"miss every mating face. Reduce the element instead"
+                        f"ships as {module_count} modules, heaviest "
+                        f"{heaviest:.1f} kg, with {seam_m:.2f} m of seam to "
+                        f"join on site; it carries {joint_count} declared "
+                        f"element joint(s) as well"
                     ),
                 )
 
