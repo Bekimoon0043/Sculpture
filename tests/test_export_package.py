@@ -137,12 +137,28 @@ def test_every_cad_and_mesh_format_the_image_can_write_is_written(tmp_path):
         assert len(by_format[fmt].sha256) == 64
 
 
-def test_formats_needing_the_render_worker_are_unavailable_not_failed(tmp_path):
+def test_render_worker_formats_are_honest_in_both_worker_states(tmp_path):
+    """D-9: the suite must pass with the render worker up AND down.
+
+    The 9A gate already accepts both states (ADR-045); this test used to
+    hard-code the worker being DOWN. What is actually guaranteed, per
+    format: never `failed`, never silent -- down means `unavailable` with
+    the reason naming the render worker, up means `included` with real
+    bytes and a hash. Mixed results across the four are legal too: on a
+    loaded box one conversion can time out while another lands.
+    """
     _, _, results, _ = _build(tmp_path)
     by_format = {r.format: r for r in results}
     for fmt in ("USD", "USDZ", "FBX", "ABC"):
-        assert by_format[fmt].status == "unavailable"
-        assert "render worker" in by_format[fmt].reason
+        result = by_format[fmt]
+        assert result.status in ("included", "unavailable"), (
+            f"{fmt}: {result.status}: {result.error or result.reason}"
+        )
+        if result.status == "unavailable":
+            assert "render worker" in result.reason
+        else:
+            assert result.bytes and result.bytes > 0
+            assert len(result.sha256 or "") == 64
 
 
 def test_dwg_and_skp_are_impossible_with_a_documented_workaround(tmp_path):
@@ -215,12 +231,27 @@ def test_mesh_tier_records_what_it_was_derived_from(tmp_path):
     assert "derived_from" not in step
 
 
-def test_all_exported_formats_are_byte_identical_across_runs(tmp_path):
+def test_all_deterministic_formats_are_byte_identical_across_runs(tmp_path):
+    """D-9: only the DETERMINISTIC formats promise identical bytes.
+
+    The Blender-tier formats embed creation timestamps and differ on every
+    export by design (ADR-045) -- with the render worker up they used to
+    enter this comparison and fail it. The registry's own `deterministic`
+    flag decides membership, and the floor assertion keeps the filter from
+    ever hollowing the test out.
+    """
+    from app.geometry.export_formats import FORMATS_BY_NAME
+
+    deterministic = {f for f, s in FORMATS_BY_NAME.items() if s.deterministic}
+    assert {"STEP", "DXF", "STL", "BREP"} <= deterministic
     _, _, first, _ = _build(tmp_path, "a")
     _, _, second, _ = _build(tmp_path, "b")
-    a = {r.format: r.sha256 for r in first if r.sha256}
-    b = {r.format: r.sha256 for r in second if r.sha256}
-    assert a == b, "an export format is not deterministic"
+    a = {r.format: r.sha256 for r in first
+         if r.sha256 and r.format in deterministic}
+    b = {r.format: r.sha256 for r in second
+         if r.sha256 and r.format in deterministic}
+    assert a == b, "a deterministic export format is not deterministic"
+    assert {"STEP", "DXF", "STL"} <= set(a)
 
 
 # ---------------------------------------------------------------------------
@@ -338,6 +369,14 @@ def test_content_digest_excludes_provenance_so_it_tracks_the_design(tmp_path):
 
 
 def test_package_manifest_is_honest_about_what_is_missing(tmp_path):
+    """D-9b: the sealed manifest describes THE PACKAGE, not the runtime.
+
+    A Blender-tier format is never sealed, so its manifest entry is the
+    constant `excluded` whatever the render worker was doing -- the live
+    `included`/`unavailable` status belongs to the exports API, which is
+    per-run by nature. This is what makes the content digest independent
+    of worker state.
+    """
     _, manifest, _ = _package(tmp_path, "a")
     assert manifest["costing_included"] is False
     assert manifest["costing_unavailable_reason"] == "no BOM in this test"
@@ -345,7 +384,63 @@ def test_package_manifest_is_honest_about_what_is_missing(tmp_path):
     statuses = {e["format"]: e["status"] for e in manifest["exports"]}
     assert statuses["STEP"] == "included"
     assert statuses["DWG"] == "impossible"
-    assert statuses["USD"] == "unavailable"
+    for fmt in ("USD", "USDZ", "FBX", "ABC"):
+        assert statuses[fmt] == "excluded"
+    assert manifest["omitted_non_reproducible"] == ["ABC", "FBX", "USD", "USDZ"]
+
+
+def test_package_digest_does_not_depend_on_render_worker_state(tmp_path):
+    """D-9b regression, provable at $0 with no worker.
+
+    The real failure: two exports of one design during a worker-UP run
+    sealed different digests because a Blender conversion landed in one and
+    timed out in the other. Here the same design is packaged twice -- once
+    with the worker-down results as they are, once with the Blender-tier
+    results rewritten to the exact shape a live conversion produces -- and
+    the packages must be byte-identical, digest included.
+    """
+    from app.geometry.export_formats import ExportResult, FORMATS_BY_NAME
+
+    _, manifest, results, out = _build(tmp_path, "a")
+    fake = out / "assembly.usd"
+    fake.write_bytes(b"not a real USD; the packager must never read this")
+
+    as_if_worker_up = []
+    for r in results:
+        spec = FORMATS_BY_NAME.get(r.format)
+        if spec is not None and not spec.deterministic:
+            as_if_worker_up.append(ExportResult(
+                format=r.format, status="included", tier=r.tier,
+                purpose=r.purpose, path=fake,
+                sha256=hashlib.sha256(fake.read_bytes()).hexdigest(),
+                bytes=fake.stat().st_size, duration_ms=1234.5,
+                derived_from=spec.derived_from,
+            ))
+        else:
+            as_if_worker_up.append(r)
+
+    def _seal(name, export_results):
+        return build_luxexchange_package(
+            out / name,
+            seed=SEED,
+            design={"design_id": "d-1", "seed": SEED},
+            request_payload={"elements": ELEMENTS, "seed": SEED},
+            assembly_manifest=manifest,
+            validation_reports={"assembly_mesh": {"passed": True}},
+            exports=export_results,
+            costing=None,
+            costing_unavailable_reason="no BOM in this test",
+            provenance={"design_created_at": "2026-08-21T00:00:00+00:00"},
+        )
+
+    path_down, manifest_down, digest_down = _seal("down.zip", results)
+    path_up, manifest_up, digest_up = _seal("up.zip", as_if_worker_up)
+
+    assert digest_down == digest_up
+    assert manifest_down == manifest_up
+    assert path_down.read_bytes() == path_up.read_bytes()
+    with zipfile.ZipFile(path_up) as zf:
+        assert "exports/assembly.usd" not in set(zf.namelist())
 
 
 def test_the_sealed_bom_carries_no_wall_clock_reproducible_bom():

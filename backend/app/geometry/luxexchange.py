@@ -259,34 +259,45 @@ def build_luxexchange_package(
     from app.geometry.export_formats import FORMATS_BY_NAME
 
     export_entries = []
-    omitted_non_reproducible: list[dict[str, Any]] = []
+    omitted_non_reproducible: list[str] = []
     for result in exports:
-        entry = result.to_manifest_entry()
         spec = FORMATS_BY_NAME.get(result.format)
         reproducible = spec.deterministic if spec is not None else True
-        if result.status == "included" and result.path and not reproducible:
-            entry["path"] = None
-            entry["in_package"] = False
-            # The manifest is COVERED by the content digest, so nothing that
-            # varies between two builds may go in it. That includes this
-            # format's own sha256 and byte count -- the very things that vary.
-            # They are recorded in provenance.json instead, which is excluded
-            # from the digest precisely so per-build facts have a home.
-            entry["sha256"] = None
-            entry["bytes"] = None
-            entry["excluded_reason"] = (
-                "produced, but not sealed into this package: two exports of "
-                "the same design do not produce identical bytes for this "
-                "format (embedded creation timestamps), and the package is "
-                "guaranteed byte-reproducible. Download it separately."
-            )
-            omitted_non_reproducible.append({
+        if not reproducible:
+            # A non-reproducible format is NEVER sealed, so the truth about
+            # THE PACKAGE is the same whether or not the render worker
+            # happened to be up when this export ran. The manifest is covered
+            # by the content digest, so this entry must be built from the
+            # format SPEC alone -- a status, reason, hash, byte count or
+            # duration taken from the runtime result would make two exports
+            # of the same design seal different manifests and the package
+            # digest would follow the render worker's uptime (D-9b). This
+            # build's availability lives on the exports table row and the
+            # exports API, which are per-run by nature.
+            entry: dict[str, Any] = {
                 "format": result.format,
-                "filename": Path(result.path).name,
-                "sha256_this_build": result.sha256,
-                "bytes": result.bytes,
-            })
-        elif result.status == "included" and result.path:
+                "status": "excluded",
+                "tier": result.tier,
+                "purpose": result.purpose,
+                "path": None,
+                "sha256": None,
+                "bytes": None,
+                "in_package": False,
+                "excluded_reason": (
+                    "never sealed into this package: two exports of the same "
+                    "design do not produce identical bytes for this format "
+                    "(embedded creation timestamps), and the package is "
+                    "guaranteed byte-reproducible. When the render worker is "
+                    "running it is produced and downloadable separately."
+                ),
+            }
+            if spec is not None and spec.derived_from:
+                entry["derived_from"] = spec.derived_from
+            omitted_non_reproducible.append(result.format)
+            export_entries.append(entry)
+            continue
+        entry = result.to_manifest_entry()
+        if result.status == "included" and result.path:
             name = f"exports/{Path(result.path).name}"
             builder.add_file(name, Path(result.path))
             entry["path"] = name
@@ -314,11 +325,11 @@ def build_luxexchange_package(
         "exports": export_entries,
         # Named explicitly so a fabricator reading the manifest learns that
         # these formats exist and why they are not in the ZIP, instead of
-        # noticing an absence and assuming the export failed. Only the FORMAT
-        # NAMES -- the per-build hashes live in provenance.json, because this
-        # manifest is digest-covered and must be identical between builds.
-        "omitted_non_reproducible": sorted(
-            e["format"] for e in omitted_non_reproducible),
+        # noticing an absence and assuming the export failed. ALWAYS the full
+        # list of non-reproducible formats -- not just the ones this build
+        # happened to produce -- so the manifest (digest-covered) is
+        # identical whatever the render worker was doing at export time.
+        "omitted_non_reproducible": sorted(omitted_non_reproducible),
         "renders": render_entries,
         "package_layout": {
             MANIFEST_NAME: "this manifest",

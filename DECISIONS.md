@@ -3260,3 +3260,73 @@ synthetic report and never goes through the route. The new gate's §9 does.
    confined to the two array primitives, which are refused by mode. A
    module too small to be real will be VISIBLE in the printed masses
    rather than hidden behind a threshold nobody derived.
+
+---
+
+## ADR-057 - PR-0: both render-worker states are first-class, and the package digest ignores them (2026-08-27)
+
+### Context
+
+Production v1 program, slice PR-0 (approved 2026-08-27). Debt D-9: six
+tests hard-coded the render worker being DOWN
+(`assert status == "unavailable"`) and failed with it running, so "full
+suite green" was only true in one worker state -- while the Phase 9A GATE
+had accepted both states since ADR-045. Debt D-9b, the deeper defect the
+flaky sixth test exposed: two exports of one design during a worker-up run
+sealed DIFFERENT content digests, because the LUXEXCHANGE manifest
+recorded each Blender-tier format's runtime status (`included` vs
+`unavailable`), and on a loaded 4-core box a conversion can land in one
+export and time out in the other. The package digest -- the number that
+identifies a design -- followed the render worker's uptime.
+
+### Decisions
+
+1. **The sealed manifest describes THE PACKAGE, not the runtime.** A
+   non-reproducible format (registry flag `deterministic: False` --
+   USD/USDZ/FBX/ABC, ADR-045) is never sealed into the ZIP, so the truth
+   about the package is constant. Its manifest entry is now built from
+   the format SPEC alone: status `excluded`, no path, no sha256, no byte
+   count, no duration, a fixed `excluded_reason`, `in_package: false`.
+   Nothing taken from the runtime result may enter the digest-covered
+   manifest. `omitted_non_reproducible` always lists ALL non-reproducible
+   formats, not just the ones this build happened to produce.
+
+2. **Live availability stays on the per-run surfaces.** The exports table
+   rows and the exports API still report `unavailable` (worker down,
+   reason naming the compose command) or `included` (worker up,
+   downloadable individually) -- per ADR-045, unchanged. The status
+   vocabulary `excluded` exists only inside the sealed manifest.
+
+3. **Tests assert per worker state, never assume one.** The six D-9
+   tests now branch on the observed state and assert the honest contract
+   in each: down means `unavailable` naming the render worker; up means
+   `included` with real bytes and a 64-char sha256; `failed` is never
+   acceptable; mixed results across the four formats are legal (a loaded
+   box can time out one conversion). The byte-identity test compares
+   only formats the registry declares deterministic, with a floor
+   assertion (STEP/DXF/STL/BREP must be in the set) so the filter cannot
+   hollow the test.
+
+4. **The digest property is gated at $0 with no worker.** A new
+   regression test packages one design twice -- once with worker-down
+   results, once with the Blender-tier results rewritten to the exact
+   shape a live conversion produces -- and asserts byte-identical
+   packages, digest included. The D-9b failure mode cannot reappear
+   silently in either worker state.
+
+### Consequences
+
+- The suite is required to pass with the render worker up AND down; both
+  runs are recorded in PRODUCTION_V1_REPORT.md (PR-0).
+- A package sealed after this change has a different content digest than
+  one sealed before it for the same design (four manifest entries changed
+  shape). Historic packages remain verifiable by their own shipped
+  verifier; a new export of an old design re-seals with the new manifest.
+  The Phase 9A within-run reproducibility guarantee is unchanged and now
+  also holds ACROSS worker states.
+- Container-state hygiene, learned from the contaminated runs behind
+  D-9b: suite and gate evidence records the worker state before AND after
+  the run (docker inspect of State.Status and State.StartedAt), and a
+  worker that must stay down is REMOVED (docker compose rm -sf
+  render-worker), not merely stopped -- a removed container offers no
+  Start button in Docker Desktop to click by accident.

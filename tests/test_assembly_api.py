@@ -406,7 +406,14 @@ def test_export_status_reports_four_honest_statuses(client):
     assert by_format["DXF"]["status"] == "included"
     assert by_format["STL"]["status"] == "included"
     assert by_format["DWG"]["status"] == "impossible"
-    assert by_format["USD"]["status"] == "unavailable"
+    # D-9: the render tier depends on the worker's state -- down means
+    # `unavailable` naming the worker, up means `included`. Never `failed`.
+    # The API row carries the reason in its `error` field (the exports
+    # table merges reason into error; there is no `reason` key here).
+    usd = by_format["USD"]
+    assert usd["status"] in ("included", "unavailable"), usd
+    if usd["status"] == "unavailable":
+        assert "render worker" in usd["error"]
     assert body["package_built"] is True
     assert body["last_job"]["status"] == "completed"
     # Hashes are stored, not recomputed on every poll.
@@ -574,9 +581,14 @@ def test_an_absent_format_refuses_with_its_reason_not_a_broken_file(client):
     ).json()["design_id"]
     client.post(f"/api/geometry/assembly/{design_id}/exports")
 
+    # D-9: with the render worker down USD refuses with the reason; with it
+    # up the download works. Either way, never a broken file.
     usd = client.get(f"/api/geometry/assembly/{design_id}/exports/USD/download")
-    assert usd.status_code == 409
-    assert "render worker" in usd.json()["detail"]
+    if usd.status_code == 409:
+        assert "render worker" in usd.json()["detail"]
+    else:
+        assert usd.status_code == 200
+        assert len(usd.content) > 0
 
     dwg = client.get(f"/api/geometry/assembly/{design_id}/exports/DWG/download")
     assert dwg.status_code == 409

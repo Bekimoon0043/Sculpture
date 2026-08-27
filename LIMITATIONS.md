@@ -485,6 +485,13 @@ is NOT there:
   stays out. The manifest lists them under `omitted_non_reproducible` with a
   per-format `excluded_reason`, so nothing is silently missing.
 
+  **Update 2026-08-27 (PR-0, ADR-057):** their SEALED manifest entries are
+  now the constant status `excluded` whatever the render worker was doing at
+  export time — the live `included`/`unavailable` status lives on the
+  exports API only. This is what makes the package content digest
+  independent of worker state; before it, two exports of one design during
+  a worker-up run could seal different digests (D-9b).
+
 - **DAE and 3MF report `unavailable`** naming the missing optional Python
   package (`pycollada`, `networkx`). Both are small, but adding them means a
   download on a connection that has cost this project more time than any
