@@ -265,21 +265,39 @@ Pick one up when a slice finishes early. Each is one commit.
       sealed into the manifest. Fix it with the other five — the package
       digest should not depend on whether an explicitly
       NON-reproducible tier happened to finish.
-      **Attribution is NOT closed — reopened 2026-08-27.** The operator
-      confirmed he started `luxuryform-render-worker-1` himself twice via
-      Docker Desktop (~06:59 and ~07:19 local). But it has now happened
-      FOUR times, each roughly three minutes after a
-      `docker compose stop render-worker`: starts at 12:12:30, 12:17:29
-      and 12:25:36 (docker `TimeNano` events). The 12:25:36 start landed
-      three minutes into a four-minute
-      `pytest tests/test_export_package.py` run and flipped that run's
-      result. It is not a restart policy (`RestartPolicy=no`,
-      `RestartCount=0`). A concurrent Claude session sharing these
-      containers is the likely cause and has been asked directly.
-      **Two lessons, both binding on any future suite claim:**
+      **Attribution, 2026-08-27 — six starts, all pointing at a human
+      hand, four of them by elimination rather than confession.** The
+      operator confirmed starting `luxuryform-render-worker-1` himself via
+      Docker Desktop for the ~06:59 and ~07:19 pair. Four more followed,
+      after a `docker compose stop render-worker` each time: 12:12:30,
+      12:17:29 and 12:25:36 (docker `TimeNano`). The 12:25:36 start landed
+      three minutes into a four-minute `pytest tests/test_export_package.py`
+      run and flipped its result.
+      Session `luxuryform-61` ran read-only forensics and eliminated every
+      automated channel: `RestartPolicy=no` / `RestartCount=0`; no
+      scheduled task matching docker/compose/luxuryform; no host process
+      with `compose` in its command line except VS Code's compose language
+      servers, which parse and execute nothing; the only running WSL
+      distro is `docker-desktop` itself, with no compose process inside;
+      no Claude cron jobs; and all three peer sessions denied it with
+      evidence.
+      **The interval is the evidence, and my first note got it wrong.** I
+      wrote "roughly three minutes after each stop", implying a timer. The
+      real gaps are **33 seconds** (12:17:29) and **3 m 05 s** (12:25:36).
+      That variance is human-like, not timer-like, and it is what makes
+      manual Docker Desktop action the surviving explanation.
+      **Still UNCONFIRMED for the four:** attributed by elimination, not
+      by admission. `luxuryform-61` has put the question to the operator.
+      Do not record it as settled until he answers — this file has already
+      carried one confidently wrong cause (see the OOM correction).
+      **Three lessons, all binding on any future suite claim:**
       (a) pin and re-verify the render-worker state at the END of a run,
       not just the start; (b) these containers are SHARED — check
-      `ListAgents` and coordinate before assuming you own the worker.
+      `ListAgents` and coordinate before assuming you own the worker;
+      (c) for a worker-DOWN run use `docker compose rm -sf render-worker`
+      rather than `stop` — **a removed container has no Start button in
+      Docker Desktop to click** — and recreate it with the render profile
+      when you need it up. (`luxuryform-61`'s measure, adopted here.)
 - [ ] **D-9b — The C2 code has no clean full-suite run.** Best measured
       result on it: `432 passed, 1 failed in 796.34s`, the failure being
       the D-9 test above. Every attempt to get a clean one was
