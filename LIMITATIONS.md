@@ -730,3 +730,25 @@ The shell is a pipeline (ADR-041). What it does NOT do:
   only the numpad — the operator's laptop has none. Ctrl+digit is left to
   the browser (tab switching), which is why opposites are on Shift, unlike
   Blender's Ctrl.
+
+## 19. The API has no authentication; loopback binding is the only lock (2026-08-27, PR-3, ADR-058)
+
+- **There is no login, no token, no session, no user model.** Every API
+  route — including the ones that read full Council transcripts and the
+  ones that dispatch PAID provider calls — answers to anyone who can
+  reach the port. This was true from Phase 1 and is recorded here now.
+- **The only access control is that the ports answer on `127.0.0.1`
+  alone** (PR-3): Docker publishes 8000 and 5173 loopback-only, so only
+  processes on the operator's own machine can connect. `gate_pr3_auto.py`
+  asserts the compose file AND the live sockets on every roster run,
+  because a regression here is perfectly silent — localhost keeps working
+  identically while the LAN quietly regains access.
+- **LAN and remote access are unsupported, deliberately, with no
+  documented enable path.** No override file or command ships. Access
+  from another device may return only as part of a future slice that
+  builds real authentication first, and that slice would rewrite this
+  entry (docs/operator/11_network_privacy.md says the same in the
+  operator's language).
+- **Out of the gate's sight:** a manual `docker run -p` outside compose,
+  and any reverse proxy or tunnel the operator runs themselves. Do not
+  put one in front of the platform while this entry exists.

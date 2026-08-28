@@ -13,6 +13,93 @@ verbatim gate evidence — the same contract as the phase reports.
 
 ---
 
+## PR-3 — the platform answers on loopback only (CLOSED 2026-08-28: auto gate PASS + operator visual gate PASS)
+
+**Scope (approved with amendments 2026-08-27).** docker-compose.yml
+published ports 8000/5173 on every host interface while the API has no
+authentication — anyone on the LAN could read designs and transcripts
+and dispatch PAID provider calls. Change: host publishes bind
+`127.0.0.1` (3-part form); a standing roster gate (`gate_pr3_auto.py`,
+the 19th script) asserts the compose file AND the live sockets; operator
+doc `docs/operator/11_network_privacy.md`; LIMITATIONS §19 records the
+no-authentication truth; no LAN-enable path ships. Decisions: ADR-058.
+Container-internal binds (uvicorn/Vite `0.0.0.0`) are untouched — they
+are what the publish and the compose network connect to.
+
+**Two defects in the slice's own first build, found by its own gate and
+fixed openly (Rule 12):** (1) the first live run's health check hit the
+backend seconds after a recreate and failed with RemoteDisconnected
+(docker-proxy accepts, backend not yet listening) — twice; the positive
+loopback checks gained a 60 s startup deadline with per-attempt
+reporting (judgement value, ADR-058), which still fails loudly if the
+service never becomes healthy. (2) The static section as first written
+would have parsed the IMAGE's baked build-time copy of
+docker-compose.yml when run in-container — a stale snapshot that could
+pass while the governing host file regressed, the exact silent hole the
+gate exists to close; it now refuses the baked copy by name and takes
+the host's live file over stdin. (Operational note: one rebuild+gate
+run on 2026-08-27 hung for ~16 h — laptop sleep mid-build, no evidence
+produced; the run was stopped and repeated identically.)
+
+### Gate evidence, verbatim (2026-08-28)
+
+Binding applied and observed (`docker compose up -d`, then `docker port`):
+
+```
+8000/tcp -> 127.0.0.1:8000
+5173/tcp -> 127.0.0.1:5173
+```
+
+STATIC — in the backend container, the HOST's live compose file piped in:
+
+```
+Get-Content docker-compose.yml -Raw | docker compose exec -T backend python scripts/gate_pr3_auto.py --static --stdin
+STATIC: parsing docker-compose.yml from stdin (the HOST's live file)
+  ok   backend: ports '127.0.0.1:8000:8000' is loopback-bound
+  ok   frontend: ports '127.0.0.1:5173:5173' is loopback-bound
+  ok   geo-worker: network_mode none, no ports
+  ok   render-worker: network_mode none, no ports
+  ok   frontend: VITE_API_TARGET='http://backend:8000' (service DNS — the UI never crosses a host port, so loopback cannot break it)
+STATIC: PASS
+sections run: static
+PASS — all sections that ran passed at $0 with no network beyond this machine's own interfaces.
+STATIC-EXIT=0
+```
+
+LIVE — on the host:
+
+```
+python scripts\gate_pr3_auto.py --live
+LIVE: positive checks on loopback — the real services, not just open ports (booting services are retried until 60 s, then failed loudly)
+  ok   127.0.0.1:8000/api/health -> HTTP 200, status='ok', db.ok=True (attempt 19)
+  ok   127.0.0.1:5173/ -> HTTP 200, serves 'LuxuryForm Studio' (attempt 1)
+LIVE loopback: PASS
+LIVE LAN: negative checks — every non-loopback IPv4 must REFUSE (8000, 5173): ['172.25.16.1', '192.168.0.144']
+  ok   172.25.16.1:8000 refused (timeout 2.0s)
+  ok   172.25.16.1:5173 refused (timeout 2.0s)
+  ok   192.168.0.144:8000 refused (timeout 2.0s)
+  ok   192.168.0.144:5173 refused (timeout 2.0s)
+LIVE LAN: PASS
+sections run: live-lan, live-loopback
+PASS — all sections that ran passed at $0 with no network beyond this machine's own interfaces.
+LIVE-EXIT=0
+```
+
+All three required sections — static, live-loopback, live-lan — ran and
+passed.
+
+**Operator visual gate (`gate_pr3_visual.md`, $0): PASS, signed
+2026-08-28** — the operator confirmed the localhost frontend and health
+endpoint work, an existing saved design loads correctly, and their phone
+on the same Wi-Fi could not reach either port. The off-machine refusal
+is thereby confirmed independently of the gate's own on-machine checks.
+
+### Cost
+
+$0.00 — no AI call; no network beyond this machine's own interfaces.
+
+---
+
 ## PR-0 — both render-worker states, and a state-independent package digest (2026-08-27)
 
 **Scope.** Entry condition: Phase 6 C2 committed and pushed by the peer

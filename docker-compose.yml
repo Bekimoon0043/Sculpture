@@ -38,7 +38,12 @@ services:
         # Plan B donor image (only used by Dockerfile.donor):
         GL_DONOR_IMAGE: ${GL_DONOR_IMAGE:-eclipse-temurin:21-jdk-noble}
     ports:
-      - "8000:8000"
+      # ADR-058 (PR-3): host-loopback ONLY. The API has no authentication,
+      # so the published port is the only access control. The 3-part form
+      # binds the host side to 127.0.0.1; the container still listens on
+      # 0.0.0.0 internally (required for the publish and for compose-network
+      # traffic). gate_pr3_auto.py asserts this line stays loopback.
+      - "127.0.0.1:8000:8000"
     env_file: .env
     environment:
       # ADR-028: the scratch handoff dir, SAME in-container path as the
@@ -152,7 +157,11 @@ services:
     # start-time install) must never shadow the image's own.
     build: ./frontend
     ports:
-      - "5173:5173"
+      # ADR-058 (PR-3): host-loopback ONLY — see the backend ports note.
+      # The UI reaches the backend over the compose network
+      # (VITE_API_TARGET below), never through the host port, so this
+      # binding cannot break frontend-to-backend traffic.
+      - "127.0.0.1:5173:5173"
     environment:
       - VITE_API_TARGET=http://backend:8000
     depends_on:

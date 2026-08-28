@@ -55,13 +55,17 @@ to the loop is `docs/operator/06_the_loop.md`; the queue itself is `NEXT.md`.
 - **Commit per gate**, with a clear message. One commit that can be rolled back.
 - Keep `NEXT.md`, `LIMITATIONS.md`, `DECISIONS.md` and the phase report current in the same commit as the change.
 - After any change touching `backend/`, tell the operator to rebuild: `docker compose up --build -d`.
-- Gates: every `scripts\gate_*_auto.py` runs at $0 with no network. Run the
-  whole set before and after any change to `backend/`; **seventeen of the eighteen pass as of
-  2026-08-27** (all but `gate_phase9b_auto`, which needs the render
-  worker up) (render worker held down for the run, and re-verify it is
-  still down when the run ENDS — a mid-run manual start silently flips the
-  D-9 export tests). `gate_phase9b_auto.py` additionally needs the render-worker
-  container up.
+- Gates: every `scripts\gate_*_auto.py` runs at $0 with no network beyond
+  the operator's own machine. **The roster is exactly the files matching
+  that glob — 19 scripts as of 2026-08-27 (PR-3 added
+  `gate_pr3_auto.py`). Nothing discovers or runs them automatically: a
+  session lists the glob and runs each one explicitly**, before and after
+  any change to `backend/`. All 18 pre-PR-3 gates passed on 2026-08-27
+  (PR-0 evidence: 17 with the render worker down + `gate_phase9b_auto`
+  with it up; see `PRODUCTION_V1_REPORT.md`). Pin the render-worker state
+  before a run and re-verify it when the run ENDS — a mid-run manual
+  start silently flips results (use `docker compose rm -sf render-worker`
+  for a worker-down run, not `stop`).
 - The Hub status file regenerates with `python scripts\generate_hub_status.py --out "E:\Burook platform development\Luxurycon\AI-Team-Hub\luxuryform_status.json"`.
 
 ## Build status
@@ -124,7 +128,12 @@ root-to-branch persistence and cross-project rejection before CAD work. Existing
 designs remain Ungrouped. Backend/frontend auto gate PASS; visual gate pending.
 
 Auto gates, all $0 and offline:
-`gate_phase2/3/4/5/6a1/6a2/6b/6c/6c2/costing/8/8b/9a/9b/11/13a/14/15_auto.py`.
+`gate_phase2/3/4/5/6a1/6a2/6b/6c/6c2/costing/8/8b/9a/9b/11/13a/14/15_auto.py`
+plus `gate_pr3_auto.py` (loopback binding; split like gate 14 — STATIC
+in the backend container with the host's live compose file piped in:
+`Get-Content docker-compose.yml -Raw | docker compose exec -T backend
+python scripts/gate_pr3_auto.py --static --stdin`; LIVE on the host:
+`python scripts\gate_pr3_auto.py --live`).
 Note `gate_phase9b_auto.py` and the Blender-tier sections of
 `gate_phase9a_auto.py` need the render-worker container running
 (`docker compose --profile render up -d render-worker`); both still cost $0 and
@@ -140,7 +149,7 @@ Awaiting the operator's visual gates: `gate_phase8_visual.md`,
 `gate_phase9b_visual.md`, `gate_phase5_visual.md`, `gate_phase14_visual.md`,
 `gate_phase14b_visual.md`, `gate_phase15_visual.md`, `gate_phase6_visual.md`
 (the live one, ~$1), `gate_phase6b_visual.md`, `gate_phase6c_visual.md`,
-`gate_phase6c2_visual.md`.
+`gate_phase6c2_visual.md`, `gate_pr3_visual.md`.
 
 **Phase 9B.5 + Phase 5 live run 2026-08-24 (ADR-045)** — USD/USDZ/FBX/ABC
 are produced by the render worker (not sealed into LUXEXCHANGE: they are not

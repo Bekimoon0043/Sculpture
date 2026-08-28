@@ -3330,3 +3330,83 @@ identifies a design -- followed the render worker's uptime.
   worker that must stay down is REMOVED (docker compose rm -sf
   render-worker), not merely stopped -- a removed container offers no
   Start button in Docker Desktop to click by accident.
+
+---
+
+## ADR-058 - PR-3: the platform answers on loopback only (2026-08-27)
+
+### Context
+
+Production v1 program, slice PR-3 (approved with amendments 2026-08-27).
+docker-compose.yml published the backend (8000) and frontend (5173) with
+the two-part `"8000:8000"` form, which Docker binds to every host
+interface and punches through the Windows firewall with its own rule.
+The API carries NO authentication of any kind, so anyone on the
+operator's LAN could read every design and Council transcript and invoke
+the endpoints that dispatch PAID provider calls. The frontend reaches
+the backend over compose-network DNS (`VITE_API_TARGET=
+http://backend:8000`), never through a host port, so host-side binding
+cannot affect the UI.
+
+### Decisions
+
+1. **Host publishes bind `127.0.0.1` — the 3-part form — for every
+   service.** The container-INTERNAL binds stay `0.0.0.0` (uvicorn's
+   `--host`, Vite's `--host` in the frontend Dockerfile CMD): those are
+   what the publish and the compose network connect to, and narrowing
+   them would break both. The distinction is recorded here because
+   "bind loopback" applied to the wrong layer would look like the same
+   fix and quietly break the platform instead.
+
+2. **A standing gate, `gate_pr3_auto.py`, keeps it true.** Two explicit
+   sections: STATIC (in the backend container, with the HOST's live
+   compose file piped in over stdin — the image's baked build-time copy
+   is refused by name, because asserting a snapshot could pass while the
+   governing file regressed; every `ports` entry must be 3-part
+   `127.0.0.1`; the two sandboxes must stay `network_mode: none` with no
+   ports; the frontend must target `http://backend:8000` by service
+   name) and LIVE (on the
+   host — `/api/health` must return its real healthy JSON and :5173 the
+   LuxuryForm frontend on loopback, and every non-loopback IPv4 on the
+   machine must REFUSE TCP connects to 8000 and 5173). A section that
+   cannot run reports NOT RUN with the command to run it elsewhere and
+   never supports a full-gate PASS; with no non-loopback address the LAN
+   sub-check reports NOT RUN rather than passing vacuously. The gate is
+   in the roster because a binding regression is otherwise perfectly
+   silent: the operator's localhost experience is identical while the
+   LAN quietly regains access.
+
+3. **No authentication is built, and no LAN-enable path ships.** For one
+   operator on one machine, loopback makes auth redundant; a token
+   bolted on now would be theatre. Deliberately, there is no override
+   file, no documented command and no switch to re-open the network —
+   LAN/remote access may return only as part of a future authenticated
+   deployment slice (LIMITATIONS §19, docs/operator/11_network_privacy.md).
+
+### Stated limits
+
+- The gate sees docker-compose.yml and the live sockets. A manual
+  `docker run -p` outside compose bypasses both the file and (until the
+  next live run) the check.
+- The live section proves refusal from this machine's own non-loopback
+  addresses; the operator's phone test (gate_pr3_visual.md) is the
+  independent off-machine confirmation.
+- Judgement values: the live connect timeout (2.0 s) and the positive
+  loopback checks' startup deadline (60 s, retry every 3 s) — both affect
+  gate runtime only, never correctness. The deadline exists because a
+  roster run straight after `docker compose up --build -d` hit the
+  backend mid-recreate twice (docker-proxy accepts, then closes:
+  RemoteDisconnected) while the same URL answered healthy seconds later;
+  a service that cannot become healthy in 60 s on this machine is broken,
+  not booting, and the gate still fails loudly then.
+
+### Consequences
+
+- The Phase 2 canonical STEP hash `e1a59fa6…` is untouched — no
+  geometry-adjacent code changed; the roster re-run re-proves it.
+- Anything OFF this machine that reached the API stops working by
+  design. No such consumer was found (the Hub generator and all scripts
+  run locally); if one exists, it surfaces at the visual gate.
+- CLAUDE.md's roster is 19 scripts; the roster is the glob
+  `scripts\gate_*_auto.py`, enumerated and run explicitly by sessions —
+  nothing runs it automatically.

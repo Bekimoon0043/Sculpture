@@ -5,11 +5,10 @@ the start of every session (`/lf-orient`) and rewritten at the end of every
 slice (`/lf-close`). If this file and a phase plan disagree, this file is
 stale and must be corrected in the same commit as the work.
 
-Last updated: 2026-08-27 — **the Production v1 closure program is approved
-and PR-0 is closed** (ADR-057, `PRODUCTION_V1_REPORT.md`). The operator
-approved the program with seven binding amendments; the queue in §2 is now
-the program's queue. Previous rewrite earlier the same day at the Phase 6
-C2 close.
+Last updated: 2026-08-28 — **PR-3 closed** (loopback-only binding,
+ADR-058; auto gate + operator visual gate both PASS). The Production v1
+program (approved 2026-08-27 with seven binding amendments) has PR-0 and
+PR-3 closed; PR-1 is next. Evidence: `PRODUCTION_V1_REPORT.md`.
 
 ---
 
@@ -115,16 +114,19 @@ binding; the slice notes below carry the ones that bite.
       pins it. Baseline failures reported red before any edit; suite
       green worker-up AND worker-removed; full roster re-run. Evidence:
       `PRODUCTION_V1_REPORT.md`.
+- [x] **PR-3 — Loopback by default (CLOSED 2026-08-28, ADR-058: auto
+      gate PASS + operator visual gate PASS).** Host publishes bind
+      `127.0.0.1` for backend 8000 / frontend 5173; `gate_pr3_auto.py`
+      (roster script 19, split static/live) asserts the compose file AND
+      the live sockets on every roster run; the operator's phone on the
+      same Wi-Fi could not reach either port while localhost worked
+      unchanged. `docs/operator/11_network_privacy.md`; LIMITATIONS §19
+      records that the API has NO authentication and loopback is the
+      only lock; no LAN-enable path ships. Evidence:
+      `PRODUCTION_V1_REPORT.md`.
 
 ### Next up
 
-- [ ] **PR-3 — Loopback by default.** `127.0.0.1:` host bindings for
-      backend 8000 / frontend 5173 (container-to-container networking is
-      unaffected — the UI reaches the backend via `http://backend:8000`);
-      a gate assertion that fails on any unbound publish; an operator doc
-      stating LAN access returns only alongside authentication. Promoted
-      to run first because the API is currently unauthenticated and
-      LAN-reachable, including the endpoints that spend provider credits.
 - [ ] **PR-1 — Per-axis fabrication limits.** `max_module_m` `{x,y,z}`
       preserved end-to-end (mapper `spec_mapper.py:204` currently
       collapses it with `max()`); every limit positive or refused loudly;
