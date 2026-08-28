@@ -8,6 +8,17 @@ measurement paths, the PR-7 three-way split, immutable issuance snapshots,
 and positive/negative acceptance cases). The approval transcript lives in
 the operator's session of that date; NEXT.md §2 carries the queue.
 
+**Amended by the owner's roadmap ruling of 2026-08-28 (ADR-060):**
+free-form amorphous sculpture is a release-blocking Production v1
+capability. The sequence after PR-2 is PR-2 close → PR-2.5 (free-form
+discovery/acceptance plan, then approved implementation slice(s),
+free-form gates and close) → PR-4; **PR-4 waits for the BUILT free-form
+capability, not the approved plan.** PR-9's final acceptance gate gains a
+mandatory FOURTH positive end-to-end project: a genuinely amorphous
+sculpture (fixture and manufacturing route determined by PR-2.5). New
+operator input blocker B-11 records the ground truth this needs
+(reference designs, materials/processes, sculpting-controls ruling).
+
 This report accumulates one section per closed slice, newest first, with
 verbatim gate evidence — the same contract as the phase reports.
 

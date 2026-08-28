@@ -11,7 +11,12 @@ envelope stays an open B-1 input). The Production v1 program (approved
 2026-08-27 with seven binding amendments) has PR-0, PR-3 and PR-1
 closed; PR-2 (hard spend caps) is next. New release blocker B-10
 (operator workflow controls, folded into PR-7B) ruled 2026-08-28.
-Evidence: `PRODUCTION_V1_REPORT.md`.
+**Owner roadmap ruling 2026-08-28 (ADR-060): free-form amorphous
+sculpture is a release-blocking Production v1 capability.** Phase 6
+slice D moves INSIDE the release; the sequence is now PR-2 → PR-2.5
+(discovery/acceptance plan, then approved implementation slice(s),
+free-form gates and close) → PR-4. New operator blocker B-11
+(free-form ground truth). Evidence: `PRODUCTION_V1_REPORT.md`.
 
 ---
 
@@ -24,7 +29,7 @@ Evidence: `PRODUCTION_V1_REPORT.md`.
 | 3 — the AI Council | **CLOSED** | gate PASS 2026-08-07, live $0.843842 |
 | 4 — fabrication loop (AI writes CAD, sandbox runs) | **CLOSED** | gate PASS 2026-08-17, live $0.046777 |
 | costing engine | **BUILT, gated, starved; reaches assemblies since 2026-08-27** | ADR-031/056; rate card still unfilled (B-3, 39 nulls) |
-| 6 — primitive library | **A1 CLOSED; A2 + B + C1 + C2 BUILT (10 primitives, segmentation); D deferred** | auto gates PASS (ADR-052–056); pending: live gate `gate_phase6_visual.md`, eye gates 6b + 6c + 6c2 |
+| 6 — primitive library | **A1 CLOSED; A2 + B + C1 + C2 BUILT (10 primitives, segmentation); D RELEASE-BLOCKING (ADR-060, owner ruling 2026-08-28 — see PR-2.5)** | auto gates PASS (ADR-052–056); pending: live gate `gate_phase6_visual.md`, eye gates 6b + 6c + 6c2 |
 | 7A — assembly surface (API, manifest persistence) | **BUILT** | implemented 2026-08-21, `PHASE_7_COMPLETION_PLAN.md` §7A |
 | 8 — L5 validation gates (structure/fabrication/hydraulics) | **BUILT, auto-gated** | auto PASS 2026-08-21 + 8b re-gate; visual pending |
 | 9A — LUXEXCHANGE export package | **BUILT, auto-gated; digest now worker-state-independent** | auto PASS 2026-08-21/24; ADR-057 (PR-0); visual pending |
@@ -99,6 +104,18 @@ Those marked **[release]** block calling the project Production v1.
       spec, resumable status, failure recovery, and automatic opening
       of the resulting design. Do not implement it early as a blocking
       browser request.
+- [ ] **B-11 [release] — Free-form sculpture ground truth (feeds
+      PR-2.5).** Supply: (1) **3–5 reference designs** of the
+      amorphous/organic/mesh-like sculpture class the company must sell
+      — photos, sketches, competitor pieces, anything visual; (2) the
+      **intended materials and fabrication processes** for them (carved
+      stone? cast concrete/GRC in molds? welded armature + sculpted
+      skin? — this decides parameter ranges per Rule 11 and what
+      "fabrication-ready" means for a free-form module); (3) whether
+      **manual sculpting controls** are required in the Designer, or
+      brief-driven generation with parameter edits suffices. The PR-2.5
+      discovery plan cannot be approved without at least the reference
+      designs; nothing will be invented in their place (ADR-060).
 - [ ] **B-9 — Confirm or deny the four unattributed render-worker starts**
       (12:12:30 / 12:17:29 / 12:25:36 UTC on 2026-08-27, after each
       deliberate stop; the earlier ~06:59/~07:19 pair you already
@@ -163,6 +180,32 @@ binding; the slice notes below carry the ones that bite.
       run incl. rounds); retries and resumes keep the original spend-scope
       ID; reservations use a demonstrably cap-safe upper bound, not the
       chars/4 estimate, documented and gated for text AND vision.
+- [ ] **PR-2.5 — Free-form amorphous sculpture: discovery/acceptance
+      plan, then implementation (owner ruling 2026-08-28, ADR-060).**
+      A dedicated `/lf-next` discovery slice runs AFTER PR-2 closes and
+      BEFORE PR-4. **PR-4 does not start merely because the PR-2.5 plan
+      was approved — it waits until the resulting free-form capability
+      is built, gated, committed and pushed**, unless the operator
+      explicitly changes that ruling. Blocked on B-11. The discovery
+      must: compare THREE construction approaches without preselecting
+      one — (a) controlled OpenCASCADE BREP loft/sweep/spline
+      construction, (b) deterministic procedural/implicit or mesh-native
+      construction, (c) human-authored reference-mesh import or fitting;
+      distinguish polygon-mesh EXPORT (exists today) from amorphous
+      design GENERATION (unproven); keep the architectural rule that an
+      LLM writes a constrained spec/program a deterministic kernel
+      executes — it may never emit unchecked vertices; determine from
+      the B-11 reference designs and fabrication processes whether
+      STEP/BREP is mandatory or a deterministic watertight mesh is the
+      correct manufacturing artifact — **any change to STEP as the
+      canonical artifact requires an explicit architectural ruling,
+      never an assumption**; and design the acceptance gate proving
+      real brief → Council alternatives → deterministic watertight
+      free-form geometry → validation → segmentation → render → export.
+      The old three-primitive list (`basin_elliptical`, `basin_spline`,
+      `spline_loft_mass`) is a hypothesis, NOT the requirement. D-11
+      and D-12 are discovery CANDIDATES only — promote either only when
+      a reference design and fabrication method prove it required.
 - [ ] **PR-4 — Honest module transport costing.** Per-module masses
       carried into the drivers; refuse when any module exceeds
       `truck_payload_kg`; deterministic first-fit-decreasing allocation
@@ -234,7 +277,11 @@ binding; the slice notes below carry the ones that bite.
       POSITIVE end-to-end projects (segmented single-material basin;
       valid mixed-material assembly with per-material costing; a
       multi-element project exercising hydraulics, lineage and approvals)
-      each through intake-fixture → spec → assembly → segmentation →
+      **plus a MANDATORY fourth positive project (owner ruling
+      2026-08-28, ADR-060): a genuinely amorphous free-form sculpture
+      through the same full chain — PR-2.5 determines the exact fixture
+      and manufacturing route** — each through intake-fixture → spec →
+      assembly → segmentation →
       validation → costing → reproducible exports → DesignDNA → backend
       restart → reload/verify → backup → restore-verify; SEPARATE
       negative cases (oversized discrete array, missing approvals,
@@ -245,10 +292,13 @@ binding; the slice notes below carry the ones that bite.
 
 ### Deliberately OUTSIDE Production v1 (operator ruling 2026-08-27)
 
-- **Phase 6 slice D** (free-form: `basin_elliptical`, `basin_spline`,
-  `spline_loft_mass`), **Phase 10** (autonomous vision-driven revision),
-  native DWG/SKP, mobile UI, semantic search. Do not widen the release
-  to these unless the acceptance gate genuinely requires it.
+- **Phase 10** (autonomous vision-driven revision), native DWG/SKP,
+  mobile UI, semantic search. Do not widen the release to these unless
+  the acceptance gate genuinely requires it. (**Phase 6 slice D was
+  REMOVED from this list by the owner's ruling of 2026-08-28, ADR-060**
+  — free-form amorphous sculpture is now release-blocking; see PR-2.5
+  above. The old three-primitive slice-D list is a hypothesis, not the
+  requirement.)
 
 ### Debts — small, real, unscheduled
 
@@ -272,10 +322,13 @@ Pick one up when a slice finishes early. Each is one commit.
       is a roadmap phrase inside an assertion. Full sweep folded into
       PR-5; re-sweep before slice D ever widens the registry.
 - [ ] **D-11 — Radial segmentation for round vessels.** Needs the
-      operator's `gate_phase6c2_visual.md` §2 ruling first.
+      operator's `gate_phase6c2_visual.md` §2 ruling first. PR-2.5
+      discovery CANDIDATE (ADR-060) — promote only when a reference
+      design and fabrication method prove it required.
 - [ ] **D-12 — `blade_fin_array`/`lotus_petal_array` have no module
       decomposition** (hub + N blades; blade-root seam needs its own
-      proof).
+      proof). PR-2.5 discovery CANDIDATE (ADR-060) — promote only when
+      a reference design and fabrication method prove it required.
 - [x] **D-9 — CLOSED by PR-0 (2026-08-27, ADR-057).** The six
       worker-state tests now assert the honest contract in both states;
       reported red on the pristine image before any edit (five by name,

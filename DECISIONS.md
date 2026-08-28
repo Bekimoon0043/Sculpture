@@ -3500,3 +3500,78 @@ disagreed about the type.
   together with the scorer's total-mass-vs-module contract — fixing only
   the lookup would leave the scorer semantically wrong while appearing
   repaired. Also PR-5's: the prompt's remaining "per element" wording.
+
+---
+
+## ADR-060 - Free-form amorphous sculpture is a Production v1 release-blocking capability (owner ruling, 2026-08-28)
+
+### Context
+
+Binding product feedback from the company owner, 2026-08-28:
+complicated amorphous, organic, mesh-like sculpture design is a PRIMARY
+product requirement — not an optional post-v1 feature. The recent live
+workflow demonstration (Council session fc41df05, 15 calls, $0.6778;
+fabrication passed after 3 attempts and created design a772c648) proved
+the brief → spec → geometry WORKFLOW but did not prove this GEOMETRY
+CAPABILITY: everything the platform can generate today is
+revolve/extrude/array solids from the ten-primitive registry.
+Polygon-mesh EXPORT (GLB/STL/OBJ of solids the kernel already built)
+exists and is not the same thing as amorphous design GENERATION.
+
+### Decisions (the owner's ruling, recorded)
+
+1. **Phase 6 slice D moves from "deliberately OUTSIDE Production v1" to
+   a RELEASE-BLOCKING Production v1 capability.** NEXT.md's outside
+   list is corrected in the same commit as this ADR.
+2. **Sequence:** PR-2 close → PR-2.5 (a dedicated /lf-next
+   discovery/acceptance plan) → approved PR-2.5 implementation
+   slice(s) → free-form gates and close → PR-4. **PR-4 must NOT start
+   merely because the PR-2.5 plan was approved** — it waits until the
+   free-form capability is built, gated, committed and pushed, unless
+   the operator explicitly changes that ruling. Hard spend caps (PR-2)
+   remain next and are not expanded by this ruling; nothing free-form
+   is implemented during PR-2.
+3. **No representation is preselected.** The discovery must compare, on
+   the evidence of the B-11 reference designs and fabrication
+   processes: (a) controlled OpenCASCADE BREP loft/sweep/spline
+   construction; (b) deterministic procedural/implicit or mesh-native
+   construction; (c) human-authored reference-mesh import or fitting.
+   The existing slice-D list (basin_elliptical, basin_spline,
+   spline_loft_mass) is a hypothesis, not the requirement. Whether
+   STEP/BREP is mandatory or a deterministic watertight mesh is the
+   correct manufacturing artifact is a discovery QUESTION decided by
+   the reference designs and fabrication processes; **any change to
+   STEP as the canonical artifact requires an explicit architectural
+   ruling — never an assumption.**
+4. **The core architectural rule survives unchanged:** an LLM writes a
+   constrained design specification/program that a deterministic
+   kernel executes. The LLM may never emit unchecked vertices,
+   whatever representation the discovery selects.
+5. **The eventual acceptance gate** must prove the full chain on
+   free-form geometry: real brief → Council alternatives →
+   deterministic watertight free-form geometry → validation →
+   segmentation → render → export. **PR-9's final acceptance gate
+   gains a MANDATORY fourth positive end-to-end project** — a
+   genuinely amorphous sculpture; PR-2.5 determines the exact fixture
+   and manufacturing route.
+6. **D-11 (radial segmentation) and D-12 (array hub+blade
+   decomposition) are discovery CANDIDATES, not automatic
+   dependencies** — either is promoted only when a reference design
+   and fabrication method prove it is required.
+7. **New operator input blocker B-11** (NEXT.md §1): 3–5 reference
+   designs, intended materials/fabrication processes, and whether
+   manual sculpting controls are required. The PR-2.5 discovery plan
+   cannot be approved without at least the reference designs; nothing
+   is invented in their place.
+
+### Consequences
+
+- Recorded in a docs-only commit ahead of PR-2's closure, at the
+  owner's instruction, so no concurrent session follows the obsolete
+  queue while PR-2 is in flight. No production code, container, test
+  or gate changed.
+- NEXT.md (header, §0 table, B-11, PR-2.5 entry, PR-9 entry, outside
+  list, D-11/D-12), LIMITATIONS.md (Phase 6 entry) and
+  PRODUCTION_V1_REPORT.md (program header) updated in the same commit.
+- The Phase 2 canonical STEP hash `e1a59fa6…` is untouched — this
+  commit changes four Markdown files and nothing else.

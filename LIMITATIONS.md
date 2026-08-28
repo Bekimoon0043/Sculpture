@@ -97,6 +97,18 @@ early):
   does not do. (DesignDNA and the full export suite, once listed under this
   phase, are re-homed by the 2026-08-19 completion plan: export suite after
   Phase 5, DesignDNA in Phase 7.)
+
+  **Owner ruling 2026-08-28 (ADR-060): slice-D-class free-form capability
+  is RELEASE-BLOCKING for Production v1.** Complicated amorphous, organic,
+  mesh-like sculpture design is a primary product requirement. The live
+  demo proved the workflow on the existing ten-primitive library only;
+  amorphous design GENERATION is unproven — what exists today is
+  polygon-mesh EXPORT (GLB/STL/OBJ) of solids the kernel already built,
+  which is not the same capability. Discovery is slice PR-2.5 (NEXT.md
+  §2), blocked on operator input B-11 (3–5 reference designs, intended
+  materials/fabrication processes, sculpting-controls ruling). No
+  construction approach — BREP, procedural/implicit, mesh-native, or
+  reference-mesh fitting — is preselected before that evidence exists.
 - **Phase 7** — resumable job runner with kill-and-resume checkpoints;
   DesignDNA memory store and retrieval.
 
