@@ -43,6 +43,12 @@ from app.core.config import (
     load_config_bundle,
 )
 from app.geometry.primitives.base import load_materials
+from app.geometry.segmentation import (
+    axes_fit_mm,
+    binding_axis_mm,
+    format_limit_m,
+    normalize_module_limit_m,
+)
 
 #: Outcome of one check.
 Status = Literal["pass", "warn", "fail", "needs_input"]
@@ -812,6 +818,34 @@ def _nozzle_bore_check(
 # Fabrication gate
 # ---------------------------------------------------------------------------
 
+def _module_limit_for_gate(
+    max_module: Any,
+    provenance: dict[str, Any] | None,
+) -> dict[str, float] | None:
+    """The per-axis limit this gate may honestly bind against, or None.
+
+    PR-1 (ADR-059), the approved compatibility truth table: a per-axis
+    {x,y,z} limit binds as written, wherever it came from. A SCALAR in a
+    stored manifest binds as a cubic envelope ONLY when its provenance
+    confirms a deliberate Designer/API request (spec_id NULL). A scalar
+    from a collapsed Design Spec, or one whose provenance is missing,
+    malformed or mismatched, returns None: the caller must report
+    needs_input and request a rebuild — NEVER assume cubic.
+    """
+    if isinstance(max_module, dict):
+        try:
+            return normalize_module_limit_m(max_module, allow_scalar=False)
+        except ValueError:
+            return None  # malformed stored limit -> ambiguous, needs_input
+    kind = (provenance or {}).get("kind")
+    if kind == "cubic_request":
+        try:
+            return normalize_module_limit_m(max_module, allow_scalar=True)
+        except ValueError:
+            return None
+    return None
+
+
 def validate_fabrication_gate(
     manifest: dict[str, Any],
     materials: dict[str, Material] | None = None,
@@ -819,6 +853,7 @@ def validate_fabrication_gate(
     profile: GateProfile,
     profile_id: str,
     version: int,
+    module_limit_provenance: dict[str, Any] | None = None,
 ) -> LayeredGateReport:
     """Can LuxuryCon's workshop actually make, move and install this?
 
@@ -865,8 +900,6 @@ def validate_fabrication_gate(
         module_count = len(seg_modules) if seg_measured else 1
         heaviest = (max(float(m["mass_kg"]) for m in seg_modules)
                     if seg_measured else mass)
-        widest = (max(max(float(v) for v in m["bbox_mm"]) for m in seg_modules)
-                  if seg_measured else (max(dims) if dims else 0.0))
 
         # --- lift mass ---------------------------------------------------
         if max_lift is None:
@@ -890,6 +923,12 @@ def validate_fabrication_gate(
             )
 
         # --- module envelope + split feasibility -------------------------
+        # PR-1 (ADR-059): each axis binds on its own limit. The reported
+        # binding axis is the greatest utilization ratio extent/limit —
+        # never merely the largest absolute dimension — ties x -> y -> z.
+        limit_m = (None if max_module is None
+                   else _module_limit_for_gate(max_module,
+                                               module_limit_provenance))
         if max_module is None:
             b.needs_input(
                 f"{eid}.module_bbox_mm",
@@ -898,20 +937,63 @@ def validate_fabrication_gate(
                 message="element module size cannot be gated without a module limit",
                 units="mm",
             )
+        elif limit_m is None:
+            # A scalar whose provenance is not a confirmed deliberate
+            # cubic request: a collapsed Design Spec, or missing/
+            # malformed/mismatched provenance. Gating it as cubic would
+            # silently re-enforce the loosest axis — the exact defect
+            # PR-1 closes — so the only honest verdict is a rebuild.
+            spec_limit = (module_limit_provenance or {}).get(
+                "spec_max_module_m")
+            known = ""
+            if isinstance(spec_limit, dict):
+                known = (" — its Design Spec declares x "
+                         f"{spec_limit.get('x')} / y {spec_limit.get('y')} "
+                         f"/ z {spec_limit.get('z')} m")
+            b.needs_input(
+                f"{eid}.module_bbox_mm",
+                missing=("a rebuild of this design with per-axis "
+                         "fabrication.max_module_m"),
+                basis=("stored limit is a single number that cannot be "
+                       "confirmed as a deliberate cubic envelope "
+                       f"(provenance: {(module_limit_provenance or {}).get('kind', 'unknown')})"),
+                units="mm",
+                message=(
+                    f"this design's module limit {max_module!r} predates "
+                    "per-axis enforcement and its per-axis truth was "
+                    "discarded at build time; rebuild once and every axis "
+                    "binds on its own number" + known
+                ),
+            )
         elif dims:
-            limit_mm = float(max_module) * 1000.0
+            limit_mm_axes = {a: limit_m[a] * 1000.0 for a in ("x", "y", "z")}
+            boxes = ([m["bbox_mm"] for m in seg_modules]
+                     if seg_measured else [dims])
+            fits_all = all(axes_fit_mm(box, limit_mm_axes) for box in boxes)
+            worst_ratio = -1.0
+            worst = ("x", 0.0, limit_mm_axes["x"])
+            for box in boxes:
+                axis, extent, axis_limit = binding_axis_mm(box, limit_mm_axes)
+                ratio = extent / axis_limit
+                if ratio > worst_ratio:
+                    worst_ratio = ratio
+                    worst = (axis, extent, axis_limit)
+            bind_axis, bind_extent, bind_limit = worst
             b.add(
                 f"{eid}.module_bbox_mm",
-                ok=widest <= limit_mm, value=round(widest, 2),
-                limit=round(limit_mm, 2), units="mm",
-                basis=(f"Design Spec fabrication.max_module_m x 1000; "
-                       f"longest edge of the largest of {module_count} "
-                       f"module(s) (element bbox "
+                ok=fits_all, value=round(bind_extent, 2),
+                limit=round(bind_limit, 2), units="mm",
+                basis=(f"Design Spec fabrication.max_module_m "
+                       f"{format_limit_m(limit_m)}, each axis vs its own "
+                       f"limit; shown: binding axis {bind_axis} (greatest "
+                       f"extent/limit ratio, ties x->y->z) of "
+                       f"{module_count} module(s) (element bbox "
                        f"{dims[0]:.0f} x {dims[1]:.0f} x {dims[2]:.0f} mm)"),
-                message="every module must fit the maximum module envelope",
+                message="every module must fit the maximum module envelope "
+                        "on every axis",
             )
             refusal = seg.get("refusal")
-            if widest > limit_mm and not seg_measured:
+            if not fits_all and not seg_measured:
                 # A manifest written before 2026-08-27 carries no
                 # segmentation block. The honest answer is not a module
                 # count computed from the bbox — that is the predicted
@@ -923,10 +1005,11 @@ def validate_fabrication_gate(
                     basis="manifest carries no segmentation block",
                     units="modules",
                     message=(
-                        f"this element is {widest:.0f} mm against a "
-                        f"{limit_mm:.0f} mm module limit, and this manifest "
-                        "predates segmentation, so how many modules it splits "
-                        "into has never been measured"
+                        f"this element is {bind_extent:.0f} mm on the "
+                        f"{bind_axis} axis against a {bind_limit:.0f} mm "
+                        "limit, and this manifest predates segmentation, so "
+                        "how many modules it splits into has never been "
+                        "measured"
                     ),
                 )
             elif refusal:
@@ -1077,6 +1160,7 @@ def validate_layered_gates(
     materials: dict[str, Material] | None = None,
     gate_profile_id: str | None = None,
     site_overrides: dict[str, Any] | None = None,
+    module_limit_provenance: dict[str, Any] | None = None,
 ) -> dict[str, LayeredGateReport]:
     """Run every Phase 8 gate under one profile.
 
@@ -1121,6 +1205,7 @@ def validate_layered_gates(
         FABRICATION_GATE: validate_fabrication_gate(
             manifest, materials, profile=profile, profile_id=profile_id,
             version=profiles.version,
+            module_limit_provenance=module_limit_provenance,
         ),
     }
 

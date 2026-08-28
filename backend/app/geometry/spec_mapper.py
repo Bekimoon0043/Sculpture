@@ -13,6 +13,7 @@ from typing import Any
 
 from app.geometry.primitives import PRIMITIVES
 from app.geometry.primitives.base import ConstraintViolation
+from app.geometry.segmentation import normalize_module_limit_m
 
 _UNIT_TO_MM = {"mm": 1.0, "m": 1000.0}
 
@@ -193,17 +194,29 @@ def _joint_type(child_primitive: str, parent_primitive: str) -> str:
 
 
 def fabrication_limits_from_spec(spec: dict[str, Any]) -> dict[str, Any]:
+    """Design-Spec fabrication limits for registry.assemble — PER-AXIS.
+
+    The schema (design_spec_v1.json) has always required max_module_m as
+    the object {x, y, z}; until PR-1 (ADR-059) this function collapsed it
+    to max(x,y,z), silently gating the two tighter axes against the
+    loosest. It now preserves the axes, validated (each finite and > 0),
+    and REFUSES a scalar: this function reads Design Specs only, and a
+    scalar here is a malformed spec, not a Designer cubic envelope — that
+    compatibility lives at assemble() alone (Amendment 3, PR-1 approval).
+    """
     fabrication = spec.get("fabrication") or {}
     limits: dict[str, Any] = {}
     if "max_lift_kg" in fabrication:
         limits["max_lift_kg"] = fabrication["max_lift_kg"]
     max_module = fabrication.get("max_module_m")
-    if isinstance(max_module, dict):
-        values = [float(v) for v in max_module.values()]
-        if values:
-            limits["max_module_m"] = max(values)
-    elif max_module is not None:
-        limits["max_module_m"] = max_module
+    if max_module is not None:
+        try:
+            limits["max_module_m"] = normalize_module_limit_m(
+                max_module, allow_scalar=False)
+        except ValueError as exc:
+            raise ConstraintViolation([
+                f"Design Spec fabrication.max_module_m is malformed: {exc}"
+            ]) from exc
     return limits
 
 

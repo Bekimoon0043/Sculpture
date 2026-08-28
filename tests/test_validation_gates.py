@@ -73,7 +73,11 @@ def _manifest(**overrides) -> dict:
         "schema": "assembly_manifest_v1",
         "body_count_brep": 1,
         "total_mass_kg": 125.0,
-        "fabrication_limits": {"max_lift_kg": 300, "max_module_m": 2.0},
+        # PR-1 (ADR-059): manifests written by the current assembler carry
+        # the normalized per-axis dict; a bare scalar appears only in
+        # HISTORICAL manifests and is exercised by the truth-table tests.
+        "fabrication_limits": {"max_lift_kg": 300,
+                               "max_module_m": {"x": 2.0, "y": 2.0, "z": 2.0}},
         "fabrication_limit_violations": [],
         "joints": [{"child": "basin_01", "parent": "plinth_01", "type": "stack_on"}],
         "assembly_bbox_min_mm": [-500, -500, 0],
@@ -384,6 +388,90 @@ def test_an_oversized_element_in_a_pre_segmentation_manifest_asks_for_a_rebuild(
     assert split["status"] == "needs_input"
     assert "rebuild" in split["message"]
     assert report.status == "fail"
+
+
+def test_the_binding_axis_is_the_ratio_not_the_largest_dimension(
+        unsigned, profiles):
+    """Amendment 5: under {x: 3.0, y: 1.0, z: 3.0} m an element bbox of
+    [2500, 950, 400] mm binds on Y (950/1000 = 0.95) even though X
+    (2500 mm) is the largest absolute dimension (2500/3000 = 0.83)."""
+    m = _manifest()
+    m["fabrication_limits"]["max_module_m"] = {"x": 3.0, "y": 1.0, "z": 3.0}
+    m["elements"][1]["bbox_mm"] = [2500, 950, 400]
+    report = validate_fabrication_gate(m, **_kwargs(unsigned, profiles))
+    row = next(r for r in report.check_rows()
+               if r["check"] == "basin_01.module_bbox_mm")
+    assert row["status"] == "pass"          # 0.95 utilization still fits
+    assert row["value"] == pytest.approx(950.0)
+    assert row["limit"] == pytest.approx(1000.0)
+    assert "binding axis y" in row["basis"]
+
+
+def test_a_z_bound_module_fails_even_when_x_and_y_fit(unsigned, profiles):
+    """THE PR-1 gate-row proof: 2.4 x 2.4 x 2.2 m envelope, module
+    2000 x 2000 x 2300 mm — Z breaches alone and the row must fail."""
+    m = _manifest()
+    m["fabrication_limits"]["max_module_m"] = {"x": 2.4, "y": 2.4, "z": 2.2}
+    m["elements"][1]["bbox_mm"] = [2000, 2000, 2300]
+    m["segmentation"] = {
+        "schema": "assembly_segmentation_v1",
+        "elements": {"basin_01": {
+            "mode": "planar_grid", "grid": {"x": 1, "y": 1, "z": 1},
+            "predicted_cells": 1, "module_count": 1, "seam_length_mm": 0.0,
+            "modules": [{"index": 0, "mass_kg": 45.0,
+                         "volume_mm3": 1.0e7,
+                         "bbox_mm": [2000.0, 2000.0, 2300.0],
+                         "bbox_min_mm": [0.0, 0.0, 0.0]}],
+        }},
+    }
+    report = validate_fabrication_gate(m, **_kwargs(unsigned, profiles))
+    row = next(r for r in report.check_rows()
+               if r["check"] == "basin_01.module_bbox_mm")
+    assert row["status"] == "fail"
+    assert row["value"] == pytest.approx(2300.0)
+    assert row["limit"] == pytest.approx(2200.0)
+    assert "binding axis z" in row["basis"]
+
+
+def test_the_scalar_truth_table_in_the_gate(unsigned, profiles):
+    """Amendment 1: a HISTORICAL scalar limit binds as cubic ONLY with
+    confirmed cubic provenance; collapsed-spec, missing, malformed or
+    mismatched provenance is needs_input — never assumed cubic."""
+    scalar = _manifest()
+    scalar["fabrication_limits"]["max_module_m"] = 2.0
+
+    # spec_id NULL -> deliberate cubic Designer/API limit: gates normally.
+    report = validate_fabrication_gate(
+        scalar, **_kwargs(unsigned, profiles),
+        module_limit_provenance={"kind": "cubic_request"})
+    row = next(r for r in report.check_rows()
+               if r["check"] == "basin_01.module_bbox_mm")
+    assert row["status"] == "pass"
+
+    # Collapsed spec, unverifiable, and NO provenance at all: needs_input,
+    # naming the rebuild — and the recovered spec axes when known.
+    for provenance in (
+        {"kind": "collapsed_spec",
+         "spec_max_module_m": {"x": 1.0, "y": 1.2, "z": 0.8}},
+        {"kind": "unverifiable"},
+        None,
+    ):
+        report = validate_fabrication_gate(
+            scalar, **_kwargs(unsigned, profiles),
+            module_limit_provenance=provenance)
+        row = next(r for r in report.check_rows()
+                   if r["check"] == "basin_01.module_bbox_mm")
+        assert row["status"] == "needs_input", provenance
+        assert "rebuild" in row["message"]
+    # The collapsed-spec message names the spec's true axes.
+    report = validate_fabrication_gate(
+        scalar, **_kwargs(unsigned, profiles),
+        module_limit_provenance={
+            "kind": "collapsed_spec",
+            "spec_max_module_m": {"x": 1.0, "y": 1.2, "z": 0.8}})
+    row = next(r for r in report.check_rows()
+               if r["check"] == "basin_01.module_bbox_mm")
+    assert "x 1.0" in row["message"] and "z 0.8" in row["message"]
 
 
 def test_a_segmented_element_reports_its_measured_modules(unsigned, profiles):

@@ -171,8 +171,9 @@
         "method":      { "type": "string", "enum": ["sheet_metal", "stone_slab", "cast_concrete", "hybrid"] },
         "max_module_m": {
           "type": "object", "required": ["x", "y", "z"],
-          "description": "Transport limit, metres",
-          "properties": { "x": {"type":"number"}, "y": {"type":"number"}, "z": {"type":"number"} }
+          "description": "Transport limit per axis, metres; each axis binds on its own limit (ADR-059)",
+          "properties": { "x": {"type":"number", "exclusiveMinimum": 0}, "y": {"type":"number", "exclusiveMinimum": 0}, "z": {"type":"number", "exclusiveMinimum": 0} },
+          "additionalProperties": false
         },
         "max_lift_kg":  { "type": "number", "exclusiveMinimum": 0 },
         "local_capability_notes": { "type": "string" }

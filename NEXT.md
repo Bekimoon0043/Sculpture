@@ -5,10 +5,13 @@ the start of every session (`/lf-orient`) and rewritten at the end of every
 slice (`/lf-close`). If this file and a phase plan disagree, this file is
 stale and must be corrected in the same commit as the work.
 
-Last updated: 2026-08-28 — **PR-3 closed** (loopback-only binding,
-ADR-058; auto gate + operator visual gate both PASS). The Production v1
-program (approved 2026-08-27 with seven binding amendments) has PR-0 and
-PR-3 closed; PR-1 is next. Evidence: `PRODUCTION_V1_REPORT.md`.
+Last updated: 2026-08-28 — **PR-1 closed** (per-axis fabrication limits,
+ADR-059; auto gate + operator visual gate both PASS; the real truck
+envelope stays an open B-1 input). The Production v1 program (approved
+2026-08-27 with seven binding amendments) has PR-0, PR-3 and PR-1
+closed; PR-2 (hard spend caps) is next. New release blocker B-10
+(operator workflow controls, folded into PR-7B) ruled 2026-08-28.
+Evidence: `PRODUCTION_V1_REPORT.md`.
 
 ---
 
@@ -88,6 +91,14 @@ Those marked **[release]** block calling the project Production v1.
 - [ ] **B-8 [release] — Named approvers for PR-8:** structural engineer,
       drafter, workshop/fabricator, rigging reviewer. A design cannot
       become `issued_for_fabrication` without them.
+- [ ] **B-10 [release] — Operator workflow controls (fold into PR-7B).**
+      The frontend can view Council sessions but cannot start a live
+      Council run or launch fabrication. Fold real operator controls
+      into PR-7B after durable job execution exists: projected-cost
+      confirmation, Run Council, Arbiter review, Fabricate selected
+      spec, resumable status, failure recovery, and automatic opening
+      of the resulting design. Do not implement it early as a blocking
+      browser request.
 - [ ] **B-9 — Confirm or deny the four unattributed render-worker starts**
       (12:12:30 / 12:17:29 / 12:25:36 UTC on 2026-08-27, after each
       deliberate stop; the earlier ~06:59/~07:19 pair you already
@@ -124,19 +135,25 @@ binding; the slice notes below carry the ones that bite.
       records that the API has NO authentication and loopback is the
       only lock; no LAN-enable path ships. Evidence:
       `PRODUCTION_V1_REPORT.md`.
+- [x] **PR-1 — Per-axis fabrication limits (CLOSED 2026-08-28, ADR-059:
+      auto gate PASS + operator visual gate PASS).** `{x,y,z}`
+      preserved end-to-end; the kernel, both assembler checks and the
+      fabrication gate bind each axis on its own limit (binding axis =
+      greatest extent/limit ratio, ties x→y→z); the Designer scalar
+      stays a deliberate cubic envelope at the one assemble() boundary;
+      malformed limits are structured 422s; the approved truth table
+      runs live on the design API with spec recovery and verification,
+      and geometry-rebuilding operations on ambiguous history refuse
+      with the one exact rebuild action. Red-first: 11/11 new tests
+      failed on pristine 16cf932; suites 449 passed in BOTH worker
+      states; all 20 roster scripts green; the operator saw the 2.3 m
+      column split to 2 × 1150 mm under a 2.2 m z-limit. **The real
+      per-axis truck envelope is still UNKNOWN (operator measurement
+      pending) — open under B-1; nothing was invented.** Evidence:
+      `PRODUCTION_V1_REPORT.md`.
 
 ### Next up
 
-- [ ] **PR-1 — Per-axis fabrication limits.** `max_module_m` `{x,y,z}`
-      preserved end-to-end (mapper `spec_mapper.py:204` currently
-      collapses it with `max()`); every limit positive or refused loudly;
-      segmentation and the fabrication gate bind each axis to its own
-      limit; the Designer API keeps its deliberate cubic-scalar path.
-      **Amendment 2:** explicitly scalar Designer/API requests stay valid
-      cubic envelopes — only designs whose `{x,y,z}` spec was collapsed
-      (distinguished by stored request/spec provenance) get the
-      `needs_input` rebuild request. Test: a 2.4 × 2.4 × 2.2 m envelope
-      splits/refuses a module whose Z exceeds 2.2 m.
 - [ ] **PR-2 — Hard spend caps.** Atomic DB-backed reservations (BEGIN
       IMMEDIATE) taken before dispatch, settled to actual cost, released/
       recorded on provider errors; concurrent test proving two calls
@@ -187,7 +204,12 @@ binding; the slice notes below carry the ones that bite.
 - [ ] **PR-7B — Retry, failure classes, job status.** Transient-only
       auto-retry with spend attribution; failure class + one safe next
       action persisted; operator status API/UI for active, failed,
-      resumable, completed; no silent partial success.
+      resumable, completed; no silent partial success. **Plus B-10, the
+      operator workflow controls (ruled 2026-08-28):** projected-cost
+      confirmation, Run Council, Arbiter review, Fabricate selected
+      spec, resumable status, failure recovery, automatic opening of
+      the resulting design — built HERE, on durable job execution,
+      never as a blocking browser request.
 - [ ] **PR-7C — Backup and cleanup.** Scheduled-backup instructions the
       operator installs (not auto-installed), retention/rotation,
       restore verification over N packages (not just the newest),

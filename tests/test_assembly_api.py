@@ -751,3 +751,152 @@ def test_the_mesh_gate_reports_its_real_verdict_not_needs_input(client):
     # Every gate named in `gates` has an authoritative status, so the UI
     # never has to guess for any of them.
     assert set(body["gate_statuses"]) == set(body["gates"])
+
+
+# ---------------------------------------------------------------------------
+# PR-1 (ADR-059) — per-axis module limits at the API boundary
+# ---------------------------------------------------------------------------
+
+def test_malformed_module_limits_return_structured_422(client):
+    """Amendment 4: malformed direct requests produce structured HTTP 422
+    with the offence named — never TypeError, ValueError or HTTP 500."""
+    bad_values = [
+        {"x": 2.4, "y": 2.4},                       # missing axis
+        {"x": 2.4, "y": 2.4, "z": 2.2, "w": 1.0},   # extra axis
+        {"x": True, "y": 2.4, "z": 2.2},            # boolean axis
+        {"x": "2.4", "y": 2.4, "z": 2.2},           # non-numeric axis
+        {"x": 0, "y": 2.4, "z": 2.2},               # zero axis
+        {"x": -2.4, "y": 2.4, "z": 2.2},            # negative axis
+        "4.0",                                       # scalar string
+        True,                                        # scalar boolean
+        0,                                           # scalar zero
+        -1,                                          # scalar negative
+    ]
+    for bad in bad_values:
+        payload = valid_assembly_payload()
+        payload["fabrication"] = {"max_lift_kg": 3000, "max_module_m": bad}
+        resp = client.post("/api/geometry/assembly/build", json=payload)
+        assert resp.status_code == 422, (bad, resp.status_code, resp.text[:200])
+        violations = resp.json()["detail"]["violations"]
+        assert any("max_module_m" in v for v in violations), (bad, violations)
+
+
+def test_a_per_axis_limit_builds_and_round_trips(client):
+    """Amendment 1 rows 2/3: an explicit {x,y,z} API limit is valid, is
+    stored verbatim in the request, normalized in the manifest, and reads
+    back with clean provenance."""
+    payload = valid_assembly_payload()
+    payload["fabrication"] = {"max_lift_kg": 3000,
+                              "max_module_m": {"x": 4.0, "y": 4.0, "z": 2.2}}
+    design_id = client.post(
+        "/api/geometry/assembly/build", json=payload).json()["design_id"]
+
+    body = client.get(f"/api/geometry/assembly/{design_id}/manifest").json()
+    assert body["request"]["fabrication"]["max_module_m"] == {
+        "x": 4.0, "y": 4.0, "z": 2.2}
+    assert body["manifest"]["fabrication_limits"]["max_module_m"] == {
+        "x": 4.0, "y": 4.0, "z": 2.2}
+    assert body["module_limit_provenance"]["kind"] == "per_axis_request"
+    assert body["module_limit_provenance"]["status"] == "ok"
+
+
+def _attach_spec(design_id: str, spec_module_limit, *,
+                 spec_json_override: str | None = None) -> None:
+    """Make an API-built design look like a historical fabrication-loop
+    design: a real design_specs row (with its council session) and
+    designs.spec_id pointing at it. Direct SQL because the API deliberately
+    offers no way to rewrite lineage — this is test archaeology."""
+    import os
+
+    db_path = os.environ["LUXURYFORM_DB"]
+    spec_json = spec_json_override
+    if spec_json is None:
+        spec_json = json.dumps(
+            {"fabrication": {"max_module_m": spec_module_limit,
+                             "max_lift_kg": 3000}})
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute(
+            "INSERT INTO council_sessions (id, created_at, brief_text, "
+            "status, started_at, total_cost_usd, pricing_version) "
+            "VALUES ('cs-hist', 't', 'historical test brief', 'completed', "
+            "'t', 0, 'test')")
+        conn.execute(
+            "INSERT INTO design_specs (id, created_at, session_id, provider, "
+            "alternative_no, spec_json, spec_hash, seed, schema_valid) "
+            "VALUES ('spec-hist', 't', 'cs-hist', 'test', 1, ?, 'h', 7, 1)",
+            (spec_json,))
+        conn.execute("UPDATE designs SET spec_id = 'spec-hist' WHERE id = ?",
+                     (design_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_a_collapsed_spec_design_is_flagged_and_rebuild_paths_refuse(client):
+    """Amendment 2, through the REAL design API: an existing spec-backed
+    scalar design reports the rebuild-required needs_input provenance, its
+    geometry-rebuilding operations refuse with one exact next action, and
+    its existing artifacts stay viewable."""
+    from pathlib import Path
+
+    design_id = client.post(
+        "/api/geometry/assembly/build", json=valid_assembly_payload()
+    ).json()["design_id"]
+    # The stored scalar 4.0 == max(2.0, 4.0, 2.2): a verified collapse.
+    _attach_spec(design_id, {"x": 2.0, "y": 4.0, "z": 2.2})
+
+    body = client.get(f"/api/geometry/assembly/{design_id}/manifest").json()
+    provenance = body["module_limit_provenance"]
+    assert provenance["kind"] == "collapsed_spec"
+    assert provenance["status"] == "needs_input"
+    assert provenance["spec_max_module_m"] == {"x": 2.0, "y": 4.0, "z": 2.2}
+    assert "rebuild" in provenance["action"]
+    assert "POST /api/geometry/assembly/build" in provenance["action"]
+
+    # Geometry-REBUILDING operations refuse with the action, never
+    # silently reinterpret the scalar as cubic.
+    resp = client.post(f"/api/geometry/assembly/{design_id}/exports")
+    assert resp.status_code == 409
+    assert "rebuild" in resp.json()["detail"]
+
+    # Existing artifacts stay viewable...
+    scene = client.get(f"/api/geometry/assembly/{design_id}/scene.glb")
+    assert scene.status_code == 200
+    # ...but REGENERATING one is a rebuild, and refuses.
+    scene_path = Path(body["artifacts"]["scene_glb_path"])
+    scene_path.unlink()
+    resp = client.get(f"/api/geometry/assembly/{design_id}/scene.glb")
+    assert resp.status_code == 409
+    assert "rebuild" in resp.json()["detail"]
+
+
+def test_mismatched_or_malformed_spec_provenance_never_assumes_cubic(client):
+    """Amendment 1 row 5: a spec-backed scalar whose original spec does
+    NOT verify (max(x,y,z) != stored scalar) is unverifiable ->
+    needs_input; same for an unparseable stored spec."""
+    design_id = client.post(
+        "/api/geometry/assembly/build", json=valid_assembly_payload()
+    ).json()["design_id"]
+    # max(1.0, 1.2, 0.8) = 1.2 != stored 4.0 -> the program that built
+    # this did not use the mapper; origin unknown.
+    _attach_spec(design_id, {"x": 1.0, "y": 1.2, "z": 0.8})
+    body = client.get(f"/api/geometry/assembly/{design_id}/manifest").json()
+    assert body["module_limit_provenance"]["kind"] == "unverifiable"
+    assert body["module_limit_provenance"]["status"] == "needs_input"
+    resp = client.post(f"/api/geometry/assembly/{design_id}/exports")
+    assert resp.status_code == 409
+
+
+def test_a_deliberate_cubic_design_keeps_working(client):
+    """Amendment 1 row 1: spec_id NULL + scalar is a valid cubic envelope
+    — provenance clean, exports run, nothing asks for a rebuild."""
+    design_id = client.post(
+        "/api/geometry/assembly/build", json=valid_assembly_payload()
+    ).json()["design_id"]
+    body = client.get(f"/api/geometry/assembly/{design_id}/manifest").json()
+    assert body["module_limit_provenance"] == {"kind": "cubic_request",
+                                               "status": "ok"}
+    resp = client.post(f"/api/geometry/assembly/{design_id}/exports")
+    assert resp.status_code == 200

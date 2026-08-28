@@ -38,6 +38,17 @@ function display(value: unknown): string {
   if (typeof value === "number") {
     return Number.isInteger(value) ? String(value) : value.toFixed(2);
   }
+  // PR-1 (ADR-059): spec-path designs store max_module_m as {x, y, z};
+  // render it as axes, never as "[object Object]".
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (["x", "y", "z"].every((k) => typeof record[k] === "number")) {
+      return ["x", "y", "z"]
+        .map((k) => `${k} ${display(record[k])}`)
+        .join(" / ");
+    }
+    return JSON.stringify(value);
+  }
   return String(value);
 }
 

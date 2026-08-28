@@ -136,6 +136,12 @@ def main() -> int:  # noqa: C901 — a gate is a transcript, not a design
         module = PRIMITIVES[pid]
         return module.build(module.validate(raw))
 
+    def _cubic(limit_mm: float) -> dict:
+        # PR-1 (ADR-059): the kernel takes per-axis mm; every measured
+        # number in this gate was pinned at a CUBIC limit, and a cube of
+        # the same side is the identical cut, so nothing here moves.
+        return {"x": limit_mm, "y": limit_mm, "z": limit_mm}
+
     # ------------------------------------------------------------------
     _section(1, "CANONICAL GUARDS — segmentation moved no bytes")
     solid, _ = cascade_fountain({}, seed=42)
@@ -167,7 +173,7 @@ def main() -> int:  # noqa: C901 — a gate is a transcript, not a design
     whole_kg = float(big.volume) * 1e-9 * BASALT_DENSITY
     print(f"element        : {float(big.volume):,.0f} mm3 = {whole_kg:,.1f} kg "
           f"as ONE piece")
-    seg = segment_solid(big, 2400.0, density_kg_per_m3=BASALT_DENSITY)
+    seg = segment_solid(big, _cubic(2400.0), density_kg_per_m3=BASALT_DENSITY)
     total = sum(m["volume_mm3"] for m in seg.modules)
     print(f"modules        : {seg.module_count} summing to {total:,.6f} mm3")
     print(f"delta          : {seg.volume_delta_pct:.10f} % "
@@ -209,7 +215,8 @@ def main() -> int:  # noqa: C901 — a gate is a transcript, not a design
     _section(4, "MEASURED, NOT PREDICTED — the tube's centre cells are bore")
     tube = _build("plinth", {"top_diameter_mm": 3000, "height_mm": 1200,
                              "wall_mm": 150, "material_id": "basalt_slab"})
-    tube_seg = segment_solid(tube, 1000.0, density_kg_per_m3=BASALT_DENSITY)
+    tube_seg = segment_solid(tube, _cubic(1000.0),
+                             density_kg_per_m3=BASALT_DENSITY)
     print(f"grid           : {tube_seg.grid} predicts "
           f"{tube_seg.predicted_cells} cells")
     print(f"measured       : {tube_seg.module_count} connected solids")
@@ -230,7 +237,8 @@ def main() -> int:  # noqa: C901 — a gate is a transcript, not a design
     #   perimeter 2500+700+150+550+2350+150    =   6,400 mm
     hand_area = 2500.0 * 150.0 + 150.0 * (700.0 - 150.0)
     hand_perim = 2500.0 + 700.0 + 150.0 + 550.0 + 2350.0 + 150.0
-    quarters = segment_solid(big, 2500.0, density_kg_per_m3=BASALT_DENSITY)
+    quarters = segment_solid(big, _cubic(2500.0),
+                             density_kg_per_m3=BASALT_DENSITY)
     print(f"hand arithmetic: area {hand_area:,.1f} mm2, perimeter "
           f"{hand_perim:,.1f} mm, per interface")
     print(f"kernel         : {quarters.seam_count} interfaces, "
@@ -273,7 +281,7 @@ def main() -> int:  # noqa: C901 — a gate is a transcript, not a design
 
     # ------------------------------------------------------------------
     _section(6, "DETERMINISM — two processes, and plane order")
-    mine = segment_solid(big, 2400.0,
+    mine = segment_solid(big, _cubic(2400.0),
                          density_kg_per_m3=BASALT_DENSITY).canonical_json()
     child = subprocess.run(
         [sys.executable, "-c", (
@@ -283,7 +291,8 @@ def main() -> int:  # noqa: C901 — a gate is a transcript, not a design
             "m = PRIMITIVES['basin_round']\n"
             "s = m.build(m.validate(json.loads(sys.argv[1])))\n"
             "print(os.getpid())\n"
-            "print(segment_solid(s, 2400.0, density_kg_per_m3=%r)"
+            "print(segment_solid(s, {'x': 2400.0, 'y': 2400.0, "
+            "'z': 2400.0}, density_kg_per_m3=%r)"
             ".canonical_json())\n"
         ) % (REPO_ROOT / "backend", BASALT_DENSITY),
          json.dumps(BIG_BASIN)],
@@ -297,7 +306,8 @@ def main() -> int:  # noqa: C901 — a gate is a transcript, not a design
           f"{len(theirs) if theirs else child.stderr[-200:]}")
     _check(failures, "segmentation byte-identical across two processes",
            mine == theirs)
-    other = segment_solid(big, 2400.0, density_kg_per_m3=BASALT_DENSITY,
+    other = segment_solid(big, _cubic(2400.0),
+                          density_kg_per_m3=BASALT_DENSITY,
                           axis_order=("z", "y", "x"))
     same_engineering = (
         other.module_count == seg.module_count
@@ -333,7 +343,7 @@ def main() -> int:  # noqa: C901 — a gate is a transcript, not a design
                     {"hub_diameter_mm": 900, "blade_count": 24,
                      "blade_length_mm": 700,
                      "material_id": "stainless_316l_sheet"})
-    naive = segment_solid(blades, 800.0, density_kg_per_m3=8000.0)
+    naive = segment_solid(blades, _cubic(800.0), density_kg_per_m3=8000.0)
     masses = sorted(m["mass_kg"] for m in naive.modules)
     print(f"a naive grid would have reported {naive.module_count} 'modules', "
           f"lightest {masses[0]:,.1f} kg against heaviest {masses[-1]:,.1f} kg "
@@ -512,7 +522,8 @@ def main() -> int:  # noqa: C901 — a gate is a transcript, not a design
                                         "material_id": "basalt_slab"})):
         pid = "basin_round" if "diameter_mm" in raw else "plinth"
         timed = segment_solid(_build(pid, raw),
-                              2400.0 if pid == "basin_round" else 1000.0,
+                              _cubic(2400.0 if pid == "basin_round"
+                                     else 1000.0),
                               density_kg_per_m3=BASALT_DENSITY)
         print(f"  {label}: {timed.module_count} module(s) in "
               f"{timed.duration_ms:.0f} ms")
@@ -521,7 +532,7 @@ def main() -> int:  # noqa: C901 — a gate is a transcript, not a design
     _check(failures, "no element takes more than 10 s to segment",
            worst_ms <= 10_000.0, f"worst {worst_ms:.0f} ms")
     try:
-        segment_solid(big, 100.0, density_kg_per_m3=BASALT_DENSITY)
+        segment_solid(big, _cubic(100.0), density_kg_per_m3=BASALT_DENSITY)
         _check(failures, "a runaway module limit is refused", False,
                "NO ValueError raised")
     except ValueError as exc:

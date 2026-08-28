@@ -73,7 +73,15 @@ GATE_PLAN = [
                        "material_id": "basalt_slab"},
     },
 ]
-GATE_FABRICATION = {"max_lift_kg": 2000.0, "max_module_m": 3.0}
+# PR-1 (ADR-059): the bridge design this gate persists carries spec
+# lineage (spec_id set), and a spec-backed SCALAR limit is now the
+# ambiguous-history class — its rebuild paths refuse by design. A
+# current-code fabrication program passes the spec's per-axis object,
+# so the stand-in models that. Was `"max_module_m": 3.0` until
+# 2026-08-28 (the D-10 fixture-expiry pattern, fourth occurrence;
+# reported red before this edit).
+GATE_FABRICATION = {"max_lift_kg": 2000.0,
+                    "max_module_m": {"x": 3.0, "y": 3.0, "z": 3.0}}
 GATE_SEED = 42
 USED_PRIMITIVES = ["basin_round", "plinth", "sculptural_column"]
 

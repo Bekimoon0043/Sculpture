@@ -11,7 +11,11 @@
 // Every committed mutation goes through `apply`, which returns a new
 // history — there is no mutable store to get out of sync.
 
-import type { AssemblyDefaultsResponse, ParameterSpec } from "../api/client";
+import type {
+  AssemblyDefaultsResponse,
+  FabricationValue,
+  ParameterSpec,
+} from "../api/client";
 
 export interface JointDoc {
   type: string;
@@ -31,7 +35,10 @@ export interface ElementDoc {
 
 export interface DesignDoc {
   elements: ElementDoc[];
-  fabrication: Record<string, number | string>;
+  /** PR-1 (ADR-059): max_module_m may be a restored design's per-axis
+   *  {x,y,z}; the document carries it through to rebuilds VERBATIM.
+   *  The Designer's own default stays the single-number cubic form. */
+  fabrication: Record<string, FabricationValue>;
   seed: number;
   gateProfileId: string;
 }

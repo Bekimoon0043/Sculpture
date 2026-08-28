@@ -76,11 +76,49 @@ def test_assembly_plan_from_spec_maps_slice_a_tree():
     assert by_id["c1"]["parameters"]["diameter_mm"] == 100
 
 
-def test_fabrication_limits_from_spec_scalarizes_module_box():
+def test_fabrication_limits_from_spec_preserves_the_axes():
+    """PR-1 (ADR-059): the spec's {x,y,z} survives, never collapsed.
+
+    Until PR-1 this function returned max(x,y,z) = 1.2 — the LOOSEST axis
+    became the limit for all three, silently under-enforcing y and z. The
+    old test (test_fabrication_limits_from_spec_scalarizes_module_box)
+    pinned that defect as the contract; it was reported red before this
+    rewrite.
+    """
     assert fabrication_limits_from_spec(_slice_a_spec()) == {
         "max_lift_kg": 2000,
-        "max_module_m": 1.2,
+        "max_module_m": {"x": 1.0, "y": 1.2, "z": 0.8},
     }
+
+
+def test_fabrication_limits_from_spec_refuses_a_scalar():
+    """Amendment 3: this function reads Design Specs ONLY. A scalar here
+    is a malformed spec, not a Designer cubic envelope — that
+    compatibility lives at assemble() alone."""
+    spec = _slice_a_spec()
+    spec["fabrication"]["max_module_m"] = 2.4
+    with pytest.raises(ConstraintViolation) as exc:
+        fabrication_limits_from_spec(spec)
+    assert "max_module_m" in str(exc.value)
+
+
+def test_fabrication_limits_from_spec_refuses_bad_axes():
+    """Amendment 4: exactly x, y, z; no booleans, non-numerics,
+    non-finite values, zeros or negatives — each named loudly."""
+    bad_values = [
+        {"x": 1.0, "y": 1.2},                        # missing axis
+        {"x": 1.0, "y": 1.2, "z": 0.8, "w": 1.0},    # extra axis
+        {"x": True, "y": 1.2, "z": 0.8},             # boolean
+        {"x": "1.0", "y": 1.2, "z": 0.8},            # non-numeric
+        {"x": float("inf"), "y": 1.2, "z": 0.8},     # non-finite
+        {"x": 0, "y": 1.2, "z": 0.8},                # zero
+        {"x": -1.0, "y": 1.2, "z": 0.8},             # negative
+    ]
+    for bad in bad_values:
+        spec = _slice_a_spec()
+        spec["fabrication"]["max_module_m"] = bad
+        with pytest.raises(ConstraintViolation):
+            fabrication_limits_from_spec(spec)
 
 
 def test_assembly_plan_from_spec_refuses_unknown_parameter():

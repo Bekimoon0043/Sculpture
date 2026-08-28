@@ -26,6 +26,12 @@ from app.geometry.segmentation import (
 BASALT_DENSITY = 2700.0
 
 
+def _cubic(limit_mm: float) -> dict[str, float]:
+    """PR-1 (ADR-059): the kernel takes per-axis mm; a cube is the
+    compatibility meaning of the Designer's single number."""
+    return {"x": limit_mm, "y": limit_mm, "z": limit_mm}
+
+
 def _basin(**over):
     raw = {"diameter_mm": 5000, "height_mm": 700, "wall_mm": 150,
            "material_id": "basalt_slab"}
@@ -58,7 +64,7 @@ def test_an_exact_fit_is_not_split():
 def test_segmentation_conserves_volume_exactly():
     solid = _basin()
     before = float(solid.volume)
-    result = segment_solid(solid, 2400.0, density_kg_per_m3=BASALT_DENSITY)
+    result = segment_solid(solid, _cubic(2400.0), density_kg_per_m3=BASALT_DENSITY)
     after = sum(m["volume_mm3"] for m in result.modules)
     assert result.volume_delta_pct < 1e-6, result.volume_delta_pct
     assert after == pytest.approx(before, rel=1e-12)
@@ -68,7 +74,7 @@ def test_a_five_metre_basin_becomes_liftable_modules():
     solid = _basin()
     whole_kg = float(solid.volume) * 1e-9 * BASALT_DENSITY
     assert whole_kg > 11_000, whole_kg          # no crane picks this
-    result = segment_solid(solid, 2400.0, density_kg_per_m3=BASALT_DENSITY)
+    result = segment_solid(solid, _cubic(2400.0), density_kg_per_m3=BASALT_DENSITY)
     assert result.module_count == 9
     assert result.grid == {"x": 3, "y": 3, "z": 1}
     heaviest = max(m["mass_kg"] for m in result.modules)
@@ -88,7 +94,7 @@ def test_module_count_is_measured_not_predicted():
     solid = module.build(module.validate(
         {"top_diameter_mm": 3000, "height_mm": 1200, "wall_mm": 150,
          "material_id": "basalt_slab"}))
-    result = segment_solid(solid, 1000.0, density_kg_per_m3=BASALT_DENSITY)
+    result = segment_solid(solid, _cubic(1000.0), density_kg_per_m3=BASALT_DENSITY)
     assert result.grid == {"x": 3, "y": 3, "z": 2}
     assert result.predicted_cells == 18
     assert result.module_count == 16
@@ -110,7 +116,7 @@ def test_seam_area_and_length_match_hand_arithmetic():
       perimeter   : 2500 + 700 + 150 + 550 + 2350 + 150 = 6,400 mm
     """
     solid = _basin()
-    result = segment_solid(solid, 2500.0, density_kg_per_m3=BASALT_DENSITY)
+    result = segment_solid(solid, _cubic(2500.0), density_kg_per_m3=BASALT_DENSITY)
     assert result.module_count == 4
     # 4 quarters share 4 interfaces (2 per plane), NOT the 8 cut faces.
     assert result.seam_count == 4
@@ -121,7 +127,7 @@ def test_seam_area_and_length_match_hand_arithmetic():
 
 def test_an_unsplit_solid_has_no_seam():
     solid = _basin(diameter_mm=2000, height_mm=400)
-    result = segment_solid(solid, 2400.0, density_kg_per_m3=BASALT_DENSITY)
+    result = segment_solid(solid, _cubic(2400.0), density_kg_per_m3=BASALT_DENSITY)
     assert result.module_count == 1
     assert result.seam_count == 0
     assert result.seam_length_mm == 0.0
@@ -133,8 +139,8 @@ def test_the_same_cut_twice_is_byte_identical():
     """The determinism the platform actually claims: same input, same code
     path, identical output."""
     solid = _basin()
-    a = segment_solid(solid, 2400.0, density_kg_per_m3=BASALT_DENSITY)
-    b = segment_solid(solid, 2400.0, density_kg_per_m3=BASALT_DENSITY)
+    a = segment_solid(solid, _cubic(2400.0), density_kg_per_m3=BASALT_DENSITY)
+    b = segment_solid(solid, _cubic(2400.0), density_kg_per_m3=BASALT_DENSITY)
     assert a.canonical_json() == b.canonical_json()
 
 
@@ -151,8 +157,8 @@ def test_plane_order_does_not_change_the_engineering():
     segmentation never touches).
     """
     solid = _basin()
-    a = segment_solid(solid, 2400.0, density_kg_per_m3=BASALT_DENSITY)
-    b = segment_solid(solid, 2400.0, density_kg_per_m3=BASALT_DENSITY,
+    a = segment_solid(solid, _cubic(2400.0), density_kg_per_m3=BASALT_DENSITY)
+    b = segment_solid(solid, _cubic(2400.0), density_kg_per_m3=BASALT_DENSITY,
                       axis_order=("z", "y", "x"))
     assert a.module_count == b.module_count
     assert a.grid == b.grid
@@ -181,10 +187,61 @@ def test_the_arrays_are_the_discrete_ones():
 def test_a_runaway_module_limit_is_refused_with_the_numbers():
     solid = _basin()
     with pytest.raises(ValueError) as exc:
-        segment_solid(solid, 100.0, density_kg_per_m3=BASALT_DENSITY)
+        segment_solid(solid, _cubic(100.0), density_kg_per_m3=BASALT_DENSITY)
     text = str(exc.value)
     assert "50" in text                       # ceil(5000/100) per axis
     assert str(MAX_PREDICTED_CELLS) in text
+
+
+# --- per-axis limits (PR-1, ADR-059) ----------------------------------------
+
+def _tall_column():
+    """d600 x h2300 solid basalt column: fits x/y of a 2.4 m envelope but
+    stands 100 mm over a 2.2 m truck height. (basin_round's own height
+    envelope caps at 900 mm — a column is the honest tall shape.)"""
+    module = PRIMITIVES["sculptural_column"]
+    return module.build(module.validate(
+        {"diameter_mm": 600, "height_mm": 2300,
+         "material_id": "basalt_slab"}))
+
+
+def test_the_z_axis_binds_on_its_own_limit():
+    """THE PR-1 proof: a 2.4 x 2.4 x 2.2 m envelope must split a module
+    whose Z exceeds 2.2 m even though its X and Y fit.
+
+    Under the old collapse this became a single 2.4 m cubic limit and the
+    column shipped whole, 100 mm too tall for the declared truck.
+    """
+    solid = _tall_column()
+    limit = {"x": 2400.0, "y": 2400.0, "z": 2200.0}
+    result = segment_solid(solid, limit, density_kg_per_m3=BASALT_DENSITY)
+    assert result.grid == {"x": 1, "y": 1, "z": 2}
+    assert result.module_count >= 2
+    for m in result.modules:
+        assert m["bbox_mm"][2] <= 2200.0 + 1e-9
+
+    # The SAME solid under the old collapsed value max(2.4, 2.4, 2.2) =
+    # a 2.4 cubic envelope is NOT split — the difference between these
+    # two results is exactly the defect PR-1 closes.
+    collapsed = segment_solid(solid, _cubic(2400.0),
+                              density_kg_per_m3=BASALT_DENSITY)
+    assert collapsed.module_count == 1
+
+
+def test_the_kernel_takes_exactly_one_limit_shape():
+    """The kernel is strict: scalar-to-cubic compatibility lives at
+    assemble() alone, never inside segment_solid."""
+    solid = _basin(diameter_mm=2000, height_mm=400)
+    with pytest.raises(TypeError):
+        segment_solid(solid, 2400.0, density_kg_per_m3=BASALT_DENSITY)
+
+
+def test_a_zero_axis_is_refused_per_axis():
+    solid = _basin(diameter_mm=2000, height_mm=400)
+    with pytest.raises(ValueError) as exc:
+        segment_solid(solid, {"x": 2400.0, "y": 0.0, "z": 2400.0},
+                      density_kg_per_m3=BASALT_DENSITY)
+    assert "module limit must be > 0" in str(exc.value)
 
 
 # --- the assembler now gates on modules, not elements -----------------------
@@ -232,6 +289,63 @@ def test_an_oversized_array_is_refused_by_name():
     assert "a1" in text
     assert MODE_DISCRETE_ARRAY in text
     assert "2300" in text          # the real bbox, in the refusal
+
+
+def test_assemble_takes_the_spec_object_and_splits_the_tall_axis():
+    """End-to-end Amendment 1 rows 2/3: a per-axis dict through assemble.
+
+    The manifest's fabrication_limits must round-trip the DICT (the
+    fabricate bridge feeds it straight back into assemble), and every
+    measured module must fit each axis on its own limit.
+    """
+    plan = [
+        {"element_id": "c1", "primitive": "sculptural_column",
+         "parameters": {"diameter_mm": 600, "height_mm": 2300,
+                        "material_id": "basalt_slab"}},
+    ]
+    _, manifest = assemble(
+        plan, seed=0,
+        fabrication={"max_module_m": {"x": 2.4, "y": 2.4, "z": 2.2},
+                     "max_lift_kg": 20000},
+        strict=True,
+    )
+    limits = manifest["fabrication_limits"]
+    assert limits["max_module_m"] == {"x": 2.4, "y": 2.4, "z": 2.2}
+    modules = manifest["segmentation"]["elements"]["c1"]["modules"]
+    assert len(modules) >= 2
+    for m in modules:
+        assert m["bbox_mm"][0] <= 2400.0 + 1e-6
+        assert m["bbox_mm"][1] <= 2400.0 + 1e-6
+        assert m["bbox_mm"][2] <= 2200.0 + 1e-6
+    assert manifest["fabrication_limit_violations"] == []
+
+
+def test_assemble_refuses_malformed_module_limits():
+    """Amendment 4: refused loudly as ConstraintViolation (the routes map
+    that to HTTP 422) — never TypeError, never a 500."""
+    plan = [
+        {"element_id": "b1", "primitive": "basin_round",
+         "parameters": {"diameter_mm": 2000, "height_mm": 400,
+                        "wall_mm": 150, "material_id": "basalt_slab"}},
+    ]
+    bad_values = [
+        {"x": 2.4, "y": 2.4},                       # missing axis
+        {"x": 2.4, "y": 2.4, "z": 2.2, "w": 1},     # extra axis
+        {"x": True, "y": 2.4, "z": 2.2},            # boolean
+        {"x": "2.4", "y": 2.4, "z": 2.2},           # non-numeric
+        {"x": float("nan"), "y": 2.4, "z": 2.2},    # non-finite
+        {"x": 0, "y": 2.4, "z": 2.2},               # zero
+        {"x": -2.4, "y": 2.4, "z": 2.2},            # negative
+        True,                                        # scalar boolean
+        "2.4",                                       # scalar string
+        0,                                           # scalar zero
+        -1,                                          # scalar negative
+    ]
+    for bad in bad_values:
+        with pytest.raises(ConstraintViolation) as exc:
+            assemble(plan, seed=0,
+                     fabrication={"max_module_m": bad}, strict=True)
+        assert "max_module_m" in "; ".join(exc.value.violations), bad
 
 
 def test_joint_seams_are_measured_between_elements():

@@ -3410,3 +3410,93 @@ cannot affect the UI.
 - CLAUDE.md's roster is 19 scripts; the roster is the glob
   `scripts\gate_*_auto.py`, enumerated and run explicitly by sessions —
   nothing runs it automatically.
+
+---
+
+## ADR-059 - PR-1: max_module_m binds per axis; history is flagged, never re-judged (2026-08-28)
+
+### Context
+
+Production v1 program, slice PR-1 (approved with amendments 2026-08-28).
+The Design Spec has ALWAYS required `fabrication.max_module_m` as
+`{x, y, z}` (design_spec_v1.json), and `spec_mapper.py` collapsed it with
+`max(values)` — the LOOSEST axis became the limit for all three, so every
+spec-path design since slice C2 was under-enforced on its two tighter
+axes. Three enforcement sites each flattened axis identity with `max()`
+over extents (the assembler's pre-cut decision and post-cut check, and
+the fabrication gate's `widest`); converting any subset would leave a
+breach on the tight axis reading as a pass. The GEOMETRIST prompt
+additionally instructed generated code to pass the raw spec dict, which
+raised `TypeError` at `float(max_module_m)` — the prompt and the mapper
+disagreed about the type.
+
+### Decisions
+
+1. **One shared per-axis vocabulary in the kernel** (`segmentation.py`):
+   `normalize_module_limit_m` (exactly the keys x/y/z; booleans,
+   non-numerics, non-finite, zero and negative values refused by name),
+   `axes_fit_mm` (every extent vs ITS OWN limit), `binding_axis_mm`
+   (Amendment 5: greatest utilization ratio extent/limit — never the
+   largest absolute dimension — ties broken deterministically x->y->z),
+   `format_limit_m`. All three enforcement sites use these helpers and
+   can no longer diverge. `segment_solid` takes per-axis mm only —
+   scalar-to-cubic lives at one boundary, never in the kernel.
+
+2. **Two input contracts, kept distinct (Amendment 3).**
+   `fabrication_limits_from_spec` is Design-Spec-only: it preserves the
+   `{x,y,z}` object (validated) and REFUSES a scalar — a scalar there is
+   a malformed spec. `assemble()` is the single compatibility boundary:
+   a Designer/API scalar deliberately means a CUBIC envelope and is
+   normalized to `{x:s, y:s, z:s}`; anything malformed raises
+   `ConstraintViolation` before any geometry (the routes map it to a
+   structured HTTP 422 — Amendment 4). The stored REQUEST keeps the
+   shape the client sent; the manifest's `fabrication_limits` stores the
+   normalized dict, which the fabricate bridge round-trips.
+
+3. **The compatibility truth table (Amendments 1 + 2), enforced live at
+   the API and gated:**
+   - spec_id NULL + scalar -> deliberate cubic; valid.
+   - spec_id NULL + {x,y,z} -> deliberate per-axis; valid.
+   - spec_id SET + {x,y,z} -> corrected spec build; valid.
+   - spec_id SET + scalar -> collapsed-spec history; needs_input,
+     rebuild required. The original axes are recovered via
+     designs.spec_id -> design_specs.spec_json and VERIFIED
+     (max(x,y,z) must equal the stored scalar); recovery is named in
+     the message.
+   - Missing, malformed or mismatched provenance -> needs_input;
+     NEVER assumed cubic.
+   `GET .../manifest` carries a live `module_limit_provenance` block
+   (computed on read, never stored); geometry-REBUILDING operations
+   (export/package rebuild, scene.glb regeneration) refuse with HTTP
+   409 and ONE exact next action; existing artifacts stay viewable.
+   The fabrication gate takes `module_limit_provenance` and emits the
+   needs_input rebuild row for any scalar it cannot confirm as cubic.
+
+4. **The gate row stays scalar-shaped.** `value`/`limit` carry the
+   BINDING axis's extent and limit (the row's ok is all-axes-fit); the
+   basis names every axis and the binding axis explicitly. The wire
+   format, the UI table and the finite-number walk are untouched.
+
+### Consequences
+
+- The required proof holds and is gated (`gate_pr1_auto.py`, roster
+  script 20): a 2.4 x 2.4 x 2.2 m envelope CUTS a 2,300 mm-tall basin
+  that fits x/y, and the same solid under the old collapsed value ships
+  whole — the printed difference IS the closed defect.
+- The four canonical STEP hashes are unmoved (no canonical build passes
+  fabrication; segmentation cuts copies after the fuse) — re-asserted by
+  the gate, not assumed.
+- New manifests store `max_module_m` (and the segmentation block's
+  `max_module_mm`) as dicts; historical manifests are never rewritten.
+- Per-axis binding is CONSERVATIVE: module rotation for transport is not
+  modelled, so a module that could legally lie on its side may be
+  refused (LIMITATIONS §11).
+- The old collapse test (`test_..._scalarizes_module_box`) and every
+  scalar call site were reported red before rewriting; every measured
+  number in the 6c2 gate is unchanged because a cube of the same side is
+  the identical cut.
+- Deferred to PR-5, per Amendment 7: `run_vision_critique.py`'s
+  wrong-level `max_lift_kg` lookup (silent 1000 kg default) is repaired
+  together with the scorer's total-mass-vs-module contract — fixing only
+  the lookup would leave the scorer semantically wrong while appearing
+  repaired. Also PR-5's: the prompt's remaining "per element" wording.

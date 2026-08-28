@@ -69,7 +69,12 @@ from app.geometry.primitives.base import ConstraintViolation, load_materials
 from app.geometry.segmentation import (
     MODE_DISCRETE_ARRAY,
     MODE_PLANAR_GRID,
+    axes_fit_mm,
+    binding_axis_mm,
+    format_limit_m,
     joint_contact_mm,
+    limit_m_to_mm,
+    normalize_module_limit_m,
     refused_result,
     segment_solid,
     whole_element_result,
@@ -91,7 +96,7 @@ def build_segmentation(
     joints: list[dict[str, Any]],
     materials: dict[str, Material],
     *,
-    max_module_m: float | None,
+    max_module_m: dict[str, float] | None,
     joint_solids: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Per-element modules + both classes of seam (slice C2, ADR-056).
@@ -106,7 +111,7 @@ def build_segmentation(
     element is still refused, because nothing here can invent the limit it
     would have been cut to.
     """
-    limit_mm = float(max_module_m) * 1000.0 if max_module_m is not None else None
+    limit_mm = limit_m_to_mm(max_module_m) if max_module_m is not None else None
     per_element: dict[str, Any] = {}
     not_segmentable: list[str] = []
 
@@ -116,20 +121,25 @@ def build_segmentation(
         density = float(materials[validated[eid].material_id].density_kg_per_m3)
         solid = solids[eid]
         bb = solid.bounding_box()
-        worst = max(float(bb.size.X), float(bb.size.Y), float(bb.size.Z))
+        dims = [float(bb.size.X), float(bb.size.Y), float(bb.size.Z)]
 
-        if limit_mm is None or worst <= limit_mm + 1e-6:
+        # PR-1 (ADR-059): every axis binds on ITS OWN limit. The old check
+        # compared max(extents) to one scalar, so an element breaching only
+        # the tight axis of a non-cubic envelope was never cut.
+        if limit_mm is None or axes_fit_mm(dims, limit_mm):
             result = whole_element_result(
                 solid, density_kg_per_m3=density, mode=mode)
         elif mode == MODE_DISCRETE_ARRAY:
             not_segmentable.append(eid)
+            axis, extent, axis_limit = binding_axis_mm(dims, limit_mm)
             result = refused_result(
                 solid, density_kg_per_m3=density, mode=mode,
                 refusal=(
-                    f"bounding box {float(bb.size.X):.0f} x "
-                    f"{float(bb.size.Y):.0f} x {float(bb.size.Z):.0f} mm "
-                    f"exceeds max_module_m {float(max_module_m):g} m "
-                    f"({limit_mm:g} mm), and {by_id[eid]['primitive']} is "
+                    f"bounding box {dims[0]:.0f} x {dims[1]:.0f} x "
+                    f"{dims[2]:.0f} mm exceeds max_module_m "
+                    f"{format_limit_m(max_module_m)} on the {axis} axis "
+                    f"({extent:.0f} mm vs {axis_limit:g} mm), and "
+                    f"{by_id[eid]['primitive']} is "
                     f"{MODE_DISCRETE_ARRAY}: it is already a ring of separate "
                     "pieces on a hub, so saw planes through it produce "
                     "fragments, not modules. Reduce the array's diameter, or "
@@ -175,8 +185,9 @@ def build_segmentation(
         basis = ("no fabrication.max_module_m declared — each element ships "
                  "as one module; nothing was cut")
     else:
-        basis = (f"fabrication.max_module_m = {float(max_module_m):g} m "
-                 f"({limit_mm:g} mm), axis-aligned planar grid")
+        basis = (f"fabrication.max_module_m = {format_limit_m(max_module_m)}"
+                 f", each axis binding on its own limit, axis-aligned "
+                 f"planar grid")
     return {
         "schema": "assembly_segmentation_v1",
         "basis": basis,
@@ -411,7 +422,11 @@ def assemble(
     count, volume conservation) — the latter means a construction defect,
     not a bad parameter.
 
-    ``fabrication``: optional {"max_lift_kg": float, "max_module_m": float}
+    ``fabrication``: optional {"max_lift_kg": float, "max_module_m":
+    {"x","y","z"} in metres — or a scalar, which deliberately means a
+    CUBIC envelope (PR-1, ADR-059; the Designer's single number). Each
+    axis binds on its own limit. Malformed limits (missing/extra axes,
+    booleans, non-finite, zero, negative) raise ConstraintViolation}
     — the Design Spec's declared workshop limits. Checked per MODULE since
     slice C2 (ADR-056): an element over ``max_module_m`` is cut into
     modules by the kernel and the limits bind on those, so a 5 m basin
@@ -721,7 +736,19 @@ def assemble(
     # violations, because strict=False still returns geometry for them.
     limit_violations: list[str] = []
     max_lift = (fabrication or {}).get("max_lift_kg")
-    max_module = (fabrication or {}).get("max_module_m")
+    raw_max_module = (fabrication or {}).get("max_module_m")
+    # PR-1 (ADR-059): assemble() is the ONE compatibility boundary. A
+    # Designer/API scalar deliberately means a cubic envelope; the Design
+    # Spec object passes through per-axis; anything malformed is refused
+    # loudly here, before any further work — never a TypeError downstream.
+    if raw_max_module is None:
+        max_module: dict[str, float] | None = None
+    else:
+        try:
+            max_module = normalize_module_limit_m(
+                raw_max_module, allow_scalar=True)
+        except ValueError as exc:
+            raise ConstraintViolation([str(exc)]) from exc
     for eid in ordered_ids:
         el = by_id[eid]
         p = validated[eid]
@@ -767,20 +794,24 @@ def assemble(
         mat = materials[p.material_id]
         seg = segmentation["elements"][eid]
         modules = seg["modules"]
-        limit_mm = float(max_module) * 1000.0 if max_module is not None else None
+        limit_mm = limit_m_to_mm(max_module) if max_module is not None else None
 
         if seg.get("refusal"):
             limit_violations.append(f"{eid}: {seg['refusal']}")
         elif limit_mm is not None:
-            over = [m for m in modules if max(m["bbox_mm"]) > limit_mm + 1e-6]
+            over = [m for m in modules
+                    if not axes_fit_mm(m["bbox_mm"], limit_mm)]
             for m in over:
                 b = m["bbox_mm"]
+                axis, extent, axis_limit = binding_axis_mm(b, limit_mm)
                 limit_violations.append(
                     f"{eid}: module {m['index']} of {len(modules)} still "
                     f"measures {b[0]:.0f} x {b[1]:.0f} x {b[2]:.0f} mm after "
-                    f"segmentation, over max_module_m {float(max_module):g} m "
-                    f"({limit_mm:g} mm) — axis-aligned planes cannot reduce "
-                    "this shape further; split it into separate elements"
+                    f"segmentation, over max_module_m "
+                    f"{format_limit_m(max_module)} on the {axis} axis "
+                    f"({extent:.0f} mm vs {axis_limit:g} mm) — axis-aligned "
+                    "planes cannot reduce this shape further; split it into "
+                    "separate elements"
                 )
 
         if max_lift is not None:

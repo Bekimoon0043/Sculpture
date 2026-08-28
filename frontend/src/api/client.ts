@@ -1,6 +1,13 @@
 // API client — the exact paths the backend serves (app/api/routes_geometry.py).
 // All geometry traffic goes through the vite dev proxy (/api -> backend).
 
+// PR-1 (ADR-059): fabrication.max_module_m may be a scalar (the Designer's
+// deliberate CUBIC envelope) or the Design Spec's per-axis {x, y, z}.
+export type FabricationValue =
+  | number
+  | string
+  | { x: number; y: number; z: number };
+
 export interface ParameterSpec {
   unit: string;
   default: number | string;
@@ -239,7 +246,7 @@ export async function getAssemblyDefaults(): Promise<AssemblyDefaultsResponse> {
 
 export async function postAssemblyBuild(
   elements: Array<Record<string, unknown>>,
-  fabrication: Record<string, number | string> | null,
+  fabrication: Record<string, FabricationValue> | null,
   seed: number,
   gateProfileId?: string,
   intakeId?: string,
@@ -265,7 +272,7 @@ export async function postAssemblyBuild(
 
 export async function postAssemblyPreview(
   elements: Array<Record<string, unknown>>,
-  fabrication: Record<string, number | string> | null,
+  fabrication: Record<string, FabricationValue> | null,
   seed: number,
   signal?: AbortSignal
 ): Promise<AssemblyPreview> {
@@ -429,7 +436,7 @@ export interface DesignManifestResponse {
   };
   request: {
     elements: Array<Record<string, unknown>>;
-    fabrication: Record<string, number | string>;
+    fabrication: Record<string, FabricationValue>;
     seed: number;
     gate_profile_id: string;
     intake_id: string | null;

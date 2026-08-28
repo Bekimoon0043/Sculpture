@@ -57,12 +57,13 @@ to the loop is `docs/operator/06_the_loop.md`; the queue itself is `NEXT.md`.
 - After any change touching `backend/`, tell the operator to rebuild: `docker compose up --build -d`.
 - Gates: every `scripts\gate_*_auto.py` runs at $0 with no network beyond
   the operator's own machine. **The roster is exactly the files matching
-  that glob — 19 scripts as of 2026-08-27 (PR-3 added
-  `gate_pr3_auto.py`). Nothing discovers or runs them automatically: a
-  session lists the glob and runs each one explicitly**, before and after
-  any change to `backend/`. All 18 pre-PR-3 gates passed on 2026-08-27
-  (PR-0 evidence: 17 with the render worker down + `gate_phase9b_auto`
-  with it up; see `PRODUCTION_V1_REPORT.md`). Pin the render-worker state
+  that glob — 20 scripts as of 2026-08-28 (PR-3 added `gate_pr3_auto.py`,
+  PR-1 added `gate_pr1_auto.py`). Nothing discovers or runs them
+  automatically: a session lists the glob and runs each one explicitly**,
+  before and after any change to `backend/`. Historical counts stand as
+  recorded: all 18 pre-PR-3 gates passed on 2026-08-27 (PR-0 evidence:
+  17 with the render worker down + `gate_phase9b_auto` with it up; see
+  `PRODUCTION_V1_REPORT.md`). Pin the render-worker state
   before a run and re-verify it when the run ENDS — a mid-run manual
   start silently flips results (use `docker compose rm -sf render-worker`
   for a worker-down run, not `stop`).
@@ -133,7 +134,8 @@ plus `gate_pr3_auto.py` (loopback binding; split like gate 14 — STATIC
 in the backend container with the host's live compose file piped in:
 `Get-Content docker-compose.yml -Raw | docker compose exec -T backend
 python scripts/gate_pr3_auto.py --static --stdin`; LIVE on the host:
-`python scripts\gate_pr3_auto.py --live`).
+`python scripts\gate_pr3_auto.py --live`) and `gate_pr1_auto.py`
+(per-axis max_module_m, ADR-059; in the backend container).
 Note `gate_phase9b_auto.py` and the Blender-tier sections of
 `gate_phase9a_auto.py` need the render-worker container running
 (`docker compose --profile render up -d render-worker`); both still cost $0 and
@@ -149,7 +151,8 @@ Awaiting the operator's visual gates: `gate_phase8_visual.md`,
 `gate_phase9b_visual.md`, `gate_phase5_visual.md`, `gate_phase14_visual.md`,
 `gate_phase14b_visual.md`, `gate_phase15_visual.md`, `gate_phase6_visual.md`
 (the live one, ~$1), `gate_phase6b_visual.md`, `gate_phase6c_visual.md`,
-`gate_phase6c2_visual.md`, `gate_pr3_visual.md`.
+`gate_phase6c2_visual.md`, `gate_pr1_visual.md`.
+(`gate_pr3_visual.md` was signed by the operator 2026-08-28.)
 
 **Phase 9B.5 + Phase 5 live run 2026-08-24 (ADR-045)** — USD/USDZ/FBX/ABC
 are produced by the render worker (not sealed into LUXEXCHANGE: they are not

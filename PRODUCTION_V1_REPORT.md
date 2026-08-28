@@ -13,6 +13,256 @@ verbatim gate evidence — the same contract as the phase reports.
 
 ---
 
+## PR-1 — max_module_m binds per axis (CLOSED 2026-08-28: auto gate PASS + operator visual gate PASS)
+
+**Scope (approved with 7 amendments 2026-08-28).** The Design Spec has
+always required `fabrication.max_module_m` as `{x,y,z}`;
+`spec_mapper.py:204` collapsed it with `max()` so every spec-path design
+was gated on its LOOSEST axis. PR-1 preserves the axes end-to-end
+(mapper, assembler pre-cut and post-cut, segmentation kernel,
+fabrication gate), keeps the Designer's scalar as a deliberate cubic
+envelope at the one `assemble()` boundary, enforces the approved
+compatibility truth table with live provenance on the design API, and
+refuses geometry-rebuilding operations on ambiguous history with one
+exact next action. Decisions: ADR-059. Deferred to PR-5 per Amendment 7:
+the `run_vision_critique.py` lookup + scorer contract repair.
+
+### Compatibility evidence, verbatim — PRISTINE tests against the NEW
+backend. **This is NOT the red-first baseline** (that is the next block):
+it shows which recorded old-contract assertions the new behaviour
+breaks, i.e. what the rewrite had to re-assert as the new truth:
+
+```
+docker compose exec -T backend python -m pytest tests/test_spec_mapper.py tests/test_segmentation.py tests/test_assembly.py tests/test_validation_gates.py -q
+FAILED tests/test_spec_mapper.py::test_fabrication_limits_from_spec_scalarizes_module_box
+FAILED tests/test_segmentation.py::test_segmentation_conserves_volume_exactly
+FAILED tests/test_segmentation.py::test_a_five_metre_basin_becomes_liftable_modules
+FAILED tests/test_segmentation.py::test_module_count_is_measured_not_predicted
+FAILED tests/test_segmentation.py::test_seam_area_and_length_match_hand_arithmetic
+FAILED tests/test_segmentation.py::test_an_unsplit_solid_has_no_seam - TypeEr...
+FAILED tests/test_segmentation.py::test_the_same_cut_twice_is_byte_identical
+FAILED tests/test_segmentation.py::test_plane_order_does_not_change_the_engineering
+FAILED tests/test_segmentation.py::test_a_runaway_module_limit_is_refused_with_the_numbers
+FAILED tests/test_validation_gates.py::test_an_oversized_element_in_a_pre_segmentation_manifest_asks_for_a_rebuild
+FAILED tests/test_validation_gates.py::test_a_segmented_element_reports_its_measured_modules
+11 failed, 60 passed in 78.32s (0:01:18)
+```
+
+The eleven are exactly the predicted classes: the collapse pin (the test
+name itself asserts the defect), the eight scalar `segment_solid` call
+sites (the kernel now takes one shape only), and the two gate tests
+whose scalar fixture now honestly reads needs_input — a scalar without
+confirmed cubic provenance is never assumed cubic (Amendment 1 row 5).
+
+### THE red-first baseline, verbatim — NEW per-axis tests against
+PRISTINE `16cf932` production code (detached git worktree mounted
+read-only into a throwaway container; shared tree and live containers
+untouched):
+
+```
+docker compose run --rm --no-deps -T -v <worktree>\backend:/app/backend:ro -v <repo>\tests:/app/tests:ro backend python -m pytest <the 11 new per-axis tests> -q
+FAILED tests/test_spec_mapper.py::test_fabrication_limits_from_spec_preserves_the_axes
+FAILED tests/test_spec_mapper.py::test_fabrication_limits_from_spec_refuses_a_scalar
+FAILED tests/test_spec_mapper.py::test_fabrication_limits_from_spec_refuses_bad_axes
+FAILED tests/test_segmentation.py::test_the_z_axis_binds_on_its_own_limit - T...
+FAILED tests/test_segmentation.py::test_the_kernel_takes_exactly_one_limit_shape
+FAILED tests/test_segmentation.py::test_a_zero_axis_is_refused_per_axis - Typ...
+FAILED tests/test_segmentation.py::test_assemble_takes_the_spec_object_and_splits_the_tall_axis
+FAILED tests/test_segmentation.py::test_assemble_refuses_malformed_module_limits
+FAILED tests/test_validation_gates.py::test_the_binding_axis_is_the_ratio_not_the_largest_dimension
+FAILED tests/test_validation_gates.py::test_a_z_bound_module_fails_even_when_x_and_y_fit
+FAILED tests/test_validation_gates.py::test_the_scalar_truth_table_in_the_gate
+11 failed in 16.90s
+```
+
+**11 of 11 red on the old code — the tests genuinely detect the defect.**
+Honest scope note: the four new API-level tests
+(`test_assembly_api.py`: malformed→422, per-axis round-trip, the
+collapsed-spec refusals, the cubic control) were NOT part of this
+baseline run — they need the TestClient/DB stack inside the throwaway
+container; their old-code failure modes (HTTP 500 from the TypeError,
+and a missing `module_limit_provenance` key) are implied but were not
+executed against pristine code.
+
+**One fixture defect in the slice's own first test build, fixed openly:**
+the Z-split tests first used `basin_round` at height 2,300 mm, which its
+own parameter envelope (max 900 mm) rightly refused — reported by the
+first green run (`2 failed, 112 passed in 282.90s`), moved to
+`sculptural_column` (envelope 300–6,000 mm), both green (21.34s).
+
+### Full suites on the final image, verbatim — both worker states
+
+Render worker UP (instance pinned identical before and after,
+StartedAt 2026-08-27T13:38:44.157457612Z):
+
+```
+docker compose exec -T backend python -m pytest tests/ -q
+449 passed, 2 warnings in 560.89s (0:09:20)
+```
+
+(449 = the 434 pre-PR-1 tests + 15 new per-axis tests.)
+
+Render worker REMOVED (verified empty before and after):
+
+```
+docker compose rm -sf render-worker
+docker compose exec -T backend python -m pytest tests/ -q
+449 passed, 2 warnings in 882.82s (0:14:42)
+```
+
+### `gate_pr1_auto.py` — PASS, exit 0, verbatim (worker removed)
+
+```
+[1] MAPPER — the spec's axes survive; bad shapes are refused
+  ok   axes preserved exactly :: {'x': 2.4, 'y': 2.4, 'z': 2.2}
+  ok   refuses scalar (Design-Spec path must refuse — Amendment 3)
+  ok   refuses missing axis / extra axis / boolean axis /
+       non-finite axis / zero axis / negative axis
+[2] THE Z-AXIS PROOF — 2.4 x 2.4 x 2.2 m cuts a 2.3 m column
+  ok   grid splits ONLY the z axis :: {'x': 1, 'y': 1, 'z': 2}
+  ok   more than one module :: 2 modules
+  ok   every module fits z <= 2200 mm :: tallest module z = 1150.0 mm
+  ok   volume conserved :: 0.0000000000 %
+[3] THE CLOSED DEFECT — the collapsed value ships it whole
+  ok   max(x,y,z)=2.4 cubic does NOT split it :: 1 module — 2,300 mm
+       tall against the declared 2,200 mm truck
+[4] BOUNDARY — assemble(): cubic compat, loud refusals
+  ok   manifest round-trips the dict :: {'x': 2.4, 'y': 2.4, 'z': 2.2}
+  ok   assemble cut the tall axis :: 2 modules
+  ok   Designer scalar normalizes to a cubic dict :: {'x': 4.0, ...}
+  ok   all 6 malformed limits refused as ConstraintViolation :: 6/6
+  ok   discrete-array refusal names the binding axis from a dict ::
+       "... exceeds max_module_m x 0.8 m / y 3 m / z 3 m on the x axis
+       (2300 mm vs 800 mm) ..."
+[5] PROVENANCE TRUTH TABLE — through the real API
+  ok   row 1: spec_id NULL + scalar -> cubic, valid
+  ok   row 2: spec_id NULL + {x,y,z} -> per-axis, valid
+  ok   row 4: spec-backed scalar -> collapsed_spec needs_input
+  ok   recovered spec axes ride along; the one next action names the
+       rebuild; geometry-rebuilding endpoint refuses with 409
+  ok   row 5: mismatched spec -> unverifiable, never cubic
+[6] CANONICAL HASHES — all four unmoved
+  ok   e1a59fa6... / 529014af... / 6038d26f... / 956436c1...
+[7] DETERMINISM — non-cubic cut byte-identical across processes :: 597 chars
+PASS — PR-1 auto gate: all sections passed at $0, no network, no AI call.
+GATE gate_pr1_auto exit=0
+```
+
+### Full roster, final image, worker REMOVED — verbatim, one line each
+
+```
+ROSTER gate_phase2_auto.py exit=0
+ROSTER gate_phase3_auto.py exit=0 :: VERDICT: PASS
+ROSTER gate_phase4_auto.py exit=0 :: VERDICT: PASS
+ROSTER gate_phase5_auto.py exit=0
+ROSTER gate_phase6a1_auto.py exit=0 :: PASS
+ROSTER gate_phase6a2_auto.py exit=1   <- reported red, diagnosed below
+ROSTER gate_phase6b_auto.py exit=0 :: PASS
+ROSTER gate_phase6c_auto.py exit=0 :: PASS
+ROSTER gate_phase6c2_auto.py exit=0 :: PASS
+ROSTER gate_costing_auto.py exit=0
+ROSTER gate_phase8_auto.py exit=0 :: PASS
+ROSTER gate_phase8b_auto.py exit=0 :: PASS
+ROSTER gate_phase9a_auto.py exit=0 :: PASS
+ROSTER gate_phase11_auto.py exit=0 :: PASS
+ROSTER gate_phase13a_auto.py exit=0 :: PASS
+ROSTER gate_phase14_auto.py exit=0 :: PASS (container: geometry sections)
+ROSTER gate_phase15_auto.py exit=0 :: PASS
+ROSTER gate_pr1_auto.py exit=0 :: PASS
+ROSTER gate_pr3_auto (static, stdin) exit=0 :: PASS
+HOST gate_pr3_auto --live exit=0 :: PASS (loopback + LAN)
+HOST gate_phase14_auto --frontend-only exit=1   <- reported red, below
+```
+
+**Two reds in the first roster pass, both diagnosed from real output and
+fixed openly (Rule 12; neither check weakened):**
+
+1. `gate_phase6a2_auto` §5: its bridge stand-in design persists
+   `spec_id` SET with a SCALAR `max_module_m: 3.0` and a stand-in spec
+   of `"{}"` — synthetically the exact ambiguous-history class of the
+   approved truth table (spec-backed scalar, nothing recoverable), so
+   the new export guard refused with HTTP 409 exactly as ruled
+   ("missing provenance -> needs_input; never assume cubic"). The gate
+   FIXTURE moved to the new truth — a current-code fabrication program
+   passes the spec's per-axis object, so the stand-in now declares
+   `{"x": 3.0, "y": 3.0, "z": 3.0}`. The D-10 fixture-expiry pattern's
+   fourth occurrence; STEP bytes unaffected (limits never reach
+   geometry). Re-run green below.
+2. `gate_phase14_auto --frontend-only`: `npm run build` exited 2 —
+   `DesignerWorkspace.tsx:167` restores a stored request into the
+   document, whose `fabrication` was typed scalar-only; a restored
+   per-axis design could not type-check. The document type widened to
+   `FabricationValue` and carries a restored `{x,y,z}` through to
+   rebuilds VERBATIM (no silent drop; there is no fabrication editor UI
+   to misrender — `set-fabrication` has no dispatcher). Re-run:
+   `npm run build` ✓ built in 2.98s, exit 0.
+
+### Re-runs after the two fixes, and 9B — verbatim
+
+```
+ROSTER gate_phase6a2_auto.py exit=0 :: PASS — Phase 6 slice A2 auto gate: all sections passed at $0, no network, no AI-written code executed.
+HOST gate_phase14_auto --frontend-only exit=0 :: PASS (npm run build ✓)
+docker compose --profile render up -d render-worker
+running started 2026-08-28T08:26:36.493402363Z
+GATE gate_phase9b_auto exit=0
+running started 2026-08-28T08:26:36.493402363Z
+```
+
+### What PR-1 makes true
+
+- Every axis of `fabrication.max_module_m` binds on its own limit at
+  all three enforcement sites, via one shared kernel vocabulary; the
+  binding axis is the greatest extent/limit ratio, ties x→y→z.
+- The Designer's single number remains a valid, deliberate cubic
+  envelope at the one `assemble()` boundary; the Design-Spec mapper
+  preserves `{x,y,z}` and refuses scalars; malformed limits are
+  structured HTTP 422s, never TypeErrors or 500s.
+- The approved compatibility truth table runs live on the design API
+  with spec recovery + verification; ambiguous history refuses
+  geometry rebuilds with one exact next action and stays viewable.
+- Red-first proven: 11/11 new tests failed on pristine `16cf932`.
+  Suites: 449 passed in BOTH worker states on the final image.
+- **All 20 roster scripts green, counted explicitly:** 18 scripts run
+  in-container with the worker removed (`gate_phase2/3/4/5/6a1/6a2/6b/
+  6c/6c2/costing/8/8b/9a/11/13a/14/15_auto.py` = 17, plus
+  `gate_pr1_auto.py` = 18); script 19, `gate_pr3_auto.py`, run in BOTH
+  its modes (static in-container with the host's live compose file
+  piped in, live on the host); script 20, `gate_phase9b_auto.py`, run
+  with the worker restored and its instance pinned. `gate_phase14_auto`
+  and `gate_pr3_auto` each covered on both their sides per their own
+  split-coverage contracts.
+- Canonical STEP hashes: all four re-asserted unmoved.
+
+### Cost
+
+$0.00 — no AI call anywhere in the slice; no network beyond the local
+Docker daemon and loopback.
+
+**Operator visual gate (`gate_pr1_visual.md`, $0): PASS, signed
+2026-08-28.** The operator's result, verbatim:
+
+> - The 2.3 m column split into exactly two modules under the 2.2 m Z
+>   limit.
+> - Grid was 1 × 1 × 2.
+> - Both module heights were 1150 mm, safely below 2200 mm.
+> - Volume delta was 0%.
+> - The basis named X 2.4 m, Y 2.4 m and Z 2.2 m.
+> - Checks correctly reported "binding axis z" and compared 1150 mm
+>   against 2200 mm.
+> - The normal Designer scalar build completed correctly with no
+>   historical-rebuild warning.
+> - Historical spec-design check: n/a.
+> - Real truck envelope: UNKNOWN pending workshop/truck measurement;
+>   keep B-1 open and do not invent values.
+
+The real per-axis truck envelope remains an open operator input under
+B-1 — no value was invented; the platform keeps enforcing whatever the
+operator declares per design until the measured numbers arrive.
+
+**PR-1 CLOSED 2026-08-28: auto gate PASS + operator visual gate PASS.**
+
+---
+
 ## PR-3 — the platform answers on loopback only (CLOSED 2026-08-28: auto gate PASS + operator visual gate PASS)
 
 **Scope (approved with amendments 2026-08-27).** docker-compose.yml

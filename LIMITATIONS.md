@@ -348,6 +348,20 @@ What Phase 6 still deliberately does NOT do:
     over-mass element is refused exactly as before — the platform will
     not invent the limit it would have cut to. `max_lift_kg` alone does
     not trigger a split.
+  - **Per-axis limits are CONSERVATIVE (PR-1, ADR-059).** Since
+    2026-08-28 each bbox axis binds on its own limit (the spec's
+    `{x,y,z}`; a Designer scalar means a cubic envelope). Module
+    ROTATION for transport is not modelled — a module that could legally
+    lie on its side to fit the truck may be refused. Loud, never silent,
+    and the safe direction; a rotation-aware packing check would be its
+    own slice.
+  - **Designs whose spec-declared `{x,y,z}` was collapsed to one number
+    (built before 2026-08-28 through the fabrication loop) are flagged,
+    never re-judged.** Their manifest read carries a live
+    `module_limit_provenance: needs_input` naming the spec's true axes,
+    and geometry-rebuilding operations (re-export, scene regeneration)
+    refuse with the exact rebuild command. Designer-built scalar designs
+    are deliberate cubic envelopes and are untouched.
   - **Plane order is not bit-exact.** The connected components and every
     engineering number are order-independent to better than 1e-9
     relative, but OCCT's split is not bit-identical under reordering

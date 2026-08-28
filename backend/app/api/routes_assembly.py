@@ -42,6 +42,7 @@ from app.core.config import (
 from app.db.database import get_default_db
 from app.db.models import (
     DesignRow,
+    DesignSpecRow,
     ExportRow,
     JobRow,
     ProjectRow,
@@ -555,6 +556,103 @@ def _design_or_404(design_id: str) -> DesignRow:
     return row
 
 
+def _module_limit_provenance(row: DesignRow) -> dict[str, Any]:
+    """The PR-1 (ADR-059) compatibility truth table, computed live.
+
+    - spec_id NULL  + scalar  -> deliberate cubic Designer/API limit; valid.
+    - spec_id NULL  + {x,y,z} -> deliberate per-axis API limit; valid.
+    - spec_id SET   + {x,y,z} -> corrected spec build; valid.
+    - spec_id SET   + scalar  -> historical collapsed-spec design;
+      needs_input, rebuild required (recovered spec axes named when the
+      original Design Spec verifies: max(x,y,z) must equal the stored
+      scalar, or the origin is unknown).
+    - Missing, malformed or mismatched original-spec provenance ->
+      needs_input; NEVER assume cubic.
+
+    Returned dict: kind, status ("ok" | "needs_input"), optional
+    spec_max_module_m, and — when a rebuild is required — the one exact
+    safe next action.
+    """
+    stored = json.loads(row.parameter_json)
+    limit = ((stored.get("request") or {}).get("fabrication")
+             or {}).get("max_module_m")
+    if limit is None:
+        return {"kind": "no_limit", "status": "ok"}
+    if isinstance(limit, dict):
+        kind = "per_axis_spec_build" if row.spec_id else "per_axis_request"
+        return {"kind": kind, "status": "ok"}
+    if isinstance(limit, bool) or not isinstance(limit, (int, float)):
+        return {
+            "kind": "malformed", "status": "needs_input",
+            "action": _rebuild_action(row, None),
+        }
+    if row.spec_id is None:
+        return {"kind": "cubic_request", "status": "ok"}
+
+    # Spec-backed scalar: the collapse. Recover and VERIFY the original.
+    db = get_default_db()
+    with db.get_session() as session:
+        spec_row = session.get(DesignSpecRow, row.spec_id)
+    spec_limit: dict[str, Any] | None = None
+    if spec_row is not None:
+        try:
+            spec = json.loads(spec_row.spec_json)
+            candidate = (spec.get("fabrication") or {}).get("max_module_m")
+            if (isinstance(candidate, dict)
+                    and set(candidate) == {"x", "y", "z"}):
+                spec_limit = {a: float(candidate[a]) for a in ("x", "y", "z")}
+        except (ValueError, TypeError):
+            spec_limit = None
+    if spec_limit is not None:
+        # The mapper stored max(x,y,z); anything else means the generated
+        # program did not use the mapper and the origin is unknown.
+        if abs(max(spec_limit.values()) - float(limit)) <= 1e-9:
+            return {
+                "kind": "collapsed_spec", "status": "needs_input",
+                "spec_max_module_m": spec_limit,
+                "action": _rebuild_action(row, spec_limit),
+            }
+    return {
+        "kind": "unverifiable", "status": "needs_input",
+        "action": _rebuild_action(row, None),
+    }
+
+
+def _rebuild_action(row: DesignRow,
+                    spec_limit: dict[str, float] | None) -> str:
+    if spec_limit is not None:
+        limit_text = (f'{{"x": {spec_limit["x"]:g}, "y": {spec_limit["y"]:g},'
+                      f' "z": {spec_limit["z"]:g}}}')
+        source = f"its Design Spec ({row.spec_id}) declares"
+    else:
+        limit_text = '{"x": ..., "y": ..., "z": ...}'
+        source = "confirm the true per-axis envelope with the operator and use"
+    return (
+        f"rebuild this design once: POST /api/geometry/assembly/build with "
+        f"the stored elements and seed, and fabrication.max_module_m set "
+        f"per-axis — {source} {limit_text}. Stored artifacts stay readable; "
+        f"only geometry-rebuilding operations are refused until then."
+    )
+
+
+def _refuse_ambiguous_rebuild(row: DesignRow, operation: str) -> None:
+    """PR-1 Amendment 2: a geometry-REBUILDING operation must not silently
+    reinterpret a collapsed-spec scalar as a cubic envelope. Viewing stored
+    artifacts stays allowed; the rebuild paths refuse with the one action."""
+    provenance = _module_limit_provenance(row)
+    if provenance["status"] != "ok":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{operation} refused: this design's stored "
+                f"fabrication.max_module_m is a single number whose per-axis "
+                f"truth was discarded at build time "
+                f"(provenance: {provenance['kind']}). "
+                + provenance["action"]
+            ),
+        )
+
+
 @router.get("/latest/manifest")
 def get_latest_manifest() -> dict[str, Any]:
     row = _latest_assembly_design()
@@ -569,6 +667,7 @@ def get_latest_manifest() -> dict[str, Any]:
         "manifest": stored["manifest"],
         "request": stored["request"],
         "artifacts": stored["artifacts"],
+        "module_limit_provenance": _module_limit_provenance(row),
     }
 
 
@@ -639,7 +738,11 @@ def _ensure_scene_glb(row: DesignRow) -> Path:
         raise HTTPException(status_code=404, detail="design has no GLB on disk")
     path = Path(row.glb_path).parent / "scene.glb"
     if path.exists():
+        # Existing artifacts stay viewable whatever the limit provenance.
         return path
+    # Regeneration REBUILDS geometry from the stored request — refuse if
+    # that would silently reinterpret a collapsed-spec scalar (ADR-059).
+    _refuse_ambiguous_rebuild(row, "scene.glb regeneration")
     stored = json.loads(row.parameter_json)
     request = stored.get("request") or {}
     try:
@@ -755,6 +858,10 @@ def get_design_manifest(design_id: str) -> dict[str, Any]:
         "manifest": stored["manifest"],
         "request": stored["request"],
         "artifacts": stored["artifacts"],
+        # PR-1 (ADR-059): computed live, never stored — whether this
+        # design's module limit is trustworthy per-axis, a deliberate
+        # cubic envelope, or a collapsed-spec scalar needing a rebuild.
+        "module_limit_provenance": _module_limit_provenance(row),
     }
 
 
@@ -861,6 +968,9 @@ def post_design_exports(design_id: str) -> dict[str, Any]:
     byte-identical package.
     """
     row = _design_or_404(design_id)
+    # The export job REBUILDS the solid from the stored request — refuse
+    # rather than silently reinterpret a collapsed-spec scalar (ADR-059).
+    _refuse_ambiguous_rebuild(row, "export/package rebuild")
     stored = json.loads(row.parameter_json)
     manifest = stored["manifest"]
     request_payload = stored["request"]

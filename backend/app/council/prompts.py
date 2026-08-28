@@ -239,8 +239,10 @@ def registry_surface(used_primitives=None) -> str:
         "    unit conversion, parameter aliases and parent_id -> joint type.",
         "",
         "  fabrication = registry.fabrication_limits_from_spec(spec)",
-        "    Extracts max_lift_kg and scalar max_module_m from the Design",
-        "    Spec fabrication limits for registry.assemble.",
+        "    Extracts max_lift_kg and PER-AXIS max_module_m {x, y, z}",
+        "    (metres) from the Design Spec fabrication limits for",
+        "    registry.assemble. Each axis binds on its own limit; the",
+        "    spec's {x, y, z} object is preserved, never collapsed.",
         "",
         "PRIMITIVE INDEX (live registry):",
     ]
@@ -282,7 +284,9 @@ def registry_surface(used_primitives=None) -> str:
         "  Pass fabrication={\"max_lift_kg\": spec[\"fabrication\"]"
         "[\"max_lift_kg\"], \"max_module_m\": spec[\"fabrication\"]"
         "[\"max_module_m\"]} when those keys exist so crane/module limits",
-        "    bind per element with real numbers.",
+        "    bind per element with real numbers. max_module_m is the",
+        "    spec's {x, y, z} object and registry.assemble takes it",
+        "    verbatim — never reduce it to one number.",
         "",
         "ASSEMBLY RETURN CONTRACT:",
         "  For an assembly, call registry.assembly_plan_from_spec(spec), then",

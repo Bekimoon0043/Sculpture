@@ -81,6 +81,103 @@ _AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
 
 
 # ---------------------------------------------------------------------------
+# per-axis module limits (PR-1, ADR-059)
+# ---------------------------------------------------------------------------
+# The Design Spec has ALWAYS declared max_module_m as {x, y, z}
+# (schemas/design_spec_v1.json requires the object); the platform used to
+# collapse it to max(x,y,z), silently gating the two tighter axes against
+# the loosest. These helpers are the one shared vocabulary for the three
+# enforcement sites (pre-cut decision, post-cut check, fabrication gate) —
+# they must never diverge, or a breach on the tight axis reads as a pass.
+
+def normalize_module_limit_m(value: Any, *,
+                             allow_scalar: bool) -> dict[str, float]:
+    """Validate a max_module_m value into {"x","y","z"} metres.
+
+    ``allow_scalar`` is True ONLY at the assemble() compatibility boundary,
+    where a Designer/API scalar deliberately means a CUBIC envelope
+    (Amendment 2 of the PR-1 approval). The Design-Spec mapper must pass
+    allow_scalar=False: the spec schema requires the object, and accepting
+    a scalar there would re-open the collapse this exists to close.
+
+    Rejected loudly, naming the offence: missing or extra keys, booleans,
+    non-numeric values, non-finite values, zero and negatives.
+    """
+    if isinstance(value, dict):
+        keys = set(value.keys())
+        if keys != set(_AXES):
+            raise ValueError(
+                f"fabrication.max_module_m must carry exactly the keys "
+                f"x, y, z; got {sorted(keys)!r}"
+            )
+        out: dict[str, float] = {}
+        for axis in _AXES:
+            out[axis] = _positive_finite(value[axis],
+                                         f"fabrication.max_module_m.{axis}")
+        return out
+    if allow_scalar:
+        side = _positive_finite(value, "fabrication.max_module_m")
+        return {axis: side for axis in _AXES}
+    raise ValueError(
+        f"fabrication.max_module_m must be the Design Spec object "
+        f"{{x, y, z}} in metres; got {value!r}"
+    )
+
+
+def _positive_finite(value: Any, name: str) -> float:
+    # bool is an int subclass — True would silently become a 1 m limit.
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be a number in metres, got {value!r}")
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{name} must be finite, got {value!r}")
+    if number <= 0:
+        raise ValueError(f"{name} must be > 0 m, got {value!r}")
+    return number
+
+
+def limit_m_to_mm(limit_m: dict[str, float]) -> dict[str, float]:
+    return {axis: float(limit_m[axis]) * 1000.0 for axis in _AXES}
+
+
+def axes_fit_mm(bbox_mm: Any, limit_mm: dict[str, float],
+                eps: float = 1e-6) -> bool:
+    """True when every bbox extent fits ITS OWN axis limit."""
+    return all(
+        float(bbox_mm[_AXIS_INDEX[axis]]) <= limit_mm[axis] + eps
+        for axis in _AXES
+    )
+
+
+def binding_axis_mm(bbox_mm: Any,
+                    limit_mm: dict[str, float]) -> tuple[str, float, float]:
+    """(axis, extent_mm, axis_limit_mm) of the BINDING axis.
+
+    The binding axis is the greatest utilization ratio extent/limit —
+    NOT the largest absolute extent, which under unequal limits can name
+    the wrong axis. Ties break deterministically x -> y -> z (strict >
+    while iterating _AXES in order keeps the first).
+    """
+    best_axis = "x"
+    best_ratio = -1.0
+    for axis in _AXES:
+        ratio = float(bbox_mm[_AXIS_INDEX[axis]]) / limit_mm[axis]
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_axis = axis
+    return (best_axis, float(bbox_mm[_AXIS_INDEX[best_axis]]),
+            limit_mm[best_axis])
+
+
+def format_limit_m(limit_m: dict[str, float]) -> str:
+    """Human text: '2.4 m (cubic)' or 'x 2.4 m / y 2.4 m / z 2.2 m'."""
+    values = [limit_m[axis] for axis in _AXES]
+    if len({f"{v:g}" for v in values}) == 1:
+        return f"{values[0]:g} m (cubic)"
+    return " / ".join(f"{axis} {limit_m[axis]:g} m" for axis in _AXES)
+
+
+# ---------------------------------------------------------------------------
 # plane arithmetic
 # ---------------------------------------------------------------------------
 
@@ -322,10 +419,14 @@ class SegmentResult:
 # the operation
 # ---------------------------------------------------------------------------
 
-def segment_solid(solid: Any, limit_mm: float, *,
+def segment_solid(solid: Any, limit_mm: dict[str, float], *,
                   density_kg_per_m3: float,
                   axis_order: tuple[str, ...] = _AXES) -> SegmentResult:
     """Cut one placed solid into modules that each fit ``limit_mm``.
+
+    ``limit_mm`` is PER-AXIS — {"x","y","z"} in millimetres (PR-1,
+    ADR-059). The kernel takes exactly one shape; scalar-to-cubic
+    compatibility lives at the assemble() boundary, never here.
 
     ``axis_order`` is a DIAGNOSTIC, not a tuning knob: production always
     cuts x then y then z, and the gate uses this argument to prove the
@@ -353,13 +454,15 @@ def segment_solid(solid: Any, limit_mm: float, *,
     extents = {"x": float(bb.size.X), "y": float(bb.size.Y),
                "z": float(bb.size.Z)}
     lows = {"x": float(bb.min.X), "y": float(bb.min.Y), "z": float(bb.min.Z)}
-    grid = {a: band_count(extents[a], limit_mm) for a in _AXES}
-    offsets = {a: plane_offsets(lows[a], extents[a], limit_mm) for a in _AXES}
+    grid = {a: band_count(extents[a], limit_mm[a]) for a in _AXES}
+    offsets = {a: plane_offsets(lows[a], extents[a], limit_mm[a])
+               for a in _AXES}
     predicted = grid["x"] * grid["y"] * grid["z"]
     if predicted > MAX_PREDICTED_CELLS:
+        limit_text = " x ".join(f"{limit_mm[a]:.0f}" for a in _AXES)
         raise ValueError(
             f"segmentation refused: a {extents['x']:.0f} x {extents['y']:.0f} "
-            f"x {extents['z']:.0f} mm element at a {limit_mm:.0f} mm module "
+            f"x {extents['z']:.0f} mm element at a {limit_text} mm module "
             f"limit needs a {grid['x']} x {grid['y']} x {grid['z']} grid = "
             f"{predicted} cells, over the {MAX_PREDICTED_CELLS}-cell ceiling. "
             "Raise fabrication.max_module_m, or split the design into more "
