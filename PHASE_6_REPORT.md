@@ -268,11 +268,24 @@ ends. It was contaminated the same way:
 ```
 
 The worker restarted at 12:25:35 — three minutes into a four-minute run.
-Four such restarts are now on record, each ~3 minutes after a
-`docker compose stop`; `RestartPolicy=no`, `RestartCount=0`. Attribution is
-reopened at **D-9** in `NEXT.md`, and **D-9b** records the plain fact that
-**this code has no clean full-suite run**. No gate and no test was edited
-to make any of this pass.
+Restarts are on record at irregular gaps — 33 s after one stop, 3 m 05 s
+after another; `RestartPolicy=no`, `RestartCount=0`. No gate and no test
+was edited to make any of this pass.
+
+**Both debts were closed the same day by PR-0 (`0645b06`, 2026-08-27,
+ADR-057), after this section was written.** The six worker-state tests now
+assert the honest contract in BOTH states
+(`assert result.status in ("included", "unavailable")`), and the sealed
+manifest carries a constant `excluded` for every Blender-tier format plus
+`omitted_non_reproducible`, so the package digest describes THE PACKAGE
+rather than the runtime and no longer depends on worker state at all. That
+is a better fix than the one D-9 proposed — D-9 only asked the tests to
+tolerate both states; ADR-057 removed the dependency from the artifact.
+Clean full-suite runs in both worker states are recorded in
+`PRODUCTION_V1_REPORT.md`. **The sentence above — "this code has no clean
+full-suite run" — was true when written and is no longer true.** It is
+kept rather than deleted because the C2 gate evidence should read as it
+stood on the day; `NEXT.md` marks D-9 and D-9b `[x]`.
 
 ### Cost
 
