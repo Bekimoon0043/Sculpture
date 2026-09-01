@@ -23,14 +23,23 @@ def build_providers(
     settings: Settings,
     config: ConfigBundle,
     db: Database,
-    budget: BudgetEnforcer | None = None,
+    budget: BudgetEnforcer,
 ) -> dict[str, AIProvider]:
     """Build all three providers from settings + council.yaml model defaults.
+
+    ``budget`` is REQUIRED (PR-2, ADR-061): the old ``budget=None`` default
+    let a forgetful caller construct uncapped providers silently, and
+    call_log now refuses to dispatch without an enforcer anyway.
 
     Providers without an API key are still returned — their calls fail
     honestly with ProviderError("provider not configured") before any network,
     which is what the gate reports on.
     """
+    if budget is None:
+        raise ValueError(
+            "build_providers requires a BudgetEnforcer (ADR-061): uncapped "
+            "paid dispatch is forbidden"
+        )
     models = config.council.model_defaults
     endpoints = config.council.endpoints
     return {

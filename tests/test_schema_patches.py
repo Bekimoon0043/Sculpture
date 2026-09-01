@@ -48,6 +48,13 @@ _CORRECTED_ORIGINAL = (
 )
 
 
+# PR-2 (ADR-061): reservation_id postdates the operator's live database too.
+_PR2_RESERVATION_FRAGMENT = (
+    "    reservation_id  TEXT REFERENCES spend_reservations(id)"
+    "  -- PR-2 (ADR-061): 1:1, NULL pre-PR-2\n"
+)
+
+
 def _old_v3_script() -> str:
     """The v3 schema as it existed BEFORE the ADR-022 cache columns and the
     ADR-025 corrected column (i.e. the operator's real live database)."""
@@ -61,6 +68,14 @@ def _old_v3_script() -> str:
     script = script.replace(
         "    step_path       TEXT,                    -- canonical STEP artifact\n",
         "    step_path       TEXT                     -- canonical STEP artifact\n",
+    )
+    assert _PR2_RESERVATION_FRAGMENT in script, \
+        "schema.sql changed — update this test"
+    script = script.replace(_PR2_RESERVATION_FRAGMENT, "")
+    script = script.replace(
+        "    error           TEXT,                    -- raw error text when status='error'\n",
+        "    error           TEXT                     -- raw error text when status='error'\n",
+        1,  # only ai_calls; council_calls' error line has no trailing comma
     )
     assert _CORRECTED_BLOCK in script, "schema.sql changed — update this test"
     script = script.replace(_CORRECTED_BLOCK, _CORRECTED_ORIGINAL)

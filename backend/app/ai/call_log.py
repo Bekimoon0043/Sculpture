@@ -1,66 +1,104 @@
 """The single dispatch path for every AI call (SPEC section F, Rule 8).
 
-``execute()`` is the ONLY way a prompt reaches a provider. In order, it:
+``execute()`` is the ONLY way a prompt reaches a provider. PR-2 (ADR-061)
+made the cap enforcement RESERVATION-based, per PHYSICAL attempt:
 
-1. computes a pre-call cost estimate from pricing.yaml,
-2. runs ``BudgetEnforcer.pre_dispatch_check`` (Amendment 2 — raises BudgetHalt
-   before any network traffic if a cap would be breached),
-3. executes the real API call, retrying TRANSIENT failures (timeouts,
-   connection errors) with exponential backoff — every attempt audited,
-   SDK-internal retries disabled so no attempt is hidden (ADR-023),
-4. computes the actual cost from the returned token counts x pricing.yaml,
-5. records the actual spend and INSERTs the full ai_calls row — full prompt,
-   full response, tokens, latency, cost, pricing version (Rule 8 audit),
-6. on API error: INSERTs an ai_calls row with status='error' + the raw error
-   text, then raises ProviderError.
+1. refuses outright when the provider carries no BudgetEnforcer — an
+   uncapped paid dispatch is structurally impossible, not a convention,
+2. computes the cap-safe reservation bound (context-window fallback — see
+   ``reserve_bound_usd_micro`` below; the old chars/4 estimate is gone),
+3. ensures the sessions row exists (the reservation FKs it),
+4. for EACH physical attempt: atomically RESERVES the bound (BudgetHalt
+   raises here, with its evidence committed, before any network traffic),
+   dispatches, then settles in ONE transaction — the ai_calls row insert,
+   the reservation settlement and the sessions ledger update commit
+   together, so a crash can never leave a partial state,
+5. a failed attempt writes its own error ai_calls row and its reservation
+   goes UNCERTAIN — counted at the full bound forever (fail closed: no
+   first-party documentation proves any provider error class non-billing;
+   silence is not proof). Transient failures retry under a NEW reservation
+   with audited linkage (ADR-023 semantics preserved, now one row per
+   attempt so no attempt is ever invisible),
+6. a pricing failure after a billed call settles UNCERTAIN at the full
+   bound AND engages a provider/model safety lock (the pricing machinery
+   may be wrong for every run using that model); an actual cost above the
+   reserved bound does the same at settlement. Both halt the spend scope.
 
-Missing API key -> ProviderError("... not configured ...") BEFORE any network.
-Pricing lookup failure (model not in pricing.yaml) -> ProviderError; a price
-is never guessed.
+Missing API key -> ProviderError("... not configured ...") BEFORE any
+reservation or network. Pricing/bound lookup failure -> ProviderError; a
+price or a context window is never guessed.
 """
 
 from __future__ import annotations
 
-import math
 import time
-import uuid
 from datetime import datetime, timezone
+from decimal import ROUND_CEILING, Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from app.core.budget import BudgetEnforcer
+from app.core.budget import usd_to_micro
 from app.core.config import PricingLookupError
-from app.db.models import AICallRow, SessionRow
+from app.db.models import SessionRow
 
 if TYPE_CHECKING:
     from app.ai.provider import AIProvider, ProviderResponse, RawResult
 
-# Pre-call estimate assumptions (documented, conservative):
-#  - text tokens are approximated at ~4 characters per token,
-#  - a vision call additionally carries a fixed image-token allowance.
-_CHARS_PER_TOKEN = 4
-_VISION_IMAGE_TOKEN_ALLOWANCE = 1100
 
+def reserve_bound_usd_micro(
+    pricing, provider_name: str, model: str, max_tokens: int
+) -> int:
+    """Cap-safe reservation upper bound in micro-USD (ADR-061, Amendment 4).
 
-def estimate_cost_usd(
-    provider: "AIProvider", model: str, prompt: str, max_tokens: int, kind: str
-) -> float:
-    """Pre-dispatch upper-ish estimate from pricing.yaml (never guessed)."""
-    entry = provider._pricing.price_for(provider.name, model)  # raises if absent
-    est_in = max(1, math.ceil(len(prompt) / _CHARS_PER_TOKEN))
-    if kind == "vision":
-        est_in += _VISION_IMAGE_TOKEN_ALLOWANCE
-    est = (
-        est_in * entry.usd_per_1m_input_tokens
-        + max_tokens * entry.usd_per_1m_output_tokens
-    ) / 1_000_000
-    return round(est, 6)
+    No provider's first-party documentation proves every component of a
+    prompt-based token formula (message framing overhead is documented by
+    none of the three; fetched 2026-08-28 — see pricing.yaml), so ALL
+    providers use the mandated conservative fallback:
+
+        bound = context_window_tokens x highest applicable input rate
+              + max_tokens          x output rate
+
+    * context_window_tokens is the model's FIRST-PARTY documented context
+      window (pricing.yaml, per model, with source + fetch date). Billed
+      input tokens — text AND images — are context tokens by definition,
+      so the window ceilings both.
+    * The input rate is max(base input, cache-write): anthropic 5-minute
+      cache writes bill 1.25x and our dispatch path can request ephemeral
+      caching; the 1h class ($6) is unreachable — no code path sends a ttl.
+      Cache READS are cheaper than base, so assuming zero reads is safe.
+    * max_tokens is the request's own output ceiling, enforced server-side
+      (first-party model pages list max output; the request cannot exceed
+      what it asked for).
+    * Rounding is CEILING to the next micro-USD — a bound never rounds down.
+    """
+    entry = pricing.price_for(provider_name, model)  # raises if absent
+    if entry.context_window_tokens is None:
+        raise PricingLookupError(
+            f"no context_window_tokens for {provider_name}/{model} in "
+            f"config/pricing.yaml — the ADR-061 reservation bound needs the "
+            "model's first-party documented context window (with source and "
+            "fetch date); add it rather than guessing"
+        )
+    if max_tokens < 1:
+        raise ValueError("max_tokens must be at least 1")
+    input_rate = Decimal(str(entry.usd_per_1m_input_tokens))
+    if entry.usd_per_1m_cache_write_input_tokens is not None:
+        input_rate = max(
+            input_rate, Decimal(str(entry.usd_per_1m_cache_write_input_tokens))
+        )
+    output_rate = Decimal(str(entry.usd_per_1m_output_tokens))
+    bound = (
+        Decimal(entry.context_window_tokens) * input_rate
+        + Decimal(max_tokens) * output_rate
+    ) / Decimal(1_000_000)
+    return usd_to_micro(bound, rounding=ROUND_CEILING)
 
 
 def _is_transient(exc: Exception) -> bool:
     """Timeout / connection failures are transient and worth retrying; 4xx,
     validation and shape errors are not. Class-name matching covers both
     SDKs (openai.* / anthropic.* Timeout+Connection errors) and httpx.
+    (Retry POLICY only — spend classification is uniformly 'uncertain'.)
     """
     name = type(exc).__name__.lower()
     return "timeout" in name or "connection" in name or "connect" in name
@@ -71,7 +109,8 @@ def _utc_now_iso() -> str:
 
 
 def _ensure_session(provider: "AIProvider", session_id: str) -> None:
-    """ai_calls.session_id is a FK; make sure the sessions row exists."""
+    """ai_calls.session_id and spend_reservations.session_id are FKs; the
+    sessions row must exist BEFORE the first reservation (ADR-061)."""
     with provider._db.get_session() as s:
         if s.get(SessionRow, session_id) is None:
             s.add(
@@ -99,32 +138,33 @@ def execute(
 ) -> "ProviderResponse":
     from app.ai.provider import ProviderError, ProviderResponse  # avoid cycle
 
-    # Missing key -> honest failure BEFORE any network traffic.
+    # Missing key -> honest failure BEFORE any reservation or network.
     if not provider.api_key:
         raise ProviderError(
             provider.name,
             f"provider not configured (set {provider.env_var} in .env)",
         )
 
-    # Pricing lookup failure -> ProviderError; never guess a price.
+    # ADR-061: an uncapped paid dispatch is impossible, not discouraged.
+    if provider._budget is None:
+        raise ProviderError(
+            provider.name,
+            "no BudgetEnforcer attached — uncapped paid dispatch is "
+            "forbidden (ADR-061); construct providers via build_providers "
+            "with an enforcer",
+        )
+    budget = provider._budget
+
+    # Bound lookup failure -> ProviderError; never guess.
     try:
-        estimate = estimate_cost_usd(provider, model, prompt, max_tokens, kind)
+        bound_micro = reserve_bound_usd_micro(
+            provider._pricing, provider.name, model, max_tokens
+        )
     except PricingLookupError as exc:
         raise ProviderError(provider.name, str(exc)) from exc
 
-    # Amendment 2: hard cap check before the call exists.
-    if provider._budget is not None:
-        provider._budget.pre_dispatch_check(estimate)
-
     _ensure_session(provider, session_id)
 
-    # Step 3: the real dispatch, with audited retries on TRANSIENT failures
-    # (ADR-023): timeouts and connection errors are retried up to
-    # LUXURYFORM_PROVIDER_MAX_ATTEMPTS times with exponential backoff —
-    # the operator's line is slow and a single timeout must not kill a
-    # 15-call session. Non-transient errors (4xx, shape errors) are never
-    # retried. SDK-internal retries are disabled (max_retries=0) so every
-    # attempt is visible here.
     from app.ai.provider import (  # local import: config-free env helpers
         provider_backoff_base_s,
         provider_max_attempts,
@@ -133,156 +173,107 @@ def execute(
     max_attempts = provider_max_attempts()
     backoff_base = provider_backoff_base_s()
     started = time.perf_counter()
-    ts = _utc_now_iso()
-    raw: "RawResult | None" = None
     retry_notes: list[str] = []
-    final_exc: Exception | None = None
+
     for attempt in range(1, max_attempts + 1):
+        # Atomic hold for THIS physical attempt. BudgetHalt (with its
+        # evidence rows committed) propagates from here — including when a
+        # retry no longer fits under a cap: money may already be gone.
+        reservation_id = budget.reserve(
+            bound_micro,
+            provider=provider.name,
+            model=model,
+            kind=kind,
+            attempt_no=attempt,
+        )
+        ts = _utc_now_iso()
+        attempt_started = time.perf_counter()
         try:
             if kind == "text":
-                raw = provider._raw_complete(prompt, model, max_tokens, temperature)
+                raw: "RawResult" = provider._raw_complete(
+                    prompt, model, max_tokens, temperature
+                )
             else:
                 assert image_path is not None
-                raw = provider._raw_vision(prompt, Path(image_path), model, max_tokens)
-            final_exc = None
-            break
+                raw = provider._raw_vision(
+                    prompt, Path(image_path), model, max_tokens
+                )
         except Exception as exc:
-            final_exc = exc
+            latency_ms = round((time.perf_counter() - attempt_started) * 1000, 3)
+            error_text = str(exc)
+            if retry_notes:
+                error_text += " | retry history: " + " ; ".join(retry_notes)
+            budget.record_failed_attempt(
+                reservation_id,
+                ts=ts, provider=provider.name, model=model, purpose=purpose,
+                prompt=prompt, response="", tokens_in=0, tokens_out=0,
+                cached_input_tokens=0, cache_write_input_tokens=0,
+                latency_ms=latency_ms,
+                pricing_version=provider._pricing.pricing_version,
+                error=error_text,
+            )
             if attempt < max_attempts and _is_transient(exc):
-                note = f"attempt {attempt}/{max_attempts} transient: {exc}"
-                retry_notes.append(note)
+                retry_notes.append(
+                    f"attempt {attempt}/{max_attempts} transient: {exc} "
+                    f"(reservation {reservation_id} held uncertain)"
+                )
                 time.sleep(backoff_base * (3 ** (attempt - 1)))
                 continue
-            break  # non-transient, or attempts exhausted
-    latency_ms = round((time.perf_counter() - started) * 1000, 3)
+            raise ProviderError(provider.name, error_text) from exc
 
-    if final_exc is not None:  # step 6: log the error row, raise honestly
-        error_text = str(final_exc)
-        if retry_notes:
-            error_text += " | retry history: " + " ; ".join(retry_notes)
-        _insert_call(
-            provider,
-            session_id=session_id,
-            ts=ts,
-            model=model,
-            purpose=purpose,
-            prompt=prompt,
-            response="",
-            tokens_in=0,
-            tokens_out=0,
-            latency_ms=latency_ms,
-            cost_usd=0.0,
-            status="error",
-            error=error_text,
-        )
-        raise ProviderError(provider.name, error_text) from final_exc
-    assert raw is not None
+        latency_ms = round((time.perf_counter() - started) * 1000, 3)
 
-    # Steps 4-5: real cost from real tokens, then persist the full row.
-    # If a cache-class price is missing the call ALREADY succeeded (money was
-    # spent) — persist the audit row with the pricing failure recorded, then
-    # raise honestly. A billed call must never vanish from the log (Rule 8).
-    try:
-        cost_usd = provider._pricing.cost_usd(
-            provider.name,
-            model,
-            raw.tokens_in,
-            raw.tokens_out,
+        # Real cost from real tokens. If a cache-class price is missing the
+        # call ALREADY succeeded (money was spent): the audit row persists
+        # with the pricing failure recorded, the reservation stays counted
+        # at its FULL bound (fail closed — never 0), and a provider/model
+        # safety lock engages before the honest raise (Amendment 5).
+        try:
+            cost_usd = provider._pricing.cost_usd(
+                provider.name,
+                model,
+                raw.tokens_in,
+                raw.tokens_out,
+                cached_input_tokens=raw.cached_input_tokens,
+                cache_write_input_tokens=raw.cache_write_input_tokens,
+            )
+        except PricingLookupError as exc:
+            budget.record_failed_attempt(
+                reservation_id,
+                ts=ts, provider=provider.name, model=model, purpose=purpose,
+                prompt=prompt, response=raw.text, tokens_in=raw.tokens_in,
+                tokens_out=raw.tokens_out,
+                cached_input_tokens=raw.cached_input_tokens,
+                cache_write_input_tokens=raw.cache_write_input_tokens,
+                latency_ms=latency_ms,
+                pricing_version=provider._pricing.pricing_version,
+                error=f"pricing failure after successful call: {exc}",
+                pricing_failure=True,
+            )
+            raise ProviderError(provider.name, str(exc)) from exc
+
+        budget.settle_success(
+            reservation_id,
+            ts=ts, provider=provider.name, model=model, purpose=purpose,
+            prompt=prompt, response=raw.text, tokens_in=raw.tokens_in,
+            tokens_out=raw.tokens_out,
             cached_input_tokens=raw.cached_input_tokens,
             cache_write_input_tokens=raw.cache_write_input_tokens,
+            latency_ms=latency_ms, cost_usd=cost_usd,
+            pricing_version=provider._pricing.pricing_version,
         )
-    except PricingLookupError as exc:
-        _insert_call(
-            provider,
-            session_id=session_id,
-            ts=ts,
+
+        return ProviderResponse(
+            provider=provider.name,
             model=model,
-            purpose=purpose,
-            prompt=prompt,
-            response=raw.text,
+            text=raw.text,
             tokens_in=raw.tokens_in,
             tokens_out=raw.tokens_out,
             cached_input_tokens=raw.cached_input_tokens,
             cache_write_input_tokens=raw.cache_write_input_tokens,
             latency_ms=latency_ms,
-            cost_usd=0.0,
-            status="error",
-            error=f"pricing failure after successful call: {exc}",
+            cost_usd=cost_usd,
+            pricing_version=provider._pricing.pricing_version,
         )
-        raise ProviderError(provider.name, str(exc)) from exc
-    _insert_call(
-        provider,
-        session_id=session_id,
-        ts=ts,
-        model=model,
-        purpose=purpose,
-        prompt=prompt,
-        response=raw.text,
-        tokens_in=raw.tokens_in,
-        tokens_out=raw.tokens_out,
-        cached_input_tokens=raw.cached_input_tokens,
-        cache_write_input_tokens=raw.cache_write_input_tokens,
-        latency_ms=latency_ms,
-        cost_usd=cost_usd,
-        status="ok",
-        error=None,
-    )
-    if provider._budget is not None:
-        provider._budget.record_actual(cost_usd)
 
-    return ProviderResponse(
-        provider=provider.name,
-        model=model,
-        text=raw.text,
-        tokens_in=raw.tokens_in,
-        tokens_out=raw.tokens_out,
-        cached_input_tokens=raw.cached_input_tokens,
-        cache_write_input_tokens=raw.cache_write_input_tokens,
-        latency_ms=latency_ms,
-        cost_usd=cost_usd,
-        pricing_version=provider._pricing.pricing_version,
-    )
-
-
-def _insert_call(
-    provider: "AIProvider",
-    *,
-    session_id: str,
-    ts: str,
-    model: str,
-    purpose: str,
-    prompt: str,
-    response: str,
-    tokens_in: int,
-    tokens_out: int,
-    latency_ms: float,
-    cost_usd: float,
-    status: str,
-    error: str | None,
-    cached_input_tokens: int = 0,
-    cache_write_input_tokens: int = 0,
-) -> str:
-    call_id = str(uuid.uuid4())
-    with provider._db.get_session() as s:
-        s.add(
-            AICallRow(
-                id=call_id,
-                session_id=session_id,
-                ts=ts,
-                provider=provider.name,
-                model=model,
-                purpose=purpose,
-                prompt=prompt,
-                response=response,
-                tokens_in=tokens_in,
-                tokens_out=tokens_out,
-                cached_input_tokens=cached_input_tokens,
-                cache_write_input_tokens=cache_write_input_tokens,
-                latency_ms=latency_ms,
-                cost_usd=cost_usd,
-                pricing_version=provider._pricing.pricing_version,
-                status=status,
-                error=error,
-            )
-        )
-    return call_id
+    raise AssertionError("unreachable: the attempt loop returns or raises")

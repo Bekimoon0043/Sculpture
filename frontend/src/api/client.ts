@@ -558,7 +558,9 @@ export interface CostRollup {
   by_role: Record<string, number>;
   by_provider: Record<string, number>;
   cache_savings_usd: number;
-  session_cap_usd: number;
+  /** PR-2 (ADR-061): the $5 binds per LOGICAL run, renamed from
+   *  session_cap_usd by operator ruling 2026-08-28. */
+  run_cap_usd: number;
   day_cap_usd: number;
   call_count: number;
   pricing_version: string;

@@ -2,8 +2,11 @@
 
 This runs the full six-agent AI Council on a real brief: real API calls,
 real money. **Pre-approved spend: ~$1–2.50.** The hard caps in
-`config/budget.yaml` ($5 per session / $25 per day) are enforced BEFORE
-every call — the session cannot overspend.
+`config/budget.yaml` ($5 per RUN / $25 per day — PR-2, ADR-061) are
+enforced by ATOMIC RESERVATION before every call: money is set aside in
+the database under a lock before anything dispatches, so two things
+spending at once can never jointly pass a cap, and the run cannot
+overspend even if it crashes mid-call.
 
 Estimated cost: **≈$1.15** (see PHASE_3_PLAN.md §7), possibly lower — cache
 hits now bill at the cheaper class (ADR-022, pricing 2026-08-v3).

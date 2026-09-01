@@ -61,9 +61,12 @@ def budget_status() -> dict:
     bundle = load_config_bundle()
     caps = bundle.budget
 
-    # Session/day spend derive from ai_calls — the single source of truth.
-    probe = BudgetEnforcer("__budget_view__", caps.session_cap_usd,
+    # Day spend derives from ai_calls settled truth + open holds at their
+    # bounds (ADR-061); the probe enforcer only reads, never reserves.
+    probe = BudgetEnforcer("__budget_view__", caps.run_cap_usd,
                            caps.day_cap_usd, db)
+    from app.db.models import SpendReservationRow, SpendSafetyLockRow
+
     with db.get_session() as s:
         per_session = s.execute(
             select(SessionRow.id, SessionRow.total_cost_usd).order_by(
@@ -73,15 +76,80 @@ def budget_status() -> dict:
         events = s.execute(
             select(BudgetEventRow).order_by(BudgetEventRow.ts.desc()).limit(100)
         ).scalars().all()
+        open_holds = s.execute(
+            select(SpendReservationRow)
+            .where(SpendReservationRow.status.in_(("held", "uncertain")))
+            .order_by(SpendReservationRow.created_at.desc())
+            .limit(100)
+        ).scalars().all()
+        active_locks = s.execute(
+            select(SpendSafetyLockRow)
+            .where(SpendSafetyLockRow.status == "active")
+            .order_by(SpendSafetyLockRow.created_at.desc())
+        ).scalars().all()
+        reconciled = s.execute(
+            select(SpendReservationRow)
+            .where(SpendReservationRow.status == "reconciled")
+            .order_by(SpendReservationRow.created_at.desc())
+            .limit(100)
+        ).scalars().all()
 
     return {
-        "spent_today_usd": probe.spent_today(),
+        "spent_today_usd": probe.spent_today_usd(),
         "caps": {
-            "session_cap_usd": caps.session_cap_usd,
+            "run_cap_usd": caps.run_cap_usd,
             "day_cap_usd": caps.day_cap_usd,
             "max_vision_iterations": caps.max_vision_iterations,
             "on_breach": caps.on_breach,
         },
+        # ADR-061 operator visibility: money currently held or uncertain
+        # (each row still consuming headroom at reserved_usd), and any
+        # active safety locks (these REFUSE matching paid dispatch until
+        # resolved via scripts/spend_admin.py).
+        "open_holds": [
+            {
+                "reservation_id": r.id,
+                "created_at": r.created_at,
+                "scope_id": r.scope_id,
+                "provider": r.provider,
+                "model": r.model,
+                "status": r.status,
+                "reserved_usd": r.reserved_usd_micro / 1_000_000,
+                "note": r.note,
+            }
+            for r in open_holds
+        ],
+        "active_safety_locks": [
+            {
+                "lock_id": lk.id,
+                "created_at": lk.created_at,
+                "provider": lk.provider,
+                "model": lk.model,
+                "reason": lk.reason,
+                "detail": lk.detail,
+            }
+            for lk in active_locks
+        ],
+        # Operator-reconciled ORPHAN spend (ADR-061): dead/unpriced attempts
+        # the operator verified in the provider console. Already included in
+        # spent_today_usd for its dispatch day; shown here explicitly as
+        # "reconciled unmatched spend", never as a fabricated ai_calls row.
+        "reconciled_unmatched_spend": [
+            {
+                "reservation_id": r.id,
+                "scope_id": r.scope_id,
+                "session_id": r.session_id,
+                "day_utc": r.day_utc,
+                "created_at": r.created_at,
+                "provider": r.provider,
+                "model": r.model,
+                "reserved_usd": r.reserved_usd_micro / 1_000_000,
+                "reconciled_usd": (r.settled_usd_micro or 0) / 1_000_000,
+                "ai_call_id": r.ai_call_id,
+                "note": r.note,
+            }
+            for r in reconciled
+        ],
         "sessions": [
             {"session_id": sid, "total_cost_usd": total}
             for sid, total in per_session

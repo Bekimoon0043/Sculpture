@@ -109,9 +109,13 @@ AI API calls, and every one of those is in the `ai_calls` table.
 
 ## Hard spend caps (always on)
 
-`config/budget.yaml` sets a **$5 per-session** and **$25 per-day** ceiling.
-The platform checks the cap *before* every API call; on breach it halts,
-saves its state to the database, and reports — it never quietly keeps
+`config/budget.yaml` sets a **$5 per-logical-run** and **$25 per-UTC-day**
+ceiling. Since PR-2 (ADR-061) nothing may call a provider without first
+writing an atomic reservation into the database — the caps cannot be
+jointly exceeded by concurrent calls, a crash can never lose money
+invisibly, and an uncertain attempt stays counted at its full bound until
+the operator reconciles it with `scripts/spend_admin.py`. On breach the
+platform halts, saves its state, and reports — it never quietly keeps
 spending.
 
 ## Repository map

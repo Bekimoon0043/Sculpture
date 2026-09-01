@@ -223,7 +223,7 @@ def main() -> int:
     print(f"by_role: {rollup['by_role']}")
     print(f"by_provider: {rollup['by_provider']}")
     print(f"cache_savings_usd: ${rollup['cache_savings_usd']:.6f}")
-    print(f"caps: session ${rollup['session_cap_usd']}, "
+    print(f"caps: run ${rollup['run_cap_usd']}, "
           f"day ${rollup['day_cap_usd']}")
     role_sum = sum(rollup["by_role"].values())
     prov_sum = sum(rollup["by_provider"].values())

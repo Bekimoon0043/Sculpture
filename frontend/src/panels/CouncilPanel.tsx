@@ -87,8 +87,8 @@ export default function CouncilPanel() {
   const rollup = selected?.cost_rollup ?? null;
   const decision = selected?.arbiter_decision ?? null;
   const capPct =
-    rollup && rollup.session_cap_usd > 0
-      ? Math.min(100, (rollup.total_cost_usd / rollup.session_cap_usd) * 100)
+    rollup && rollup.run_cap_usd > 0
+      ? Math.min(100, (rollup.total_cost_usd / rollup.run_cap_usd) * 100)
       : 0;
 
   return (
@@ -151,7 +151,7 @@ export default function CouncilPanel() {
                 </div>
                 <p>
                   <strong>{usd(rollup.total_cost_usd)}</strong> of{" "}
-                  {usd(rollup.session_cap_usd)} session cap (day cap{" "}
+                  {usd(rollup.run_cap_usd)} run cap (day cap{" "}
                   {usd(rollup.day_cap_usd)}) · {rollup.call_count} calls ·
                   pricing {rollup.pricing_version}
                 </p>

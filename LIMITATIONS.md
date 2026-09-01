@@ -778,3 +778,35 @@ The shell is a pipeline (ADR-041). What it does NOT do:
 - **Out of the gate's sight:** a manual `docker run -p` outside compose,
   and any reverse proxy or tunnel the operator runs themselves. Do not
   put one in front of the platform while this entry exists.
+
+## 20. Spend-cap scope limits (2026-08-28, PR-2, ADR-061)
+
+- **The $25/UTC-day cap is per DATABASE FILE, not per machine.** Every
+  reservation, settlement and cap sum lives in one SQLite file; a process
+  pointed at a different file (a test temp DB, a second data directory)
+  gets full headroom — exactly the ADR-033 incident mechanics. The
+  standing guards are the hermetic-env test rule (keys forced to empty
+  strings) and the fact that every production path shares
+  `data/luxuryform.db`. A machine-global cap would need a second shared
+  store and is deliberately out of scope.
+- **Reservation bounds are the conservative context-window fallback for
+  ALL THREE providers** — none documents per-message framing overhead
+  (checked first-party 2026-08-28), so no tighter prompt-based formula
+  ships. The stated cost: a kimi-k3 call holds $3.268608 while in
+  flight and refuses once its run has less headroom than that, even
+  though its real cost would be cents. Over-reservation can refuse
+  early; it can never overspend.
+- **Uncertain holds require the operator.** A failed or dead attempt
+  counts at its full bound FOREVER until
+  `scripts/spend_admin.py resolve-hold` reconciles it to the
+  console-verified amount (status `reconciled`; it keeps counting at
+  that amount) — the provider consoles are the only truth for a dead
+  call (ADR-033). Nothing expires or auto-clears; a day with several
+  uncertain kimi holds can be legitimately, honestly exhausted.
+- **Safety locks and halted scopes are sticky by design.** Only the
+  audited `spend_admin.py` commands clear them; there is no API route
+  and no UI button, deliberately — clearing a spend lock is an
+  operator-only act.
+- **The per-database cap also means the critique script's `--max-spend`
+  layers via `min()` with the run cap, as before** — it narrows, never
+  widens.

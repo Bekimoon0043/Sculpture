@@ -1,8 +1,13 @@
-# budget.yaml — LuxuryForm Studio v1 (Amendment 2: spend caps)
-# Hard spend ceilings enforced inside the provider layer BEFORE any API call
-# is dispatched. On breach the system halts, persists its state, and reports.
-# It never silently continues.
-session_cap_usd: 5.00        # hard ceiling per council/run session
-day_cap_usd: 25.00           # hard ceiling per UTC calendar day
-max_vision_iterations: 6     # hard cap on critique loop rounds (enforced Phase 5, validated now)
+# budget.yaml — LuxuryForm Studio v1 (PR-2, ADR-061: atomic spend caps)
+# Hard spend ceilings enforced by ATOMIC RESERVATION inside the provider
+# layer BEFORE any API call is dispatched. On breach the system halts,
+# persists its state, and reports. It never silently continues.
+run_cap_usd: 5.00            # hard ceiling per LOGICAL paid run (Amendment 1,
+                             # operator ruling 2026-08-28): one Council run /
+                             # one fabrication run incl. repairs / one critique
+                             # run incl. rounds — never per HTTP request.
+                             # (Renamed from session_cap_usd, PR-2.)
+day_cap_usd: 25.00           # hard ceiling per UTC calendar day, global across
+                             # all runs (per database file — LIMITATIONS §20)
+max_vision_iterations: 6     # hard cap on critique loop rounds (enforced Phase 5)
 on_breach: halt_and_report   # halt, persist state, report; never silently continue

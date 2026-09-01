@@ -35,9 +35,17 @@
 #     table) — so openai_provider deliberately does NOT split input; it bills
 #     everything at the full $2.50 (conservative; real cost can only be
 #     lower). Revisit when the cached rate is first-party-verified.
+# PR-2 (ADR-061, 2026-08-28): every model gains context_window_tokens — the
+# FIRST-PARTY documented context window that anchors the cap-safe
+# reservation bound (Amendment 4 fallback: no provider documents message
+# framing overhead, checked 2026-08-28 on the pages cited per model below,
+# so bound = context_window x highest input/cache-write rate + max_tokens x
+# output rate). B-4 (price re-verification) remains OPEN: these fetches
+# confirm context windows and, where shown, the anthropic prices; the
+# gpt-4o PRICES are still not first-party-verified.
 # Every AI call logged in the database records the pricing_version that
 # computed its cost, so stale prices can never silently rewrite history.
-pricing_version: "2026-08-v3"
+pricing_version: "2026-08-v4"
 
 providers:
   anthropic:
@@ -50,6 +58,10 @@ providers:
       usd_per_1m_cached_input_tokens: 0.30        # cache read (0.1x base)
       usd_per_1m_cache_write_input_tokens: 3.75   # 5-minute cache write (1.25x)
       effective_date: "2025-09-29"
+      # "Context window: 200K tokens · Max output: 64K tokens" — the model's
+      # own first-party page (also re-confirms $3/$15/$0.30/$3.75).
+      context_window_tokens: 200000
+      context_window_source: "platform.claude.com/docs/en/models/sonnet-4-5/overview fetched 2026-08-28"
   openai:
     # GPT-4o $2.50/$10 — not on the first-party table fetched 2026-08-07
     # (gpt-5.x generation only); corroborated by three independent dated
@@ -58,6 +70,10 @@ providers:
       usd_per_1m_input_tokens: 2.50
       usd_per_1m_output_tokens: 10.00
       effective_date: "2024-08-06"
+      # "128,000 context window" / "16,384 max output tokens" — first-party
+      # model page (the PRICES above remain tracker-corroborated only; B-4).
+      context_window_tokens: 128000
+      context_window_source: "developers.openai.com/api/docs/models/gpt-4o fetched 2026-08-28"
   kimi:
     # Source: https://platform.kimi.ai/docs/pricing/chat-k3.md re-fetched LIVE
     # 2026-08-07 (ADR-009/ADR-021). Table row: kimi-k3, per 1M tokens —
@@ -72,3 +88,9 @@ providers:
       usd_per_1m_output_tokens: 15.00
       usd_per_1m_cached_input_tokens: 0.30        # cache-HIT input
       effective_date: "2026-08-01"
+      # "1,048,576 tokens" context, re-confirmed with the prices on the same
+      # page. CONSEQUENCE (ADR-061, stated honestly): the fallback bound for
+      # one kimi-k3 call is ~$3.15 input + output — a kimi dispatch only
+      # fits while its run has >= that much headroom under the $5 run cap.
+      context_window_tokens: 1048576
+      context_window_source: "platform.kimi.ai/docs/pricing/chat-k3.md re-fetched 2026-08-28"

@@ -159,6 +159,13 @@ class PriceEntry(BaseModel):
     # a price is never guessed.
     usd_per_1m_cached_input_tokens: float | None = Field(default=None, gt=0)
     usd_per_1m_cache_write_input_tokens: float | None = Field(default=None, gt=0)
+    # PR-2 (ADR-061): the model's FIRST-PARTY documented context window, the
+    # basis of the cap-safe reservation bound (context-window fallback,
+    # Amendment 4). Absent = the model cannot be dispatched (the bound
+    # lookup raises); never guessed. context_window_source records where and
+    # when it was fetched (ADR-009).
+    context_window_tokens: int | None = Field(default=None, gt=0)
+    context_window_source: str | None = None
 
     @field_validator("effective_date")
     @classmethod
@@ -235,7 +242,12 @@ class PricingConfig(BaseModel):
 # --- budget.yaml (Amendment 2) ----------------------------------------------
 
 class BudgetConfig(BaseModel):
-    session_cap_usd: float = Field(gt=0)
+    # PR-2 (ADR-061, Amendment 1): the $5 binds per LOGICAL paid run — one
+    # Council run, one fabrication run incl. repairs, one critique run incl.
+    # rounds — never per HTTP request. Renamed from session_cap_usd by
+    # operator ruling 2026-08-28; the old key is refused so a stale
+    # budget.yaml fails loudly instead of silently uncapping anything.
+    run_cap_usd: float = Field(gt=0)
     day_cap_usd: float = Field(gt=0)
     max_vision_iterations: int = Field(gt=0)
     on_breach: Literal["halt_and_report"]

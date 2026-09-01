@@ -42,7 +42,10 @@ loop with scripted stand-ins.
 
 This fabricates the Arbiter's FIRST-RANKED spec from your live session.
 One attempt is one `geometrist_code` call; the repair bound is 3 attempts.
-Typical cost: cents, hard-capped by the same $5 session cap.
+Typical cost: cents. Since PR-2 (ADR-061) fabrication has its OWN $5 run
+cap, separate from the Council session's: one fabrication run — including
+every repair attempt and every re-run of the same chosen spec — draws
+from one $5 pot that never resets on a retry or a restart.
 
 cmd.exe:
 

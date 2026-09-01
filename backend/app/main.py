@@ -36,7 +36,18 @@ app = FastAPI(
 
 @app.on_event("startup")
 def _startup() -> None:
-    get_default_db().init_db()
+    db = get_default_db()
+    db.init_db()
+    # PR-2 (ADR-061): classify leftover spend holds honestly BEFORE the app
+    # serves anything — a hold that survived a crash means the provider may
+    # have billed a call we never settled; it becomes 'uncertain' and keeps
+    # consuming cap headroom. Then assert the two books (reservations vs
+    # ai_calls) agree in BOTH directions; a mismatch engages a GLOBAL
+    # safety lock (fail closed) rather than serving with wrong arithmetic.
+    from app.core.budget import recover_stale_spend_holds, reconcile_spend_books
+
+    recover_stale_spend_holds(db)
+    reconcile_spend_books(db)
 
 
 app.include_router(routes_health.router, prefix="/api")

@@ -25,7 +25,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.config import REPO_ROOT, get_settings, load_config_bundle
 from app.core.budget import BudgetEnforcer, BudgetHalt
@@ -266,7 +266,7 @@ def council_session_detail(session_id: str) -> dict:
             "by_role": by_role,
             "by_provider": by_provider,
             "cache_savings_usd": round(cache_savings, 6),
-            "session_cap_usd": caps.session_cap_usd,
+            "run_cap_usd": caps.run_cap_usd,
             "day_cap_usd": caps.day_cap_usd,
             "call_count": len(calls),
             "pricing_version": sess.pricing_version,
@@ -391,14 +391,17 @@ def run_council_session(req: RunSessionRequest) -> dict:
     from app.ai.providers import build_providers
 
     # Pre-generate the session id so the BudgetEnforcer watches the SAME
-    # session the calls are written to (session-cap accounting reads
-    # ai_calls by session_id).
+    # session the calls are written to. The session uuid IS the spend-scope
+    # id for a Council run (Amendment 1: a Council UUID may stay the scope
+    # ID when it truly is one run).
     session_id = str(uuid.uuid4())
     budget = BudgetEnforcer(
         session_id,
-        bundle.budget.session_cap_usd,
+        bundle.budget.run_cap_usd,
         bundle.budget.day_cap_usd,
         db,
+        scope_id=session_id,
+        scope_kind="council",
     )
     providers = build_providers(settings, bundle, db, budget)
     orchestrator = CouncilOrchestrator(
@@ -437,6 +440,11 @@ def run_council_session(req: RunSessionRequest) -> dict:
             status_code=500,
             detail=f"council session {session_id} failed: {exc}",
         ) from exc
+    finally:
+        # One Council run = one spend scope: mark it closed however the run
+        # ended. (close_scope only moves 'open' -> 'closed'; a scope halted
+        # by a safety event stays halted — ADR-061.)
+        budget.close_scope()
     return {"session_id": session_id, "status": "completed"}
 
 
@@ -447,7 +455,11 @@ def run_council_session(req: RunSessionRequest) -> dict:
 
 class FabricateRequest(BaseModel):
     spec_id: str | None = None  # default: the Arbiter's first-ranked choice
-    max_attempts: int = 3       # the bounded repair limit
+    #: The bounded repair limit. The ceiling (10) is a judgement value
+    #: (ADR-061): the request previously accepted ANY integer, and an
+    #: unbounded repair loop is exactly what the run cap exists to stop —
+    #: but the ceiling makes the refusal structural, not financial.
+    max_attempts: int = Field(default=3, ge=1, le=10)
 
 
 @router.post("/council/sessions/{session_id}/fabricate", status_code=201)
@@ -486,11 +498,21 @@ def fabricate(session_id: str, req: FabricateRequest) -> dict:
     from app.ai.providers import build_providers
     from app.council.fabricate import ScratchSandboxRunner, fabricate_spec
 
+    # ADR-061 + operator ruling 2026-08-28: one fabrication run (including
+    # every repair attempt AND every re-POST of the same spec) is ONE
+    # logical paid run. The scope id is uuid5 over the FULL (session, spec)
+    # identity — deterministic, restart-stable, never a truncated prefix —
+    # so the $5 accumulates across re-runs until PR-7B's durable controls.
+    from app.core.budget import fabrication_scope_id
+
     budget = BudgetEnforcer(
         session_id,
-        bundle.budget.session_cap_usd,
+        bundle.budget.run_cap_usd,
         bundle.budget.day_cap_usd,
         db,
+        scope_id=fabrication_scope_id(session_id, spec_id),
+        scope_kind="fabrication",
+        design_ref=spec_id,
     )
     providers = build_providers(settings, bundle, db, budget)
     orchestrator = CouncilOrchestrator(
@@ -512,6 +534,10 @@ def fabricate(session_id: str, req: FabricateRequest) -> dict:
         ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    finally:
+        # A later re-POST of the same spec reopens the closed scope and
+        # keeps accumulating; a halted scope stays halted (ADR-061).
+        budget.close_scope()
     return {
         "success": outcome.success,
         "session_id": session_id,

@@ -106,6 +106,11 @@ def test_unpriced_cache_class_fails_but_call_is_audited(db, config, openai_trans
                     "usd_per_1m_input_tokens": 3.00,
                     "usd_per_1m_output_tokens": 15.00,
                     "effective_date": "2026-08-01",
+                    # ADR-061: the reservation bound needs the context
+                    # window; without it the dispatch would refuse BEFORE
+                    # spending, and this test is about failing AFTER.
+                    "context_window_tokens": 1048576,
+                    "context_window_source": "test fixture",
                 }
             }
         },
@@ -169,7 +174,7 @@ def test_cache_tokens_persist_on_ai_calls_row(db, config, anthropic_transport):
     assert row.cost_usd == round(
         (800 * 3.00 + 300 * 0.30 + 100 * 3.75 + 5 * 15.00) / 1e6, 6
     )
-    assert row.pricing_version == "2026-08-v3"
+    assert row.pricing_version == "2026-08-v4"
 
 
 def test_pricing_yaml_v3_has_first_party_cache_prices(config):

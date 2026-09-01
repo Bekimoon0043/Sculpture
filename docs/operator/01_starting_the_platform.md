@@ -206,5 +206,8 @@ docker compose up -d               REM start it again (fast after the first buil
 Browse the audit log in your browser:
 - http://localhost:8000/api/logs/calls — every AI call with full prompt,
   response, tokens and cost
-- http://localhost:8000/api/logs/budget — today's spend, the caps, and any
-  cap-breach events
+- http://localhost:8000/api/logs/budget — today's spend, the caps ($5 per
+  logical run / $25 per day since PR-2), any cap-breach events, plus money
+  currently HELD mid-call and any active safety locks (a lock refuses
+  spending on that provider until you resolve it:
+  `docker compose exec backend python scripts/spend_admin.py list`)

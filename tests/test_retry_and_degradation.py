@@ -72,7 +72,12 @@ class FlakyTimeoutTransport:
 
 def _kimi(db, config, client):
     models = config.council.model_defaults["kimi"]
-    budget = BudgetEnforcer("retry-test", 5.0, 25.0, db)
+    # ADR-061: every physical attempt reserves kimi's context-window bound
+    # ($3.149568 at 256 output tokens) and a FAILED attempt stays counted
+    # (uncertain, fail closed) — so three attempts need ~$9.45 of headroom.
+    # These tests exercise RETRY mechanics; the cap mechanics have their
+    # own suite (test_spend_reservations.py), so the run cap here is 25.
+    budget = BudgetEnforcer("retry-test", 25.0, 25.0, db)
     return KimiProvider(
         "test-key-not-real",
         client=client,
@@ -96,8 +101,12 @@ def test_transient_timeout_retried_then_succeeds(db, config, monkeypatch):
     assert len(client.calls) == 3  # two timeouts, third succeeds
     with db.get_session() as s:
         rows = s.query(AICallRow).all()
-    assert len(rows) == 1  # one audit row — the successful call
-    assert rows[0].status == "ok"
+    # ADR-061: EVERY physical attempt is audited with its own row (the old
+    # contract discarded the transient history on success) — two error
+    # rows for the timeouts, one ok row for the success.
+    assert len(rows) == 3
+    assert sorted(r.status for r in rows) == ["error", "error", "ok"]
+    assert all(r.reservation_id for r in rows)
 
 
 def test_persistent_timeout_exhausts_attempts_with_audit(db, config, monkeypatch):
@@ -111,11 +120,15 @@ def test_persistent_timeout_exhausts_attempts_with_audit(db, config, monkeypatch
     assert len(client.calls) == 3  # default max attempts
     with db.get_session() as s:
         rows = s.query(AICallRow).all()
-    assert len(rows) == 1
-    assert rows[0].status == "error"
-    assert "retry history" in rows[0].error
-    assert "attempt 1/3" in rows[0].error
-    assert "attempt 2/3" in rows[0].error
+    # One audited row PER attempt (ADR-061). Later attempts carry the
+    # history accumulated so far, so exactly ONE row (the last) names
+    # attempt 2/3, and it names attempt 1/3 too — the full trail survives.
+    assert len(rows) == 3
+    assert all(r.status == "error" for r in rows)
+    final = [r for r in rows if "attempt 2/3" in (r.error or "")]
+    assert len(final) == 1
+    assert "retry history" in final[0].error
+    assert "attempt 1/3" in final[0].error
 
 
 def test_non_transient_error_never_retried(db, config, monkeypatch):

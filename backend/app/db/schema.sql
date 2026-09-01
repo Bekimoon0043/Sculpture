@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS ai_calls (
     cost_usd        REAL NOT NULL,
     pricing_version TEXT NOT NULL,           -- which pricing.yaml version computed cost_usd
     status          TEXT NOT NULL,           -- ok | error
-    error           TEXT                     -- raw error text when status='error'
+    error           TEXT,                    -- raw error text when status='error'
+    reservation_id  TEXT REFERENCES spend_reservations(id)  -- PR-2 (ADR-061): 1:1, NULL pre-PR-2
 );
 
 CREATE TABLE IF NOT EXISTS budget_events (
@@ -252,4 +253,58 @@ CREATE TABLE IF NOT EXISTS exports (
     format          TEXT NOT NULL,           -- STEP | STL | DXF | OBJ | GLB | ...
     path            TEXT NOT NULL,           -- file location in the local store
     tool_versions_json TEXT NOT NULL         -- OCCT/Blender versions that produced it (5b)
+);
+
+-- ---------------------------------------------------------------------------
+-- PR-2 (ADR-061): atomic spend caps. A provider dispatch may not exist
+-- without a HELD reservation taken first inside one BEGIN IMMEDIATE
+-- transaction; every physical attempt has exactly one reservation and at
+-- most one ai_calls row (1:1 both ways — unique partial indexes are applied
+-- by the startup index patches). Money here is INTEGER micro-USD
+-- (1 µUSD = $0.000001): cap arithmetic is exact integer arithmetic, never
+-- binary floats. Rows are NEVER deleted; uncertain holds keep their bound.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS spend_scopes (
+    id              TEXT PRIMARY KEY,        -- full uuid4 or uuid5 — NEVER a truncated prefix
+    kind            TEXT NOT NULL,           -- council | fabrication | critique | intake | gate | verify | adhoc
+    created_at      TEXT NOT NULL,           -- UTC ISO-8601
+    status          TEXT NOT NULL,           -- open | closed | halted (halted is STICKY)
+    closed_at       TEXT,                    -- UTC ISO-8601; NULL while open/halted
+    design_ref      TEXT,                    -- what the run works on (spec/intake/plan digest); audit only
+    note            TEXT                     -- lifecycle audit trail (reopens, halts, resolutions)
+);
+
+CREATE TABLE IF NOT EXISTS spend_reservations (
+    id              TEXT PRIMARY KEY,        -- uuid4
+    created_at      TEXT NOT NULL,           -- UTC ISO-8601, hold taken (pre-dispatch)
+    day_utc         TEXT NOT NULL,           -- created_at[:10]; the day BOTH caps bind against
+    scope_id        TEXT NOT NULL REFERENCES spend_scopes(id),
+    session_id      TEXT NOT NULL REFERENCES sessions(id),
+    attempt_no      INTEGER NOT NULL,        -- physical attempt within one logical call (1..N)
+    provider        TEXT NOT NULL,           -- anthropic | openai | kimi
+    model           TEXT NOT NULL,
+    kind            TEXT NOT NULL,           -- text | vision
+    reserved_usd_micro INTEGER NOT NULL,     -- documented cap-safe UPPER BOUND (µUSD)
+    settled_usd_micro  INTEGER,              -- set when status='settled'; == its ai_call cost
+    status          TEXT NOT NULL,           -- held | settled | uncertain | reconciled
+                                             -- (reconciled = operator-verified amount via
+                                             -- spend_admin; no 'released': no first-party
+                                             -- proof of non-billing exists, ADR-061)
+    settled_at      TEXT,                    -- UTC ISO-8601 of the terminal classification
+    ai_call_id      TEXT REFERENCES ai_calls(id),  -- exact-id correlation; NULL only for
+                                             -- recovery-classified died-mid-flight holds
+    note            TEXT                     -- uncertainty/recovery/reconciliation reason
+);
+
+CREATE TABLE IF NOT EXISTS spend_safety_locks (
+    id              TEXT PRIMARY KEY,        -- uuid4
+    created_at      TEXT NOT NULL,           -- UTC ISO-8601
+    provider        TEXT,                    -- NULL = GLOBAL lock (all paid dispatch refuses)
+    model           TEXT,                    -- NULL = every model of the provider
+    reason          TEXT NOT NULL,           -- bound_exceeded | pricing_failure | ledger_mismatch
+    detail          TEXT NOT NULL,           -- JSON evidence (amounts, reservation/call ids)
+    status          TEXT NOT NULL,           -- active | resolved
+    resolved_at     TEXT,                    -- UTC ISO-8601
+    resolution_note TEXT                     -- REQUIRED at resolution (audited operator action)
 );

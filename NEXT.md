@@ -5,12 +5,15 @@ the start of every session (`/lf-orient`) and rewritten at the end of every
 slice (`/lf-close`). If this file and a phase plan disagree, this file is
 stale and must be corrected in the same commit as the work.
 
-Last updated: 2026-08-28 — **PR-1 closed** (per-axis fabrication limits,
-ADR-059; auto gate + operator visual gate both PASS; the real truck
-envelope stays an open B-1 input). The Production v1 program (approved
-2026-08-27 with seven binding amendments) has PR-0, PR-3 and PR-1
-closed; PR-2 (hard spend caps) is next. New release blocker B-10
-(operator workflow controls, folded into PR-7B) ruled 2026-08-28.
+Last updated: 2026-09-01 — **PR-2 CLOSED** (atomic spend reservations,
+ADR-061: auto gate PASS on final image `09ff920ccbbb` + operator visual
+gate signed PASS 2026-09-01; $5/run + $25/day retained by explicit
+ruling; designs `76595edb…`/`313e5d20…` preserved pending a separate
+cleanup ruling). PR-0, PR-3, PR-1 and PR-2 are closed. **Next action
+(operator directive 2026-09-01): a dedicated `/lf-next` Master Scope
+Development Audit against the owner's 30-system scope, BEFORE PR-2.5
+free-form discovery.** New release blocker B-10 (operator workflow
+controls, folded into PR-7B) ruled 2026-08-28.
 **Owner roadmap ruling 2026-08-28 (ADR-060): free-form amorphous
 sculpture is a release-blocking Production v1 capability.** Phase 6
 slice D moves INSIDE the release; the sequence is now PR-2 → PR-2.5
@@ -41,17 +44,21 @@ free-form gates and close) → PR-4. New operator blocker B-11
 | 13 — recovery + hardening | **Slice A only; B+ queued as PR-7A/B/C** | auto PASS 2026-08-22, ADR-040 |
 | 14 + 14b — Designer Workspace, Blender-style controls | **BUILT, auto-gated** | auto PASS 2026-08-24, ADR-044/046; visual pending |
 | 15 A–E — designer UX, draft preview, projects/variants | **BUILT, auto-gated** | auto PASS 2026-08-24, ADR-047–051; visual pending |
-| **Production v1 program (PR-0 … PR-9)** | **APPROVED 2026-08-27; PR-0 CLOSED** | `PRODUCTION_V1_REPORT.md`, ADR-057; amendments in the approval transcript |
+| **Production v1 program (PR-0 … PR-9)** | **APPROVED 2026-08-27; PR-0, PR-3, PR-1, PR-2 CLOSED** | `PRODUCTION_V1_REPORT.md`, ADR-057/058/059/061; amendments in the approval transcript |
 
-**Suite and roster state after PR-0:** the pytest suite passes with the
-render worker UP and with it removed — both runs recorded verbatim in
-`PRODUCTION_V1_REPORT.md` with the worker state pinned before and after
-each run. The auto-gate roster is 18 scripts: 17 run with the worker
-down plus `gate_phase9b_auto` with it up; `gate_phase14_auto` is SPLIT
-(container run covers `geometry`, host `--frontend-only` covers
-`frontend` — run both, check each verdict's "sections run" line). Total
-live spend recorded since Phase 4 closed: $0.042916 (Phase 5 run) plus a
-possible ~$0.84 unverified incident exposure (B-2).
+**Suite and roster state after PR-2:** the pytest suite (475) passes
+with the render worker UP and with it removed — both runs recorded
+verbatim in `PRODUCTION_V1_REPORT.md` with the worker state pinned
+before and after each run, on final image `09ff920ccbbb`. The auto-gate
+roster is 21 scripts: 19 in-container with the worker removed (17 phase
+gates + `gate_pr1` + `gate_pr2`), `gate_pr3_auto` in both modes (static
+via stdin in-container, live on the host), and `gate_phase9b_auto` with
+the worker up; `gate_phase14_auto` is SPLIT (container run covers
+`geometry`, host `--frontend-only` covers `frontend` — run both, check
+each verdict's "sections run" line). Total live spend recorded since
+Phase 4 closed: $0.042916 (Phase 5 run) plus the operator's 2026-08-28
+Council/fabrication demonstration and a possible ~$0.84 unverified
+incident exposure (B-2).
 
 ---
 
@@ -122,6 +129,12 @@ Those marked **[release]** block calling the project Production v1.
       confirmed). Every automated channel was eliminated by read-only
       forensics; manual Docker Desktop action is the surviving
       explanation, but it is attributed by elimination, not admission.
+      **New window 2026-08-31:** the whole stack ran unattributed from
+      08:07:03Z to ~09:41:56Z (backend exit 0, render-worker present
+      and exit 137). Code is baked into the image so no code drift was
+      possible, and the operator verified at the PR-2 sign-off that no
+      provider call occurred in that window; who started and stopped it
+      is still unconfirmed.
 
 ---
 
@@ -152,6 +165,25 @@ binding; the slice notes below carry the ones that bite.
       records that the API has NO authentication and loopback is the
       only lock; no LAN-enable path ships. Evidence:
       `PRODUCTION_V1_REPORT.md`.
+- [x] **PR-2 — Hard spend caps (CLOSED 2026-09-01, ADR-061: auto gate
+      PASS on final image `09ff920ccbbb` + operator visual gate signed
+      PASS 2026-09-01).** Per-physical-attempt atomic reservations
+      (BEGIN IMMEDIATE on a dedicated connection), integer micro-USD via
+      Decimal half-up, one-transaction settlement (ai_calls +
+      reservation + sessions), exact reservation_id 1:1 both ways,
+      first-class spend scopes (open|closed|halted sticky), fail-closed
+      `uncertain` attempts, provider-model/global safety locks + audited
+      `spend_admin.py` resolution (`reconciled` orphan spend on every
+      operator surface), context-window fallback bounds (no provider
+      documents framing — first-party 2026-08-28; kimi holds $3.268608
+      per call), `session_cap_usd` → `run_cap_usd`, `gate_pr2_auto.py`
+      = roster script 21. Definitive evidence: 475 passed in BOTH
+      worker states, 21/21 roster green, slice spend $0.00 — full chain
+      in `PRODUCTION_V1_REPORT.md`. Operator rulings at sign-off:
+      $5/run + $25/day RETAINED; the kimi fail-closed retry consequence
+      acknowledged; the two accidental live-data designs (`76595edb…`,
+      `313e5d20…`) PRESERVED — their cleanup is a separate ruling,
+      deliberately not part of PR-2.
 - [x] **PR-1 — Per-axis fabrication limits (CLOSED 2026-08-28, ADR-059:
       auto gate PASS + operator visual gate PASS).** `{x,y,z}`
       preserved end-to-end; the kernel, both assembler checks and the
@@ -171,15 +203,11 @@ binding; the slice notes below carry the ones that bite.
 
 ### Next up
 
-- [ ] **PR-2 — Hard spend caps.** Atomic DB-backed reservations (BEGIN
-      IMMEDIATE) taken before dispatch, settled to actual cost, released/
-      recorded on provider errors; concurrent test proving two calls
-      cannot jointly exceed a cap (test doubles only). **Amendment 1:**
-      $25/UTC-day is the global hard ceiling; $5 binds per LOGICAL run
-      (one Council run / one fabrication run incl. repairs / one critique
-      run incl. rounds); retries and resumes keep the original spend-scope
-      ID; reservations use a demonstrably cap-safe upper bound, not the
-      chars/4 estimate, documented and gated for text AND vision.
+- [ ] **Master Scope Development Audit (operator directive 2026-09-01;
+      a dedicated `/lf-next` slice, BEFORE PR-2.5).** Audit the built
+      platform against the owner's 30-system scope; plan only, stop for
+      approval. Not started automatically — it begins when the operator
+      opens the next loop iteration.
 - [ ] **PR-2.5 — Free-form amorphous sculpture: discovery/acceptance
       plan, then implementation (owner ruling 2026-08-28, ADR-060).**
       A dedicated `/lf-next` discovery slice runs AFTER PR-2 closes and
@@ -365,8 +393,10 @@ this is the human-readable version.
    Fetch live docs, record the fetch date.
 7. **ADR-005:** AI-written code executes only in the sandbox. Never in tests,
    never in the gate.
-8. **Say the projected cost before spending.** Caps: $5/session, $25/day
-   (PR-2 re-scopes the $5 to a logical run, per Amendment 1).
+8. **Say the projected cost before spending.** Caps: $5 per LOGICAL run,
+   $25 per UTC day (PR-2, ADR-061: enforced by atomic reservation; a
+   kimi-k3 call holds $3.27 while in flight). Locks and uncertain holds
+   clear only through `scripts/spend_admin.py`, audited, by reason.
 9. **More than one session works this repo at once.** Before rebuilding
    containers, stashing, or touching another session's files: check, ask,
    coordinate. Local main can be ahead of origin — push after every close.

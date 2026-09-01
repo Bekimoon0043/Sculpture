@@ -90,6 +90,10 @@ _ADDITIVE_COLUMN_PATCHES: dict[tuple[str, str], str] = {
     ("generated_programs", "manifest_json"): "manifest_json TEXT",
     ("designs", "generated_program_id"):
         "generated_program_id TEXT REFERENCES generated_programs(id)",
+    # PR-2 (ADR-061): exact reservation<->call correlation. NULL for every
+    # pre-PR-2 row; the unique partial index below enforces 1:1 on non-NULL.
+    ("ai_calls", "reservation_id"):
+        "reservation_id TEXT REFERENCES spend_reservations(id)",
 }
 
 #: Unique indexes added after a schema version shipped. Same idempotent,
@@ -106,6 +110,21 @@ _ADDITIVE_INDEX_PATCHES: dict[str, str] = {
     "ix_designs_parent":
         "CREATE INDEX IF NOT EXISTS ix_designs_parent "
         "ON designs (parent_design_id)",
+    # PR-2 (ADR-061): the reservation/call relationship is 1:1 — enforced at
+    # the schema level with unique PARTIAL indexes over the non-NULL links
+    # (pre-PR-2 ai_calls rows and recovery-classified holds stay NULL).
+    "ux_ai_calls_reservation":
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_ai_calls_reservation "
+        "ON ai_calls (reservation_id) WHERE reservation_id IS NOT NULL",
+    "ux_spend_reservations_ai_call":
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_spend_reservations_ai_call "
+        "ON spend_reservations (ai_call_id) WHERE ai_call_id IS NOT NULL",
+    "ix_spend_reservations_day_status":
+        "CREATE INDEX IF NOT EXISTS ix_spend_reservations_day_status "
+        "ON spend_reservations (day_utc, status)",
+    "ix_spend_reservations_scope":
+        "CREATE INDEX IF NOT EXISTS ix_spend_reservations_scope "
+        "ON spend_reservations (scope_id, status)",
 }
 
 
@@ -127,6 +146,10 @@ class Database:
             cur = dbapi_conn.cursor()
             cur.execute("PRAGMA journal_mode=WAL")
             cur.execute("PRAGMA foreign_keys=ON")
+            # PR-2 (ADR-061): the spend ledger takes BEGIN IMMEDIATE write
+            # locks on its own connection; without a busy_timeout every
+            # other writer would fail instantly on a momentary collision.
+            cur.execute("PRAGMA busy_timeout=5000")
             cur.close()
 
         self._session_factory = sessionmaker(

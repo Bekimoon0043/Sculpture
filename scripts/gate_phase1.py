@@ -96,9 +96,9 @@ def main() -> int:
         print(f"  {provider:<10} {state}")
     print(f"pricing_version: {bundle.pricing.pricing_version}")
     print(
-        "budget caps: session_cap_usd=${:.2f}, day_cap_usd=${:.2f}, "
+        "budget caps: run_cap_usd=${:.2f}, day_cap_usd=${:.2f}, "
         "max_vision_iterations={}, on_breach={}".format(
-            bundle.budget.session_cap_usd,
+            bundle.budget.run_cap_usd,
             bundle.budget.day_cap_usd,
             bundle.budget.max_vision_iterations,
             bundle.budget.on_breach,
@@ -135,9 +135,11 @@ def main() -> int:
         )
     enforcer = BudgetEnforcer(
         gate_session_id,
-        bundle.budget.session_cap_usd,
+        bundle.budget.run_cap_usd,
         bundle.budget.day_cap_usd,
         db,
+        scope_id=gate_session_id,
+        scope_kind="gate",
     )
     from app.ai.providers import build_providers
     from app.ai.provider import ProviderError
@@ -255,42 +257,52 @@ def main() -> int:
         f"max_vision_iterations={bundle.budget.max_vision_iterations} loaded and "
         "validated from config/budget.yaml (enforced in Phase 5)"
     )
+    # ADR-061: the cap proof now runs the REAL reservation path — a hold is
+    # taken and settled (one atomic transaction: ai_calls row + reservation
+    # + session ledger), then the next reservation must refuse with its
+    # evidence committed. All offline; nothing dispatches.
+    from app.core.budget import usd_to_micro
+
     proof_session_id = f"gate-cap-proof-{uuid.uuid4()}"
     proof = BudgetEnforcer(
         proof_session_id,
-        session_cap_usd=0.01,
+        run_cap_usd=0.03,
         day_cap_usd=bundle.budget.day_cap_usd,
         db=db,
+        scope_id=proof_session_id,
+        scope_kind="gate",
     )
-    # Synthetic spend written into the gate DB exactly as a real call would be
-    # logged: an ai_calls row (source of truth) + the session aggregate.
-    proof.record_actual(0.02)  # creates the session row, then adds aggregate
     with db.get_session() as s:
         s.add(
-            AICallRow(
-                id=str(uuid.uuid4()),
-                session_id=proof_session_id,
-                ts=datetime.now(timezone.utc).isoformat(),
-                provider="offline_synthetic",
-                model="none",
-                purpose="gate_cap_proof_synthetic",
-                prompt="(offline synthetic spend for the cap proof — no API call made)",
-                response="",
-                tokens_in=0,
-                tokens_out=0,
-                latency_ms=0.0,
-                cost_usd=0.02,
-                pricing_version=bundle.pricing.pricing_version,
-                status="ok",
-                error=None,
+            SessionRow(
+                id=proof_session_id,
+                started_at=datetime.now(timezone.utc).isoformat(),
+                ended_at=None,
+                status="active",
+                total_cost_usd=0.0,
             )
         )
-    print("synthetic spend recorded: $0.020000 against a session cap of $0.010000")
+    r1 = proof.reserve(usd_to_micro(0.02), provider="offline_synthetic",
+                       model="none", kind="text", attempt_no=1)
+    proof.settle_success(
+        r1,
+        ts=datetime.now(timezone.utc).isoformat(),
+        provider="offline_synthetic", model="none",
+        purpose="gate_cap_proof_synthetic",
+        prompt="(offline synthetic spend for the cap proof — no API call made)",
+        response="", tokens_in=0, tokens_out=0, cached_input_tokens=0,
+        cache_write_input_tokens=0, latency_ms=0.0, cost_usd=0.02,
+        pricing_version=bundle.pricing.pricing_version,
+    )
+    print("synthetic spend settled through the ledger: $0.020000 against a "
+          "run cap of $0.030000")
     cap_proof_passed = False
     try:
-        proof.pre_dispatch_check(0.005)
-        print("FAIL — cap proof: pre_dispatch_check($0.005) did NOT raise BudgetHalt")
-        failures.append("cap proof: BudgetHalt not raised over the session cap")
+        proof.reserve(usd_to_micro(0.02), provider="offline_synthetic",
+                      model="none", kind="text", attempt_no=1)
+        print("FAIL — cap proof: reserve($0.02) over the run cap did NOT "
+              "raise BudgetHalt")
+        failures.append("cap proof: BudgetHalt not raised over the run cap")
     except BudgetHalt as halt:
         cap_proof_passed = True
         print(f"BudgetHalt raised as required. Reason: {halt.reason}")

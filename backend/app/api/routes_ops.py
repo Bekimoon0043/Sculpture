@@ -21,7 +21,28 @@ from fastapi import APIRouter
 from sqlalchemy import select
 
 from app.db.database import get_default_db
-from app.db.models import AICallRow, BudgetEventRow, JobRow, SessionRow
+from app.db.models import (
+    AICallRow,
+    BudgetEventRow,
+    JobRow,
+    SessionRow,
+    SpendReservationRow,
+)
+
+#: The spend truth model (PR-2, ADR-061), stated where the numbers are:
+#:  1. ordinary settled provider spend comes from ai_calls ('ok' rows);
+#:  2. manually reconciled ORPHAN spend (a dead or unpriced attempt the
+#:     operator verified in the provider console) comes from
+#:     spend_reservations rows with status='reconciled' — never from a
+#:     fabricated ai_calls row;
+#:  3. displayed and cap totals are their NON-OVERLAPPING union — a
+#:     reconciled hold may link to an 'error' ai_calls row (cost 0), never
+#:     to an 'ok' one; reconcile_spend_books asserts exactly that.
+SPEND_TRUTH_MODEL = (
+    "total_usd = ai_calls_usd (settled provider spend, 'ok' rows) + "
+    "reconciled_usd (operator-reconciled orphan holds, "
+    "spend_reservations.status='reconciled'); the two never overlap"
+)
 
 log = logging.getLogger("luxuryform.api.ops")
 
@@ -82,6 +103,12 @@ def get_costs() -> dict[str, Any]:
         events = session.execute(
             select(BudgetEventRow).order_by(BudgetEventRow.ts.desc()).limit(50)
         ).scalars().all()
+        reconciled = session.execute(
+            select(SpendReservationRow)
+            .where(SpendReservationRow.status == "reconciled")
+            .order_by(SpendReservationRow.created_at.desc())
+        ).scalars().all()
+    call_status = {c.id: c.status for c in calls}
 
     by_purpose: dict[str, dict[str, Any]] = {}
     by_provider: dict[str, dict[str, Any]] = {}
@@ -134,6 +161,37 @@ def get_costs() -> dict[str, Any]:
                 "finding": "the two ledgers disagree beyond rounding",
             })
 
+    # --- reconciled ORPHAN spend (ADR-061): the second, non-overlapping
+    # book. Counted on the DISPATCH day (day_utc) like every hold; each row
+    # keeps its reservation id, scope, original day, amount and audit note.
+    reconciled_rows: list[dict[str, Any]] = []
+    reconciled_total = 0.0
+    double_counts: list[dict[str, Any]] = []
+    for r in reconciled:
+        amount = (r.settled_usd_micro or 0) / 1_000_000
+        reconciled_total += amount
+        by_day[r.day_utc] = by_day.get(r.day_utc, 0.0) + amount
+        reconciled_rows.append({
+            "reservation_id": r.id,
+            "scope_id": r.scope_id,
+            "session_id": r.session_id,
+            "day_utc": r.day_utc,
+            "created_at": r.created_at,
+            "provider": r.provider,
+            "model": r.model,
+            "reserved_usd": r.reserved_usd_micro / 1_000_000,
+            "reconciled_usd": round(amount, 6),
+            "ai_call_id": r.ai_call_id,
+            "note": r.note,
+        })
+        if r.ai_call_id and call_status.get(r.ai_call_id) == "ok":
+            double_counts.append({
+                "reservation_id": r.id,
+                "ai_call_id": r.ai_call_id,
+                "finding": "reconciled orphan is linked to an 'ok' ai_call — "
+                           "its money would be counted twice",
+            })
+
     def _round(d: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
         return {
             k: {**v, "cost_usd": round(v["cost_usd"], 6)}
@@ -141,7 +199,11 @@ def get_costs() -> dict[str, Any]:
         }
 
     return {
-        "total_usd": round(total, 6),
+        # The union (truth model rule 3); the two components stay visible.
+        "total_usd": round(total + reconciled_total, 6),
+        "ai_calls_usd": round(total, 6),
+        "reconciled_usd": round(reconciled_total, 6),
+        "truth_model": SPEND_TRUTH_MODEL,
         "call_count": len(calls),
         "by_purpose": _round(by_purpose),
         "by_provider": _round(by_provider),
@@ -149,11 +211,22 @@ def get_costs() -> dict[str, Any]:
         # Failed calls still cost money when the provider billed the attempt;
         # a separate line stops a flaky connection masquerading as work.
         "error_calls": {"count": error_count, "cost_usd": round(error_cost, 6)},
+        # Explicitly "reconciled unmatched spend" — never a fabricated call.
+        "reconciled_unmatched_spend": {
+            "count": len(reconciled_rows),
+            "cost_usd": round(reconciled_total, 6),
+            "rows": reconciled_rows,
+        },
         "reconciliation": {
             "checked_sessions": len(per_session_calls),
             "tolerance_usd": RECONCILE_TOLERANCE_USD,
+            # ai_calls vs the sessions ledger — the ledger is ai_calls-derived
+            # by design, so reconciled orphans are NOT folded into it.
             "mismatches": mismatches,
-            "clean": not mismatches,
+            # a reconciled orphan may link to an 'error' row (cost 0), never
+            # to an 'ok' row: the non-overlap guarantee, checked live.
+            "reconciled_double_counts": double_counts,
+            "clean": not mismatches and not double_counts,
         },
         "budget_events": [
             {"ts": e.ts, "session_id": e.session_id,

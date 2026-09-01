@@ -33,6 +33,7 @@ total, from real tokens against pricing.yaml -- never estimated.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import sys
@@ -207,13 +208,37 @@ def main() -> int:
         return 1
 
     session_id = f"critique-live-{run_id}"
-    # The same enforcer the Council uses: it checks the session and day caps
-    # BEFORE any network call and raises BudgetHalt rather than overspending.
+
+    # ADR-061 spend-scope identity (Amendment 3): one critique run including
+    # ALL its rounds is one logical paid run. The scope's design_ref is the
+    # sha256 of the canonical starting plan; a RESTART finds the latest OPEN
+    # critique scope for that plan and RESUMES it (same $5 pot). Once a run
+    # closes, a deliberate new invocation gets a fresh full-UUID scope —
+    # critique runs never share one lifetime cap.
+    plan_digest = hashlib.sha256(
+        json.dumps(DEFAULT_PLAN, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    from app.core.budget import latest_open_scope
+
+    resumed = latest_open_scope(db, "critique", plan_digest)
+    if resumed is not None:
+        scope_id = resumed
+        print(f"RESUMING open critique spend scope {scope_id} — the run cap "
+              "continues, it never resets on restart")
+    else:
+        scope_id = str(uuid.uuid4())
+
+    # The same enforcer the Council uses: it atomically reserves against the
+    # run and day caps BEFORE any network call and raises BudgetHalt rather
+    # than overspending. --max-spend layers on top via min().
     budget = BudgetEnforcer(
         session_id,
-        min(bundle.budget.session_cap_usd, args.max_spend),
+        min(bundle.budget.run_cap_usd, args.max_spend),
         bundle.budget.day_cap_usd,
         db,
+        scope_id=scope_id,
+        scope_kind="critique",
+        design_ref=plan_digest,
     )
     provider_map = build_providers(settings, bundle, db, budget)
     missing = [p for p in providers if p not in provider_map]
@@ -359,6 +384,10 @@ def main() -> int:
     }
     (out_dir / "critique_rounds.json").write_text(
         json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
+
+    # The run reached its natural end: close the spend scope so the NEXT
+    # invocation is a NEW logical run (a halted scope stays halted).
+    budget.close_scope()
 
     print()
     print("=" * 72)

@@ -24,6 +24,332 @@ verbatim gate evidence — the same contract as the phase reports.
 
 ---
 
+## PR-2 — spend caps enforce by atomic reservation (CLOSED 2026-09-01, ADR-061: auto gate PASS + operator visual gate PASS)
+
+**Scope (approved 2026-08-28 with eleven mandatory technical amendments
+and two rulings).** ADR-003's cap was a raceable check-then-call; PR-2
+replaces it with per-physical-attempt atomic reservations (BEGIN
+IMMEDIATE on a dedicated connection), integer micro-USD accounting via
+Decimal half-up conversion, one-transaction settlement (ai_calls +
+reservation + sessions ledger), exact reservation_id correlation with
+1:1 unique partial indexes in both directions, first-class spend scopes
+(`open|closed|halted`, halted sticky), fail-closed uncertainty (no
+first-party proof of non-billing exists — every failed attempt counts at
+its full bound), provider-model/global safety locks on pricing failure /
+bound-exceeded / ledger mismatch with an audited `spend_admin.py`
+resolution surface, and the mandated context-window fallback bound
+(no provider documents message framing — checked first-party
+2026-08-28). Rulings applied: fabrication spend accumulates across every
+re-POST of one (session, spec) via a full-identity uuid5 scope;
+`session_cap_usd` → `run_cap_usd` everywhere live (historical records
+untouched).
+
+### ADR-009 fetches (2026-08-28, recorded in pricing.yaml `2026-08-v4`)
+
+- claude-sonnet-4-5: "Context window: 200K tokens · Max output: 64K" +
+  prices re-confirmed ($3/$15/$0.30/$3.75) —
+  platform.claude.com/docs/en/models/sonnet-4-5/overview.
+- gpt-4o: "128,000 context window" / "16,384 max output tokens" —
+  developers.openai.com/api/docs/models/gpt-4o (PRICES remain
+  tracker-only; B-4 stays open).
+- kimi-k3: "1,048,576 tokens" context + prices re-confirmed —
+  platform.kimi.ai/docs/pricing/chat-k3.md.
+- None of the three pages documents per-message framing overhead, so per
+  Amendment 4 ALL providers reserve at the context-window fallback.
+  Resulting bounds at 8,192 output tokens, exact:
+  anthropic $0.872880 · openai $0.401920 · **kimi $3.268608** (the
+  stated consequence: a kimi call needs that much free headroom while in
+  flight).
+
+### Red-first baseline — new PR-2 tests vs PRISTINE `f5541da`
+
+Detached read-only worktree at `f5541da` (backend + config + tests all
+mounted `:ro` into a throwaway `docker compose run --rm --no-deps`
+container; shared tree and live containers untouched; the pristine
+config still reads `session_cap_usd`). One attempt, verbatim:
+
+```
+ImportError while importing test module '/app/tests/test_spend_reservations.py'.
+tests/test_spend_reservations.py:34: in <module>
+    from app.ai.call_log import reserve_bound_usd_micro
+E   ImportError: cannot import name 'reserve_bound_usd_micro' from 'app.ai.call_log' (/app/backend/app/ai/call_log.py)
+ERROR tests/test_spend_reservations.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 1.00s
+```
+
+**True baseline, stated precisely: 1 collection error, 0 tests
+executed.** Reason: `reserve_bound_usd_micro` did not exist in the
+pristine code. Therefore the new PR-2 test suite is structurally
+incompatible with the old implementation — the reservation API and its
+test module cannot exist or run against `f5541da`. This does NOT claim
+21 individual failing assertions; no test body executed. (An earlier
+invocation of the same run failed at container CREATION — Docker cannot
+create a single-file mountpoint inside a read-only directory mount —
+before any test executed; the staged re-invocation above is the same
+single baseline attempt.)
+
+### Intermediate runs — NEW code, OLD tests (not a baseline)
+
+Run 1 on the first PR-2 image (worker UP, pinned `08:26:36Z` before and
+after): `17 failed, 456 passed in 596.02s`. All 21 new tests passed; all
+17 failures were old tests asserting the pre-PR-2 contract — six
+`test_budget.py` tests (`session_cap_usd` kwarg / removed
+`pre_dispatch_check`, `record_actual`, `spent_session`), six
+`'2026-08-v4' == '2026-08-v3'` literals (`test_call_log`,
+`test_pricing`, `test_providers_offline` x3, `test_cache_pricing`),
+`test_council_api` (rollup key rename), two `test_retry_and_degradation`
+tests (the kimi retry legitimately halts once an uncertain first attempt
+holds $3.149568 under a $5 run cap), `test_cache_pricing::
+test_unpriced_cache_class_fails_but_call_is_audited` (its hand-made
+pricing had no context window, so the dispatch now refused BEFORE
+spending), and `test_schema_patches` (the declared-patch list gained
+`ai_calls.reservation_id`). No production defect among them; each old
+test was rewritten to the same intent on the new contract (details in
+the tests' own comments). Run 2 after those rewrites: `2 failed, 471
+passed in 656.22s` — a second `v3` literal at `test_council_api.py:110`
+masked in run 1 by the KeyError above it, and my own rewritten
+exhaustion assertion (attempt 2's row already carries attempt 1's retry
+note). Production code did not change between runs 1, 2 and 3.
+
+### Definitive run on the second PR-2 image — SUPERSEDED (see below)
+
+Worker UP, pinned `08:26:36Z` before AND after: `473 passed, 2 warnings
+in 602.00s`. Host: `gate_phase14_auto --frontend-only` PASS;
+`gate_pr3_auto --live` PASS (live-lan + live-loopback);
+`tsc --noEmit && vite build` ✓ 6.26s.
+
+### CONTAMINATED chain — preserved, NOT definitive
+
+Worker REMOVED (`docker compose rm -sf render-worker`; listing empty
+before the suite, after the suite and after the roster), started
+12:53:53Z. During 12:50:49Z–~13:2xZ a second session
+(`luxuryform-65`, a read-only scope audit) ran two concurrent full
+pytest suites, two roster scripts (`gate_costing_auto` exit 0,
+`gate_phase11_auto` killed in flight) and API POSTs inside the SAME
+`luxuryform-backend-1` — it changed no files, no images, no container
+state and never touched the render worker; it wrote two designs
+(`76595edb-…`, `313e5d20-…`) with validation/export rows and files into
+the operator's live `data/` — recorded as unexpected live-data test
+artifacts, untouched pending a separate ruling. **No real provider spend
+occurred in that window** (live DB, read-only: 0 `ai_calls`, 0
+reservations, 0 scopes, 0 locks, 0 budget events, 0 sessions between
+12:40Z and 13:40Z). Output of the contaminated chain, verbatim:
+
+```
+worker-listing-before-suite: [] (empty = removed)
+473 passed, 2 warnings in 992.72s (0:16:32)
+worker-listing-after-suite: [] (empty = removed)
+=== ROSTER (worker removed) ===
+ROSTER gate_costing_auto.py exit=0 :: ... | COSTING GATE: PASS
+ROSTER gate_phase11_auto.py exit=0 :: ... | PASS — Phase 11 auto gate
+ROSTER gate_phase13a_auto.py exit=0 :: ... | PASS — Phase 13a auto gate
+ROSTER gate_phase14_auto.py exit=0 :: NOT covered in this run: frontend | PASS
+ROSTER gate_phase15_auto.py exit=0 :: PASS - Phase 15 sections: backend
+ROSTER gate_phase2_auto.py exit=0 :: ... | PHASE 2 AUTO GATE: PASS
+ROSTER gate_phase3_auto.py exit=0 :: ... | VERDICT: PASS
+ROSTER gate_phase4_auto.py exit=0 :: ... | VERDICT: PASS
+ROSTER gate_phase5_auto.py exit=0 :: ... | Phase 5 auto gate PASS
+ROSTER gate_phase6a1_auto.py exit=0 :: ... | PASS — Phase 6 slice A1
+ROSTER gate_phase6a2_auto.py exit=0 :: ... | PASS — Phase 6 slice A2
+ROSTER gate_phase6b_auto.py exit=0 :: ... | PASS — Phase 6 slice B
+ROSTER gate_phase6c_auto.py exit=0 :: ... | PASS — Phase 6 slice C1
+ROSTER gate_phase6c2_auto.py exit=0 :: PASS — Phase 6 slice C2
+ROSTER gate_phase8_auto.py exit=0 :: ... | PASS — Phase 8 auto gate
+ROSTER gate_phase8b_auto.py exit=0 :: PASS — Phase 8b re-gate
+ROSTER gate_phase9a_auto.py exit=0 :: ... content digest : bb374499df4d8e12... | PASS — Phase 9A
+ROSTER gate_phase9b_auto.py :: deferred (worker-up)
+ROSTER gate_pr1_auto.py exit=0 :: PASS — PR-1 auto gate
+ROSTER gate_pr2_auto.py exit=0 :: ok a book mismatch engages a GLOBAL lock (fail closed) :: problems: ['settled reservation r-dead has no ai_call', 'settled reservation r-bad has no ai_call'] | PASS — PR-2 auto gate
+ROSTER gate_pr3_auto.py[static,stdin] exit=0 :: PASS
+worker-listing-after-roster: [] (empty = removed)
+```
+
+### Intermediate defect (distinct from the contamination incident) — fixed in-slice, image rebuilt
+
+**Exposed by:** the `gate_pr2_auto` §5 detail line quoted in the
+contaminated chain above — not by a failing test; the gate PASSED
+(it expected a lock from the deliberately tampered `r-bad` row) while
+its detail wrongly named `r-dead`, the hold the operator had just
+reconciled through `resolve_uncertain_hold`, as a book mismatch.
+**Root cause:** `resolve_uncertain_hold` marked the hold `settled` with
+`ai_call_id` NULL; `reconcile_spend_books` treats every `settled` row as
+owing a 1:1 `ai_calls` row, and `_day_spent_micro` derives settled money
+only from 'ok' `ai_calls` rows. **Consequences in the pre-fix code:**
+(1) any operator hold reconciliation would engage a GLOBAL safety lock
+at the next backend startup (fail-closed, but wrong); (2) a hold
+reconciled to a NONZERO console-verified amount vanished from the day
+sum — an under-count. **Fix (production: `budget.py` only —
+`_day_spent_micro`, `_run_spent_micro`, `resolve_uncertain_hold`;
+schema/models comments; tests + gate §5 + spend_admin wording):**
+operator-reconciled holds get their own status `reconciled`, counted at
+the verified amount in BOTH cap sums and exempt from the 1:1 assertion.
+**Scope:** corrects the accounting of the already-approved audited
+resolution path; no new capability. **Superseded by the rebuild:** the
+473-pass worker-up run on image `fbc4883dd98b` and the host
+`gate_pr3 --live`; standing: the true baseline, the ADR-009 fetches,
+`gate_phase14 --frontend-only` and the frontend build (no frontend
+file changed). Red-first for the fix, new tests vs the pre-fix PR-2
+image (host tests mounted `:ro` into a throwaway `docker compose run`),
+verbatim:
+
+```
+/app/tests/test_spend_reservations.py:622: assert 0.0 == 0.3 ± 3.0e-07
+FAILED tests/test_spend_reservations.py::test_startup_recovery_classifies_dead_holds_uncertain
+FAILED tests/test_spend_reservations.py::test_a_nonzero_reconciliation_still_counts_against_both_caps
+2 failed in 2.92s
+```
+
+The gate's §5 now asserts both properties explicitly.
+
+**Same defect, second half — the operator surfaces.** Before the
+definitive runs the operator required the `reconciled` book to reach
+every operator-facing surface. Inspection: `/api/ops/costs` summed
+`ai_calls` only (a $0.30 reconciled orphan was invisible in Operations
+total spend), `/api/logs/budget` listed only held/uncertain holds, and
+the reconciler had no explicit double-count guard. Fix (production:
+`routes_ops.py`, `routes_logs.py`, `budget.reconcile_spend_books`):
+the truth model is now stated in code and on the wire —
+`total_usd = ai_calls_usd + reconciled_usd`, non-overlapping;
+`reconciled_unmatched_spend` rows carry reservation id, scope, session,
+dispatch day, amount, linked call (never an 'ok' one) and audit note on
+both endpoints; `by_day` includes reconciled amounts on their dispatch
+day; the sessions ledger stays ai_calls-derived so the existing
+ai_calls<->sessions reconciliation (and `gate_phase13a` §5) remains
+honest; `reconciled_double_counts` is a live finding. Red-first for
+this half, new test vs the image `ae925db7` (pre-surface-fix), verbatim:
+
+```
+/app/tests/test_spend_reservations.py:755: KeyError: 'ai_calls_usd'
+FAILED tests/test_spend_reservations.py::test_a_reconciled_orphan_reaches_every_operator_surface
+1 failed in 3.86s
+```
+
+Gate §7 now seeds a $0.30 orphan on a fresh throwaway DB and asserts
+both surfaces. The image was rebuilt ONCE MORE with both halves;
+everything below is on THAT final image (ids recorded there).
+
+### DEFINITIVE evidence — final image `09ff920ccbbb`, exclusive control
+
+Exclusive state verified before launch: no foreign process in the
+container (only uvicorn), no host `docker exec` clients, HEAD `f5541da`,
+every changed path mine, render worker REMOVED. Final backend image
+`sha256:09ff920ccbbb…` / container `c3369a7ab89b…` (started
+13:37:05Z); the image id is re-read at the END of each stage.
+
+**Stage 1 — render worker REMOVED**, verbatim:
+
+```
+image: sha256:09ff920ccbbb857c1f5a4bed52d4ba54a2d7675a51a83e838f6fa42a4c53d965 container: c3369a7ab89be8f5633ad46b2b1a2469a7a990480ec7b5d2729a173210c4b938
+worker-listing-before-suite: [] (empty = removed)
+475 passed, 2 warnings in 940.98s (0:15:40)
+worker-listing-after-suite: [] (empty = removed)
+=== ROSTER (worker removed) ===
+ROSTER gate_costing_auto.py exit=0 :: ... | COSTING GATE: PASS
+ROSTER gate_phase11_auto.py exit=0 :: export 3MF failed: No module named 'networkx' (D-7) | PASS — Phase 11 auto gate
+ROSTER gate_phase13a_auto.py exit=0 :: ... | PASS — Phase 13a auto gate
+ROSTER gate_phase14_auto.py exit=0 :: NOT covered in this run: frontend | PASS (geometry)
+ROSTER gate_phase15_auto.py exit=0 :: PASS - Phase 15 sections: backend
+ROSTER gate_phase2_auto.py exit=0 :: ... | PHASE 2 AUTO GATE: PASS
+ROSTER gate_phase3_auto.py exit=0 :: ... | VERDICT: PASS
+ROSTER gate_phase4_auto.py exit=0 :: ... | VERDICT: PASS
+ROSTER gate_phase5_auto.py exit=0 :: ... | Phase 5 auto gate PASS
+ROSTER gate_phase6a1_auto.py exit=0 :: ... | PASS — Phase 6 slice A1
+ROSTER gate_phase6a2_auto.py exit=0 :: ... | PASS — Phase 6 slice A2
+ROSTER gate_phase6b_auto.py exit=0 :: ... | PASS — Phase 6 slice B
+ROSTER gate_phase6c_auto.py exit=0 :: ... | PASS — Phase 6 slice C1
+ROSTER gate_phase6c2_auto.py exit=0 :: PASS — Phase 6 slice C2
+ROSTER gate_phase8_auto.py exit=0 :: ... | PASS — Phase 8 auto gate
+ROSTER gate_phase8b_auto.py exit=0 :: PASS — Phase 8b re-gate
+ROSTER gate_phase9a_auto.py exit=0 :: ... content digest : bb374499df4d8e1262d8939d2fdcb573c5c1e13a8bdb4e4c3bf5afc8ce3c29c4 | PASS — Phase 9A
+ROSTER gate_phase9b_auto.py :: deferred (worker-up stage)
+ROSTER gate_pr1_auto.py exit=0 :: PASS — PR-1 auto gate
+ROSTER gate_pr2_auto.py exit=0 :: ok a book mismatch engages a GLOBAL lock (fail closed) :: problems: ['settled reservation r-bad has no ai_call'] | PASS — PR-2 auto gate
+ROSTER gate_pr3_auto.py[static,stdin] exit=0 :: PASS
+worker-listing-after-roster: [] (empty = removed)
+image-after: sha256:09ff920ccbbb857c1f5a4bed52d4ba54a2d7675a51a83e838f6fa42a4c53d965
+```
+
+The suite is 475 (the 473 plus the two defect tests). The `gate_pr2`
+§5 detail now names ONLY the deliberately tampered `r-bad` — the
+reconciled `r-dead` is no longer a mismatch, the defect fix visible in
+the gate's own output. Host on the final backend: `gate_pr3_auto
+--live` exit 0 PASS (live-lan + live-loopback); standing from earlier
+(no frontend file changed): `gate_phase14_auto --frontend-only` PASS,
+`tsc --noEmit && vite build` ✓ 6.26s.
+
+**Stage 2 — render worker RESTORED** (`docker compose --profile render
+up -d render-worker`), verbatim:
+
+```
+worker BEFORE suite: running started 2026-08-28T14:02:02.074233988Z
+image: sha256:09ff920ccbbb857c1f5a4bed52d4ba54a2d7675a51a83e838f6fa42a4c53d965 container: c3369a7ab89be8f5633ad46b2b1a2469a7a990480ec7b5d2729a173210c4b938
+475 passed, 2 warnings in 849.50s (0:14:09)
+worker AFTER suite: running started 2026-08-28T14:02:02.074233988Z
+GATE gate_phase9b_auto exit=0 :: Phase 9B auto gate PASS
+worker AFTER 9b: running started 2026-08-28T14:02:02.074233988Z
+image-after: sha256:09ff920ccbbb857c1f5a4bed52d4ba54a2d7675a51a83e838f6fa42a4c53d965
+```
+
+**Roster accounting on the final image, explicit:** 19 scripts
+in-container with the worker REMOVED (17 phase gates + `gate_pr1` +
+`gate_pr2`) = 19; script 20 `gate_pr3_auto` in BOTH modes (static via
+stdin in-container, live on the host); script 21 `gate_phase9b_auto`
+with the worker restored — **21 of 21 green**, plus `gate_phase14`'s
+host half. Suite green in BOTH worker states on the final image, worker
+state pinned at every boundary, backend image id identical at the end
+of every stage. Total live spend by this slice: **$0.00** (no provider
+call was made at any point; the live DB shows none).
+
+### Operator visual gate — SIGNED PASS 2026-09-01
+
+Pre-sign-off state verification (2026-09-01, three read-only checks,
+reconciled): HEAD `f5541da` = `origin/main`; the uncommitted change set
+was exactly the 44 recorded paths, nothing staged, no stashes, no file
+outside PR-2's scope; image `09ff920ccbbb` still `luxuryform-backend:
+latest` with the evidence container `c3369a7ab89b…` pointing at the
+exact digest; no code/test/config file modified after the image build
+(only the .md reports, written after the evidence, as expected).
+Observed and recorded: an unattributed container run on 2026-08-31
+(backend up 08:07:03Z → stopped 09:41:56Z, exit 0) — code is baked into
+the image so no code drift was possible; the operator verified below
+that no provider call occurred in that window. `gate_pr2_visual.md` was
+completed doc-only before signing (named `reconciled_unmatched_spend`
+in step 1, the $5/$25 values in step 2, auto-gate sections [1]/[4]/[5]/
+[7] in step 3, and replaced the stale rebuild prerequisite with a
+no-rebuild start, since a rebuild after the doc changes would have
+minted a new image id).
+
+The operator's sign-off, verbatim (2026-09-01):
+
+> PR-2 visual gate signed PASS.
+>
+> - Operations ledgers reconcile.
+> - No provider calls occurred during the unexplained 2026-08-31
+>   container window.
+> - The latest legitimate paid activity is my 2026-08-28
+>   Council/fabrication demonstration.
+> - Budget API exposes run_cap_usd, day_cap_usd, open_holds,
+>   active_safety_locks and reconciled_unmatched_spend.
+> - open_holds, active_safety_locks and reconciled_unmatched_spend are
+>   empty.
+> - config/budget.yaml uses run_cap_usd; session_cap_usd is absent.
+> - gate_pr2_auto.py PASS.
+> - spend_admin.py list shows no unresolved entries.
+> - I approve retaining $5 per logical run and $25 per UTC day.
+> - I understand that an uncertain Kimi attempt can prevent an
+>   automatic retry within the same $5 run.
+>
+> Proceed with /lf-close, one PR-2 commit and push. Preserve the two
+> accidental test designs; do not clean them up in PR-2.
+
+**Status: CLOSED — auto gate PASS on the final image + operator visual
+gate signed PASS 2026-09-01. $5/run and $25/day retained by explicit
+ruling. Designs `76595edb…` and `313e5d20…` preserved; their cleanup is
+a separate operator ruling.**
+
+---
+
 ## PR-1 — max_module_m binds per axis (CLOSED 2026-08-28: auto gate PASS + operator visual gate PASS)
 
 **Scope (approved with 7 amendments 2026-08-28).** The Design Spec has

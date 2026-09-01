@@ -119,7 +119,8 @@ values for them.
 
 ## Cost
 
-One parse is one logged, budget-capped provider call — the same path and the
-same caps as a Council call. Editing and re-confirming afterwards costs
-nothing. Without API keys the parse fails honestly and the form still works
-by hand.
+One parse is one logged, budget-capped provider call — the same reserved,
+capped path as a Council call (PR-2, ADR-061). All parses of ONE intake
+share one $5 run pot: re-parsing the same brief accumulates rather than
+resetting the cap. Editing and re-confirming afterwards costs nothing.
+Without API keys the parse fails honestly and the form still works by hand.

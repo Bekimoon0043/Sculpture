@@ -90,8 +90,9 @@ def db(tmp_path) -> Database:
 # script to detect that.
 #
 # What they DO prove: the real production code path around the SDK call —
-# estimate -> BudgetEnforcer.pre_dispatch_check -> dispatch -> real token/cost
-# math from pricing.yaml -> ai_calls persistence. Production always builds
+# bound -> BudgetEnforcer.reserve (ADR-061 atomic hold) -> dispatch -> real
+# token/cost math from pricing.yaml -> one-transaction settlement into
+# ai_calls + the reservation ledger. Production always builds
 # real SDK clients; a transport can only be injected by a test.
 # ---------------------------------------------------------------------------
 

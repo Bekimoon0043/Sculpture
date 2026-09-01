@@ -8,7 +8,8 @@ Run AFTER `gate_phase3_auto.py` prints `VERDICT: PASS`.
 4. Check, with your own eyes:
    - [ ] The session appears in the list, labeled **synthetic**, status
          **completed**.
-   - [ ] The **cost panel** shows a bar under the $5 session cap, a per-role
+   - [ ] The **cost panel** shows a bar under the $5 run cap (labelled
+         "run cap" since PR-2), a per-role
          and per-provider breakdown, and a cache-savings line.
    - [ ] The **Arbiter decision** card shows a confidence number and a
          rationale.

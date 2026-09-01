@@ -192,9 +192,18 @@ def parse_intake(intake_id: str) -> dict[str, Any]:
             )
         intake = IntakeV1.model_validate(json.loads(row.normalized_json))
 
+    # ADR-061: the SESSION id stays per-parse (each parse is one audited
+    # dispatch group), but the SPEND SCOPE is deterministic over the FULL
+    # intake id — repeated parses of one intake accumulate under one run
+    # cap; the cap never resets by accident (Amendment 3).
+    from app.core.budget import intake_scope_id
+
     session_id = f"intake-{intake_id[:8]}-{uuid.uuid4().hex[:8]}"
     budget = BudgetEnforcer(
-        session_id, bundle.budget.session_cap_usd, bundle.budget.day_cap_usd, db
+        session_id, bundle.budget.run_cap_usd, bundle.budget.day_cap_usd, db,
+        scope_id=intake_scope_id(intake_id),
+        scope_kind="intake",
+        design_ref=intake_id,
     )
     providers = build_providers(settings, bundle, db, budget)
     material_ids = sorted(bundle.materials.materials)

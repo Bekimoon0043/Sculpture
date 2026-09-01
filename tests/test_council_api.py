@@ -104,10 +104,10 @@ def test_demo_session_load_list_detail(client):
     assert rollup["total_cost_usd"] == d["session"]["total_cost_usd"]
     assert abs(sum(rollup["by_role"].values()) - rollup["total_cost_usd"]) < 1e-5
     assert abs(sum(rollup["by_provider"].values()) - rollup["total_cost_usd"]) < 1e-5
-    assert rollup["session_cap_usd"] == 5.00
+    assert rollup["run_cap_usd"] == 5.00  # renamed by PR-2 (ADR-061)
     assert rollup["day_cap_usd"] == 25.00
     assert "cache_savings_usd" in rollup
-    assert rollup["pricing_version"] == "2026-08-v3"
+    assert rollup["pricing_version"] == "2026-08-v4"
 
 
 def test_main_app_wires_council_router():

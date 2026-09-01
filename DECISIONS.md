@@ -3575,3 +3575,153 @@ exists and is not the same thing as amorphous design GENERATION.
   PRODUCTION_V1_REPORT.md (program header) updated in the same commit.
 - The Phase 2 canonical STEP hash `e1a59fa6…` is untouched — this
   commit changes four Markdown files and nothing else.
+
+---
+
+## ADR-061 - PR-2: spend caps enforce by atomic reservation, fail closed (2026-08-28)
+
+### Context
+
+Production v1 slice PR-2, approved 2026-08-28 with eleven mandatory
+technical amendments and two rulings (fabrication spend accumulates
+across re-POSTs of one (session, spec); `session_cap_usd` renamed
+`run_cap_usd`). ADR-003's cap was real but raceable: an unlocked
+read-then-compare (`pre_dispatch_check`) ran two SELECT sums and the
+spend row landed only after the response, so two concurrent dispatches —
+a Council POST in a uvicorn thread and the critique script in a separate
+process on the same SQLite file — could both pass with $24.99 spent. The
+estimate it checked (chars/4 + a flat 1100 vision-token allowance) was
+not an upper bound, a crash between dispatch and the `ai_calls` insert
+made real spend invisible forever, `build_providers(budget=None)` allowed
+silently uncapped construction, `scripts/live_verify_providers.py` spent
+outside the fence entirely, and Amendment 1's "logical run" had no
+identity: fabrication pooled into the council session's $5 and a
+restarted critique run minted a fresh id.
+
+### Decisions
+
+1. **Reservation, not check-then-call.** Before EVERY physical provider
+   attempt, `BudgetEnforcer.reserve()` takes one `BEGIN IMMEDIATE`
+   transaction on a dedicated raw SQLite connection (busy_timeout
+   5000 ms — judgement value; the shared engine also gains the pragma):
+   scope check/create, safety-lock check, both cap sums, hold insert —
+   or, on refusal, the ADR-003 evidence rows (`budget_events` +
+   `jobs(status='halted_budget')`) — commit as one atomic unit, then
+   `BudgetHalt` raises. SQLite's single writer serializes reservers
+   across threads AND processes; the gate proves both races.
+2. **Two tables, one column, three unique/partial indexes — all
+   additive.** `spend_scopes` (open | closed | **halted**, sticky),
+   `spend_reservations` (held | settled | **uncertain**; INTEGER
+   micro-USD), `spend_safety_locks`, `ai_calls.reservation_id`, and
+   unique partial indexes making the reservation↔call link 1:1 in BOTH
+   directions at the schema level; settlement and recovery assert it
+   again in-band. Correlation is exact-id only — never a timestamp.
+3. **Settlement is one transaction.** The `ai_calls` insert, the
+   reservation settlement and the `sessions.total_cost_usd` fold commit
+   together, so no crash leaves a partial state and gate 13a's
+   two-ledger reconciliation holds at every boundary. Day spend =
+   SUM(`ai_calls` 'ok' rows for the day, Decimal-converted per row) +
+   SUM(bounds of held/uncertain holds taken that day): `ai_calls`
+   remains ADR-003's single source of settled truth, pre-PR-2 history
+   stays counted, nothing double-counts. Run spend is the same aggregate
+   per scope. The day a hold was TAKEN binds (matching the existing
+   pre-dispatch `ts` convention); worst-case midnight carry is bounded
+   by in-flight holds.
+4. **Integer micro-USD.** Ledger money is INTEGER µUSD; conversions go
+   through `Decimal(str(value))` with explicit HALF-UP rounding
+   (bounds: CEILING — a bound never rounds down). round(x, 6) is µUSD
+   precision, so settled amounts convert losslessly; the gate proves a
+   1000-row sum exact where float summation drifts.
+5. **The bound is the mandated context-window fallback, for every
+   provider.** Checked 2026-08-28 on each model's first-party page: NONE
+   of the three documents per-message framing overhead, so no
+   prompt-based formula has all its components proven and none ships.
+   bound = context_window_tokens x max(input, cache-write rate) +
+   max_tokens x output rate, ceiling-rounded. Context windows fetched
+   first-party 2026-08-28 and recorded with sources in pricing.yaml
+   (`2026-08-v4`): claude-sonnet-4-5 200,000 / gpt-4o 128,000 /
+   kimi-k3 1,048,576. Billed input — text and images — is context
+   tokens by definition, so one bound covers both call kinds. The
+   anthropic 1h cache-write class ($6) is unreachable (no code path
+   sends a ttl); 5m write ($3.75) is the priced maximum. **Stated
+   consequence:** a kimi-k3 call holds $3.268608 while in flight, so it
+   refuses once a $5 run has less headroom than that — fail-closed by
+   order, revisit only with first-party framing documentation. B-4
+   (price truth) stays open; the gpt-4o prices remain tracker-only.
+6. **Fail closed, everywhere.** No first-party documentation proves any
+   provider error class non-billing (silence is not proof), so EVERY
+   failed physical attempt goes `uncertain` and keeps consuming its full
+   bound; a `released` status deliberately does not exist. Each physical
+   attempt has its own reservation AND its own audited `ai_calls` row
+   (the old ADR-023 caveat — retry history discarded on success — is
+   gone); a retry that no longer fits under a cap halts mid-sequence. A
+   pricing failure after a billed call, an actual cost above the
+   reserved bound, or a ledger mismatch found at startup engages a
+   PERSISTED safety lock (provider/model, or GLOBAL for mismatches) and
+   halts the scope; matching dispatch refuses until
+   `scripts/spend_admin.py` resolves it with a mandatory audited reason.
+   Startup recovery classifies surviving holds `uncertain` (settlement
+   atomicity makes any other surviving state impossible), never deletes,
+   and `resolve-hold` moves one to `reconciled` at the console-verified
+   amount — its own status, because such a hold has no 'ok' `ai_calls`
+   row: both cap sums count it at the verified amount and the two-book
+   assertion exempts it. (Caught in-slice: the first cut marked it
+   `settled`, which the reconciler then flagged as a mismatch — a
+   global lock at the next startup — and whose nonzero amount vanished
+   from the day sum; red-first tests and gate §5 now pin both.)
+   ADR-033's lesson (the consoles are the only truth for a dead call)
+   is now a first-class workflow. **The spend truth model, explicit on
+   every operator surface:** (1) ordinary settled provider spend comes
+   from `ai_calls` 'ok' rows; (2) manually reconciled ORPHAN spend
+   comes from `spend_reservations.status='reconciled'` — never a
+   fabricated call row; (3) displayed and cap totals are their
+   non-overlapping union (`/api/ops/costs`: `total_usd = ai_calls_usd +
+   reconciled_usd`, with `reconciled_unmatched_spend` rows and a live
+   `reconciled_double_counts` finding; `/api/logs/budget` lists the same
+   rows). The `sessions` ledger stays ai_calls-derived, so the Phase 13A
+   ai_calls<->sessions reconciliation keeps its original meaning.
+7. **Logical-run identities (Amendment 1 + rulings).** Council: the
+   session uuid IS the scope. Fabrication: uuid5 over the FULL
+   `fabrication:{session_id}:{spec_id}` (never truncated prefixes — an
+   8-char collision would merge two $5 ledgers); every re-POST reopens
+   the same scope and the spend ACCUMULATES until PR-7B's durable
+   controls (operator ruling). Critique: a restart resumes the latest
+   OPEN scope for the plan digest; a closed scope is never resumed — a
+   new run gets a fresh full UUID. Intake: uuid5 over the full intake
+   id, so re-parses accumulate. `closed` scopes reopen on legitimate
+   re-dispatch; `halted` never reopens automatically.
+8. **No fence-sitting paths.** `call_log.execute()` refuses to dispatch
+   with no enforcer; `build_providers` requires one;
+   `live_verify_providers.py` keeps its raw-SDK shape-dump purpose but
+   every metered call now reserves, settles and logs through the real
+   ledger into the operator's real database. `FabricateRequest.
+   max_attempts` gains a structural ceiling (10 — judgement value).
+   `/api/logs/budget` shows open holds and active locks.
+
+### Stated limits
+
+- The $25/day cap is per DATABASE FILE, not per machine (ADR-033: a temp
+  DB grants full headroom) — LIMITATIONS §20; the hermetic-env standing
+  rule is the guard for tests.
+- The context-window fallback over-reserves by design; the cost is
+  early refusals (kimi above), never overspend.
+- Judgement values, flagged: busy_timeout 5000 ms; max_attempts ceiling
+  10; the /api/logs/budget hold/lock list caps at 100 rows (display
+  only).
+
+### Consequences
+
+- `gate_pr2_auto.py` joins the roster (script 21) — sections in its
+  header; `gate_pr2_visual.md` is the operator's eye gate and asks
+  whether $5/$25 remain the intended ceilings.
+- `pricing.yaml` -> `2026-08-v4` (context windows + sources);
+  `budget.yaml` renamed key; `docs/operator/01/04/05/09/10` updated to
+  the run-cap vocabulary; frontend rollup renames `run_cap_usd`.
+- The Phase 2 canonical STEP hash `e1a59fa6…` is untouched — no
+  geometry-adjacent code changed; the roster re-run re-proves it.
+- **CLOSED 2026-09-01:** operator visual gate signed PASS (verbatim in
+  `PRODUCTION_V1_REPORT.md`). Ruling: **$5/run and $25/day RETAINED**;
+  the kimi fail-closed retry consequence explicitly acknowledged. The
+  two accidental live-data designs (`76595edb…`, `313e5d20…`) are
+  preserved by explicit ruling; their cleanup is a separate operator
+  decision.

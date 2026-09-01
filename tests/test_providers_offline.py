@@ -6,7 +6,7 @@ provider. They are hand-constructed, not recorded, but their shapes are
 LIVE-VERIFIED against the operator's account (live_verify_providers.py run
 2026-08-07 — DECISIONS.md ADR-021/ADR-022; LIMITATIONS.md §7 retired). What
 these tests prove is the real production code path AROUND the SDK call:
-estimate -> BudgetEnforcer.pre_dispatch_check -> dispatch -> real token/cost
+bound -> BudgetEnforcer.reserve (ADR-061) -> dispatch -> real token/cost
 math from pricing.yaml -> ai_calls persistence. Production always builds real
 SDK clients and requires real API calls; nothing here bypasses that.
 """
@@ -88,7 +88,7 @@ def test_complete_offline_correct_response_and_cost(
     assert resp.tokens_in == tin
     assert resp.tokens_out == tout
     assert resp.cost_usd == expected_cost
-    assert resp.pricing_version == "2026-08-v3"
+    assert resp.pricing_version == "2026-08-v4"
     assert resp.latency_ms >= 0
     assert len(client.calls) == 1
     # Kimi live docs (chat.md + kimi-k3-quickstart.md, fetched 2026-08-01):

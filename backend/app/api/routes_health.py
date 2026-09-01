@@ -40,7 +40,7 @@ def health() -> dict:
         "providers": provider_keys_status(get_settings()),
         "pricing_version": bundle.pricing.pricing_version,
         "budget": {
-            "session_cap_usd": budget.session_cap_usd,
+            "run_cap_usd": budget.run_cap_usd,
             "day_cap_usd": budget.day_cap_usd,
             "max_vision_iterations": budget.max_vision_iterations,
             "on_breach": budget.on_breach,

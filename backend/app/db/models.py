@@ -45,6 +45,71 @@ class AICallRow(Base):
     pricing_version: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: PR-2 (ADR-061): exact 1:1 link to the spend reservation that covered
+    #: this physical attempt. NULL for every pre-PR-2 row.
+    reservation_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class SpendScopeRow(Base):
+    """One LOGICAL paid run (PR-2, ADR-061): a Council run, a fabrication
+    run including repairs, a critique run including rounds, an intake's
+    parses. status: open | closed | halted — halted is STICKY and only an
+    audited operator resolution (scripts/spend_admin.py) clears it."""
+
+    __tablename__ = "spend_scopes"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    kind: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    closed_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    design_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class SpendReservationRow(Base):
+    """One atomic pre-dispatch hold per PHYSICAL provider attempt (PR-2,
+    ADR-061). Money is INTEGER micro-USD. status: held | settled |
+    uncertain | reconciled — 'uncertain' keeps counting at the full
+    reserved bound (fail closed: no first-party proof of non-billing
+    exists); 'reconciled' is an operator-verified amount (spend_admin),
+    counted as such and exempt from the 1:1 ai_calls assertion."""
+
+    __tablename__ = "spend_reservations"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    created_at: Mapped[str] = mapped_column(Text)
+    day_utc: Mapped[str] = mapped_column(Text)
+    scope_id: Mapped[str] = mapped_column(Text, ForeignKey("spend_scopes.id"))
+    session_id: Mapped[str] = mapped_column(Text, ForeignKey("sessions.id"))
+    attempt_no: Mapped[int] = mapped_column(Integer)
+    provider: Mapped[str] = mapped_column(Text)
+    model: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(Text)
+    reserved_usd_micro: Mapped[int] = mapped_column(Integer)
+    settled_usd_micro: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(Text)
+    settled_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_call_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class SpendSafetyLockRow(Base):
+    """A persisted spend safety lock (PR-2, ADR-061): bound_exceeded /
+    pricing_failure / ledger_mismatch. provider NULL = GLOBAL. Active locks
+    refuse every matching paid dispatch until audited operator resolution."""
+
+    __tablename__ = "spend_safety_locks"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    created_at: Mapped[str] = mapped_column(Text)
+    provider: Mapped[str | None] = mapped_column(Text, nullable=True)
+    model: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reason: Mapped[str] = mapped_column(Text)
+    detail: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    resolved_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class BudgetEventRow(Base):
