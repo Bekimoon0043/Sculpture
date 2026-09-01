@@ -810,3 +810,33 @@ The shell is a pipeline (ADR-041). What it does NOT do:
 - **The per-database cap also means the critique script's `--max-spend`
   layers via `min()` with the run cap, as before** — it narrows, never
   widens.
+
+## 21. Validation gates are ADVISORY at the export boundary (2026-09-01, Master Scope audit)
+
+This was true from Phase 9A and is recorded here now, found by the
+2026-09-01 audit at `bfa5a77`:
+
+- **A design whose validation gates FAILED still exports and seals a
+  clean LUXEXCHANGE package.** `POST /api/geometry/assembly/{id}/exports`
+  reads the gate statuses only to stamp them INSIDE the package; there is
+  no branch on them anywhere in that route, and the rebuild it performs
+  uses `assemble(strict=False)`. A fabricator cannot tell a failed
+  design's zip from a passed one without opening the metadata.
+- **The gate system's own blocking primitive is dead code.**
+  `LayeredGateReport.blocking` is defined and has zero call sites.
+- **No profile ships signed off** (see §12), so the structural and
+  hydraulic gates cannot currently return `fail` on a threshold at all —
+  the two facts compound: nothing can fail, and failing would not block.
+- **The budget check has the same shape**: it binds only on the BOM
+  route, only when the caller passes `?budget_amount=`, and the export
+  path bypasses it entirely.
+- The only enforced downstream refusal in the platform is DesignDNA's
+  accept (`fail` designs cannot become precedents) — which blocks the
+  cheapest action while export ships freely.
+
+**LF-103A (queued first, before PR-2.5) closes the export half:** FAILED
+will never package clean; NEEDS_INPUT will package only as an explicitly
+watermarked PRE-FABRICATION package carrying `ENGINEERING_WARRANT.txt`
+naming every unresolved check and the professional input each requires;
+viewing and diagnostic exports stay available. Until LF-103A lands, treat
+every package as unwarranted geometry, whatever its paperwork looks like.

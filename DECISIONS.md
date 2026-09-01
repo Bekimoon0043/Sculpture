@@ -3725,3 +3725,87 @@ restarted critique run minted a fresh id.
   two accidental live-data designs (`76595edb…`, `313e5d20…`) are
   preserved by explicit ruling; their cleanup is a separate operator
   decision.
+
+## ADR-062 - The owner's 30-system scope becomes SCOPE.md; the audit baseline is bfa5a77 (2026-09-01)
+
+### Context
+
+Every report since Phase 1 cited `SCOPE.md` as authority while it never
+existed (B-6). The owner's complete 30-system scope - systems, weights,
+0-5 rubric, gates G0-G10, traceability test, AquaFlow boundary, outputs
+inventory - was supplied 2026-08-28 in a working session and lived only
+in that session's transcript. The 2026-09-01 Master Scope Development
+Audit (five read-only domain agents + lead adjudication, $0, no
+containers) scored the repository at `bfa5a77` against it.
+
+### Decisions (owner rulings, 2026-09-01, binding)
+
+1. **`SCOPE.md` reproduces the owner's scope verbatim** (encoding
+   normalized only), preserves the 112-vs-"100%" weight contradiction
+   with an annotation instead of silently correcting it, and normalizes
+   every percentage by 112. It becomes owner-authoritative only when the
+   owner countersigns `gate_scope_audit_visual.md`; future scope changes
+   require an explicit owner ruling recorded as an ADR.
+2. **Milestone names, used consistently everywhere:** Milestone A -
+   Free-form Sculpture Demonstrator; Milestone B - Internal
+   Fabrication-Geometry Beta; Milestone C - Production v1. "Production
+   v1" means the complete threshold: normalized >= 80% AND every
+   safety-critical system >= 4/5. The approved PR-0..PR-9 program
+   delivers Milestone B and must not be described as Production v1.
+   (`PRODUCTION_V1_REPORT.md` keeps its filename as a historical record.)
+3. **LF-103A is the first implementation slice after the audit closes,
+   before PR-2.5:** FAILED validation never produces a clean fabrication
+   package; NEEDS_INPUT may produce only an explicitly watermarked
+   PRE-FABRICATION package carrying `ENGINEERING_WARRANT.txt` naming
+   unresolved checks and required professional inputs; a package must
+   never appear production-ready while thresholds are unsigned; viewing
+   and diagnostic exports are preserved. LF-103A does NOT wait for
+   LF-102's engineer-approved threshold values.
+4. **Score re-rulings applied before freezing the audit:** Parametric
+   Geometry 4->3 (the primary amorphous requirement is absent, ADR-060),
+   Panelization 3->2 (segmentation is not panelization; no per-module
+   manufacturing CAD), Optimization 2->1 (the objective never steers; no
+   persistence, no API). Final: raw 35.4/112 = 31.6/100, reconciled
+   against 27.68% (earlier, unattributable per-system), 34.6%
+   (2026-08-28 in-chat audit) and 33.9% (pre-ruling). Executive
+   summaries say "approximately one-third complete", never a falsely
+   precise promise.
+5. **Evidence quality:** every scorecard row carries score, confidence,
+   direct evidence, missing end-to-end proof, required professional
+   input, and next dependency. `gate_scope_audit_auto.py` (roster
+   script 22) verifies referenced files and quoted symbols/substrings -
+   never line numbers - and recomputes the weighted total from the
+   table. The audit baseline `bfa5a77` is recorded in the document and
+   asserted by the gate.
+6. **The owner's 6m->8m traceability test is preserved as supplied and
+   marked unrunnable** under the current primitive envelope (tallest
+   primitive caps at 6000 mm); a stacked-assembly test replaces it
+   without rewriting the owner's request.
+7. **No publication.** The audit names internal security and
+   production-readiness gaps; it is not to be published or shared as a
+   page. A presentation-safe boss report is a separate future slice.
+
+### What this buys / gives up
+
+Buys: one yardstick for every future slice, honest milestone language,
+and the earliest possible close of the most dangerous behaviour found
+(a failed design shipping a clean package). Gives up: the flattering
+score - 31.6/100 replaces every rosier number in circulation - and the
+"Production v1" label for the current program, which is now Milestone B.
+
+### Evidence
+
+`DEVELOPMENT_AUDIT.md` (baseline bfa5a77): scorecard with per-row
+evidence, G0-G10 enforcement map, new-defect register D-13..D-23,
+reconciliation table. Lead-verified anchors: null thresholds +
+signed_off:false in `config/gate_profiles.yaml`; no gate branch in
+`post_design_exports`; `LayeredGateReport.blocking` dead code; zero
+aquaflow/cogninet/dmx hits repo-wide.
+
+**CLOSED 2026-09-01:** `gate_scope_audit_auto.py` PASS (weights sum 112,
+30 rows, weighted total recomputed from the table, 24 evidence anchors
+verified by quoted symbols) + the owner's countersignature, recorded
+verbatim in `gate_scope_audit_visual.md`. `SCOPE.md` is now
+owner-authoritative. The owner's binding closing line: "Nothing in this
+audit is authorization to claim the platform is presently
+production-ready."

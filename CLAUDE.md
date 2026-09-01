@@ -11,8 +11,14 @@ Single operator: the CEO, who has no coding background and directs all developme
 What is left, in order, with its blockers: `NEXT.md` — the loop state file,
 rewritten at the close of every slice. Architecture decisions: `DECISIONS.md`.
 Known gaps: `LIMITATIONS.md`. Read all three before your first change in a
-session. (`SCOPE.md` is cited throughout this repo and does not exist — see
-the note at the end of this file.)
+session. The owner's 30-system scope: `SCOPE.md` (recovered 2026-09-01,
+ADR-062 — weights normalize by 112; authoritative once the owner
+countersigns `gate_scope_audit_visual.md`); the honest position against it:
+`DEVELOPMENT_AUDIT.md` (31.6/100 at `bfa5a77`). Milestone names (ADR-062):
+A — Free-form Sculpture Demonstrator; B — Internal Fabrication-Geometry
+Beta (what PR-0…PR-9 delivers); C — Production v1 (normalized ≥80% AND
+every safety-critical system ≥4/5 — never call anything less Production
+v1).
 
 ## The core architectural truth
 
@@ -57,8 +63,10 @@ to the loop is `docs/operator/06_the_loop.md`; the queue itself is `NEXT.md`.
 - After any change touching `backend/`, tell the operator to rebuild: `docker compose up --build -d`.
 - Gates: every `scripts\gate_*_auto.py` runs at $0 with no network beyond
   the operator's own machine. **The roster is exactly the files matching
-  that glob — 21 scripts as of 2026-08-28 (PR-3 added `gate_pr3_auto.py`,
-  PR-1 added `gate_pr1_auto.py`, PR-2 added `gate_pr2_auto.py`). Nothing
+  that glob — 22 scripts as of 2026-09-01 (PR-3 added `gate_pr3_auto.py`,
+  PR-1 added `gate_pr1_auto.py`, PR-2 added `gate_pr2_auto.py`, the
+  Master Scope audit added `gate_scope_audit_auto.py` — pure file checks,
+  host or container). Nothing
   discovers or runs them
   automatically: a session lists the glob and runs each one explicitly**,
   before and after any change to `backend/`. Historical counts stand as
@@ -190,10 +198,13 @@ Each closed phase has a `PHASE_N_REPORT.md` with its gate evidence; the
 forward plans are `PHASE_8_VALIDATION_GATE_PLAN.md` through
 `PHASE_13_RECOVERY_HARDENING_PLAN.md`.
 
-> `SCOPE.md` is referenced above but **does not exist in this repository and
-> never has** (checked against full git history, 2026-08-17). The same is
-> true of `SPEC_PHASE2.md`, `PHASE2_PLAN.md`, the "Master Build Order" and
-> the "First Action" document, all cited as authority in the reports and in
-> `registry.py`. Until the operator supplies or reconstructs them, the
-> authoritative scope is: `DECISIONS.md`, `LIMITATIONS.md`, the phase
-> reports, and `luxuryform-claude-code-commands.md`.
+> `SCOPE.md` EXISTS as of 2026-09-01 (ADR-062): the owner's 30-system
+> scope, recovered verbatim from the owner's 2026-08-28 session transcript
+> after being cited-but-absent since Phase 1 (B-6, partially resolved). It
+> is owner-authoritative once the owner countersigns
+> `gate_scope_audit_visual.md`; the honest position against it is
+> `DEVELOPMENT_AUDIT.md`. Still missing and still cited in older reports:
+> `SPEC_PHASE2.md`, `PHASE2_PLAN.md`, the "Master Build Order" and the
+> "First Action" document — for those, the authority remains
+> `DECISIONS.md`, `LIMITATIONS.md`, the phase reports, and
+> `luxuryform-claude-code-commands.md`.

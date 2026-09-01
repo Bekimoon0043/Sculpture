@@ -5,21 +5,30 @@ the start of every session (`/lf-orient`) and rewritten at the end of every
 slice (`/lf-close`). If this file and a phase plan disagree, this file is
 stale and must be corrected in the same commit as the work.
 
-Last updated: 2026-09-01 — **PR-2 CLOSED** (atomic spend reservations,
-ADR-061: auto gate PASS on final image `09ff920ccbbb` + operator visual
-gate signed PASS 2026-09-01; $5/run + $25/day retained by explicit
-ruling; designs `76595edb…`/`313e5d20…` preserved pending a separate
-cleanup ruling). PR-0, PR-3, PR-1 and PR-2 are closed. **Next action
-(operator directive 2026-09-01): a dedicated `/lf-next` Master Scope
-Development Audit against the owner's 30-system scope, BEFORE PR-2.5
-free-form discovery.** New release blocker B-10 (operator workflow
-controls, folded into PR-7B) ruled 2026-08-28.
-**Owner roadmap ruling 2026-08-28 (ADR-060): free-form amorphous
-sculpture is a release-blocking Production v1 capability.** Phase 6
-slice D moves INSIDE the release; the sequence is now PR-2 → PR-2.5
-(discovery/acceptance plan, then approved implementation slice(s),
-free-form gates and close) → PR-4. New operator blocker B-11
-(free-form ground truth). Evidence: `PRODUCTION_V1_REPORT.md`.
+Last updated: 2026-09-01 — **Master Scope Development Audit CLOSED**
+(ADR-062: auto gate PASS + owner countersigned
+`gate_scope_audit_visual.md` 2026-09-01 — `SCOPE.md` is now
+owner-authoritative; final score **31.6/100 — approximately one-third
+complete**; the owner's binding line: *nothing in the audit authorizes
+claiming the platform is presently production-ready*). **Next up:
+LF-103A** (close the unsafe export boundary), then PR-2.5. PR-0, PR-3,
+PR-1 and PR-2 are closed (PR-2: ADR-061, visual signed 2026-09-01,
+$5/$25 retained, designs `76595edb…`/`313e5d20…` preserved pending a
+separate cleanup ruling).
+
+**Milestone names (owner ruling 2026-09-01, ADR-062, use everywhere):**
+Milestone A — **Free-form Sculpture Demonstrator** · Milestone B —
+**Internal Fabrication-Geometry Beta** · Milestone C — **Production v1**
+(normalized ≥ 80% AND every safety-critical system ≥ 4/5). **The
+approved PR-0…PR-9 program delivers Milestone B; it is NOT Production
+v1** and must not be described as such.
+
+**Sequence after this audit closes (owner rulings, ADR-060 + ADR-062):**
+audit close → **LF-103A** (close the unsafe export boundary — first
+implementation slice, does NOT wait for LF-102's engineer values) →
+**PR-2.5** free-form discovery (blocked on B-11) → free-form
+implementation slice(s) → PR-4 onward. Release blocker B-10 (operator
+workflow controls, folded into PR-7B) ruled 2026-08-28.
 
 ---
 
@@ -44,16 +53,18 @@ free-form gates and close) → PR-4. New operator blocker B-11
 | 13 — recovery + hardening | **Slice A only; B+ queued as PR-7A/B/C** | auto PASS 2026-08-22, ADR-040 |
 | 14 + 14b — Designer Workspace, Blender-style controls | **BUILT, auto-gated** | auto PASS 2026-08-24, ADR-044/046; visual pending |
 | 15 A–E — designer UX, draft preview, projects/variants | **BUILT, auto-gated** | auto PASS 2026-08-24, ADR-047–051; visual pending |
-| **Production v1 program (PR-0 … PR-9)** | **APPROVED 2026-08-27; PR-0, PR-3, PR-1, PR-2 CLOSED** | `PRODUCTION_V1_REPORT.md`, ADR-057/058/059/061; amendments in the approval transcript |
+| **PR program (PR-0 … PR-9) — delivers Milestone B, not Production v1 (ADR-062)** | **APPROVED 2026-08-27; PR-0, PR-3, PR-1, PR-2 CLOSED** | `PRODUCTION_V1_REPORT.md` (historical filename), ADR-057/058/059/061 |
+| **Master Scope audit vs owner's 30-system scope** | **31.6/100 at `bfa5a77` — approximately one-third complete; only Geometry Integrity ≥4/5 among safety-critical systems** | `SCOPE.md`, `DEVELOPMENT_AUDIT.md`, ADR-062 |
 
 **Suite and roster state after PR-2:** the pytest suite (475) passes
 with the render worker UP and with it removed — both runs recorded
 verbatim in `PRODUCTION_V1_REPORT.md` with the worker state pinned
 before and after each run, on final image `09ff920ccbbb`. The auto-gate
-roster is 21 scripts: 19 in-container with the worker removed (17 phase
+roster is 22 scripts: 19 in-container with the worker removed (17 phase
 gates + `gate_pr1` + `gate_pr2`), `gate_pr3_auto` in both modes (static
-via stdin in-container, live on the host), and `gate_phase9b_auto` with
-the worker up; `gate_phase14_auto` is SPLIT (container run covers
+via stdin in-container, live on the host), `gate_phase9b_auto` with
+the worker up, and `gate_scope_audit_auto` (host or container — pure
+file checks, added 2026-09-01); `gate_phase14_auto` is SPLIT (container run covers
 `geometry`, host `--frontend-only` covers `frontend` — run both, check
 each verdict's "sections run" line). Total live spend recorded since
 Phase 4 closed: $0.042916 (Phase 5 run) plus the operator's 2026-08-28
@@ -94,9 +105,11 @@ Those marked **[release]** block calling the project Production v1.
 - [ ] **B-5 [release] — Structural profile sign-off**, or Production v1
       ships with an explicit release note that profile-threshold breaches
       report `warn`, never `fail` (ADR-036/039 — deliberate).
-- [ ] **B-6 — Supply or retire `SCOPE.md`** (and `SPEC_PHASE2.md`,
-      `PHASE2_PLAN.md`, the "Master Build Order", the "First Action"
-      document) — still cited, still never existed in this repository.
+- [ ] **B-6 — SCOPE.md half RESOLVED 2026-09-01 (ADR-062): recovered
+      verbatim and COUNTERSIGNED by the owner — now authoritative.**
+      Still open: `SPEC_PHASE2.md`, `PHASE2_PLAN.md`, the "Master Build
+      Order" and the "First Action" document — still cited, still never
+      existed in this repository.
 - [ ] **B-7 — Ruling: should a hollow plinth carry a CLOSED top face?**
       Changes STEP bytes for hollow-plinth designs, so it needs an
       explicit yes (ADR-053). Not a v1 blocker.
@@ -138,7 +151,7 @@ Those marked **[release]** block calling the project Production v1.
 
 ---
 
-## 2. THE WORK QUEUE — the approved Production v1 program, in order
+## 2. THE WORK QUEUE — the approved program, in order (PR-0…PR-9 delivers Milestone B — Internal Fabrication-Geometry Beta; not Production v1, per ADR-062)
 
 Each entry is one loop iteration: `/lf-next` → approve → `/lf-build` →
 `/lf-gate` → `/lf-close`. The seven operator amendments (2026-08-27) are
@@ -203,11 +216,28 @@ binding; the slice notes below carry the ones that bite.
 
 ### Next up
 
-- [ ] **Master Scope Development Audit (operator directive 2026-09-01;
-      a dedicated `/lf-next` slice, BEFORE PR-2.5).** Audit the built
-      platform against the owner's 30-system scope; plan only, stop for
-      approval. Not started automatically — it begins when the operator
-      opens the next loop iteration.
+- [x] **Master Scope Development Audit (CLOSED 2026-09-01, ADR-062:
+      auto gate PASS + owner countersignature).** `SCOPE.md` (owner's
+      scope verbatim, weights÷112, now owner-authoritative) +
+      `DEVELOPMENT_AUDIT.md` (30-system scorecard at `bfa5a77`, final
+      31.6/100 after the owner's three re-rulings, reconciliation of
+      27.68/34.6/33.9/31.6, G0–G10 enforcement map, defect register
+      D-13…D-23, Milestone A/B/C roadmap) + LIMITATIONS §21 + roster
+      script 22. Docs + offline gate only; no production code touched.
+      Sign-off verbatim in `gate_scope_audit_visual.md`.
+- [ ] **LF-103A — Close the unsafe export boundary (owner ruling
+      2026-09-01, ADR-062; FIRST implementation slice after the audit
+      closes, BEFORE PR-2.5).** FAILED validation must never produce a
+      clean fabrication package. NEEDS_INPUT may produce only an
+      explicitly **PRE-FABRICATION** package — visibly watermarked,
+      carrying `ENGINEERING_WARRANT.txt` naming every unresolved check
+      and the professional input each requires. A package must never
+      appear production-ready while thresholds are unsigned. Viewing and
+      diagnostic exports are preserved; only clean fabrication/issuance
+      claims are blocked. Consumes the dead `LayeredGateReport.blocking`
+      primitive. **Deliberately does NOT wait for LF-102's
+      engineer-approved threshold values** (LF-102 stays separate under
+      B-5). Closes the export half of D-19 and LIMITATIONS §21.
 - [ ] **PR-2.5 — Free-form amorphous sculpture: discovery/acceptance
       plan, then implementation (owner ruling 2026-08-28, ADR-060).**
       A dedicated `/lf-next` discovery slice runs AFTER PR-2 closes and
@@ -357,6 +387,40 @@ Pick one up when a slice finishes early. Each is one commit.
       decomposition** (hub + N blades; blade-root seam needs its own
       proof). PR-2.5 discovery CANDIDATE (ADR-060) — promote only when
       a reference design and fabrication method prove it required.
+- [ ] **D-13 — Critic independence reads the model's self-claimed
+      `meta.provider`, not dispatch truth** (`orchestrator.py`; the true
+      provider is already persisted two lines away). One-line fix + an
+      adversarial lying-model test. Found 2026-09-01 audit.
+- [ ] **D-14 — The critique objective never steers:** `margin = 1.0` is
+      hardcoded and the composite score is recorded but never read as an
+      accept/reject or stop criterion (`critique.py`).
+- [ ] **D-15 — `CritiqueLoop` takes a db handle and never persists a
+      round** — rounds live only in a script-written JSON file.
+- [ ] **D-16 — The parallel arbiter reply is dispatched and billed but
+      never parsed** — paid-for evidence nobody reads.
+- [ ] **D-17 — `live_verify_providers.py`'s hand-rolled meter omits both
+      ADR-061 safety-lock triggers** (`pricing_failure`, actual-above-
+      bound), and its `models.list()` calls run unmetered on an
+      unverified non-billing assumption.
+- [ ] **D-18 — No static scan enforces the AI fence** (no SDK client or
+      `_raw_*` call outside `backend/app/ai/providers/`). Cheapest
+      missing guardrail; the `gate_pr2_auto.py` tail scan is the
+      template.
+- [ ] **D-19 — The budget gate binds only when `?budget_amount=` is
+      passed, and the export path bypasses it entirely**; no ceiling is
+      stored on a design. LF-103A closes the export half; the
+      design-attached ceiling belongs to PR-6.
+- [ ] **D-20 — Costing has no visual gate file at all** — the only gated
+      surface with no operator eye gate.
+- [ ] **D-21 — Segmentation planes know nothing about internal
+      services** — a saw plane can bisect a nozzle bore. Needs
+      service-aware cutting or a loud refusal when a plane crosses a
+      fixture.
+- [ ] **D-22 — The Blender camera rig is duplicated in two hand-synced
+      files** (`backend/app/render/__init__.py` and
+      `docker/render/render_scene.py`) — flagged in its own comment.
+- [ ] **D-23 — The frontend never calls costing** — no BOM or price
+      surface exists in the UI. Fold into PR-7B/B-10.
 - [x] **D-9 — CLOSED by PR-0 (2026-08-27, ADR-057).** The six
       worker-state tests now assert the honest contract in both states;
       reported red on the pristine image before any edit (five by name,
