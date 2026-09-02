@@ -167,11 +167,21 @@ def main() -> int:
     with zipfile.ZipFile(package_a) as zf:
         names = set(zf.namelist())
         checksums = zf.read("CHECKSUMS.sha256").decode("utf-8")
+    # LF-103A (ADR-063): this fixture carries no layered gate evidence, so
+    # the package MUST classify PRE-FABRICATION — marked entry names and the
+    # warrant inside. A clean-looking package here would be the exact
+    # falsely-fabrication-ready failure LF-103A exists to close.
+    _check(failures, "the fixture package classifies pre_fabrication",
+           manifest_a.get("package_class") == "pre_fabrication",
+           str(manifest_a.get("package_class")))
     for required in ("luxexchange_v1.json", "provenance.json", "CHECKSUMS.sha256",
                      "verify_luxexchange.py", "README_DWG_SKP.txt",
-                     "assembly_manifest.json", "exports/assembly.step",
-                     "exports/assembly.dxf"):
+                     "ENGINEERING_WARRANT.txt", "assembly_manifest.json",
+                     "exports/assembly.PRE-FABRICATION.step",
+                     "exports/assembly.PRE-FABRICATION.dxf"):
         _check(failures, f"contains {required}", required in names)
+    _check(failures, "no unmarked exports/assembly.step exists",
+           "exports/assembly.step" not in names)
     _check(failures, "provenance is excluded from the checksum set",
            "provenance.json" not in checksums,
            "so host and tool versions cannot change the design's identity")
@@ -195,7 +205,7 @@ def main() -> int:
 
     # -----------------------------------------------------------------
     _section(6, "TAMPER DETECTION")
-    target = extracted / "exports" / "assembly.step"
+    target = extracted / "exports" / "assembly.PRE-FABRICATION.step"
     data = bytearray(target.read_bytes())
     data[len(data) // 2] ^= 0x01          # flip ONE bit
     target.write_bytes(bytes(data))
@@ -204,9 +214,10 @@ def main() -> int:
         capture_output=True, text=True, cwd=str(extracted),
     )
     _check(failures, "one flipped bit is caught", proc.returncode != 0)
-    _check(failures, "the altered file is named", "exports/assembly.step" in proc.stdout)
+    _check(failures, "the altered file is named",
+           "exports/assembly.PRE-FABRICATION.step" in proc.stdout)
 
-    (extracted / "exports" / "assembly.stl").unlink()
+    (extracted / "exports" / "assembly.PRE-FABRICATION.stl").unlink()
     proc = subprocess.run(
         [sys.executable, str(extracted / "verify_luxexchange.py")],
         capture_output=True, text=True, cwd=str(extracted),

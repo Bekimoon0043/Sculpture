@@ -5,16 +5,20 @@ the start of every session (`/lf-orient`) and rewritten at the end of every
 slice (`/lf-close`). If this file and a phase plan disagree, this file is
 stale and must be corrected in the same commit as the work.
 
-Last updated: 2026-09-01 — **Master Scope Development Audit CLOSED**
-(ADR-062: auto gate PASS + owner countersigned
-`gate_scope_audit_visual.md` 2026-09-01 — `SCOPE.md` is now
-owner-authoritative; final score **31.6/100 — approximately one-third
-complete**; the owner's binding line: *nothing in the audit authorizes
-claiming the platform is presently production-ready*). **Next up:
-LF-103A** (close the unsafe export boundary), then PR-2.5. PR-0, PR-3,
-PR-1 and PR-2 are closed (PR-2: ADR-061, visual signed 2026-09-01,
-$5/$25 retained, designs `76595edb…`/`313e5d20…` preserved pending a
-separate cleanup ruling).
+Last updated: 2026-09-02 — **LF-103A CLOSED** (ADR-063: the export
+boundary enforces the gate verdict — FAILED never packages,
+PRE-FABRICATION is marked+warranted, legacy zips fail closed, CLEAN is
+builder-only until D-24; red-first 9-failed baseline recorded; 39 new +
+109 affected tests green; `gate_lf103a_auto.py` = roster script 23,
+PASS incl. hermeticity; full-roster re-run on image `9fe4c4328116` —
+514 passed in BOTH worker states, all 23 roster scripts green, verbatim
+chain in ADR-063; operator personally walked and signed the visual gate
+PASS 2026-09-02, verbatim in `gate_lf103a_visual.md`; one commit + push
+this close). Next in queue: **PR-2.5 free-form discovery — BLOCKED on
+B-11** (reference designs + fabrication processes from the owner). Master Scope
+audit CLOSED same day (ADR-062, countersigned: 31.6/100, one-third
+complete; SCOPE.md authoritative). PR-0, PR-3, PR-1, PR-2 closed
+(designs `76595edb…`/`313e5d20…` preserved pending a separate ruling).
 
 **Milestone names (owner ruling 2026-09-01, ADR-062, use everywhere):**
 Milestone A — **Free-form Sculpture Demonstrator** · Milestone B —
@@ -55,16 +59,18 @@ workflow controls, folded into PR-7B) ruled 2026-08-28.
 | 15 A–E — designer UX, draft preview, projects/variants | **BUILT, auto-gated** | auto PASS 2026-08-24, ADR-047–051; visual pending |
 | **PR program (PR-0 … PR-9) — delivers Milestone B, not Production v1 (ADR-062)** | **APPROVED 2026-08-27; PR-0, PR-3, PR-1, PR-2 CLOSED** | `PRODUCTION_V1_REPORT.md` (historical filename), ADR-057/058/059/061 |
 | **Master Scope audit vs owner's 30-system scope** | **31.6/100 at `bfa5a77` — approximately one-third complete; only Geometry Integrity ≥4/5 among safety-critical systems** | `SCOPE.md`, `DEVELOPMENT_AUDIT.md`, ADR-062 |
+| **LF-103A — export boundary enforces the gate verdict** | **CLOSED 2026-09-02** | ADR-063; auto gate + 23-script roster PASS on `9fe4c4328116`, 514 both worker states; visual gate signed 2026-09-02 |
 
-**Suite and roster state after PR-2:** the pytest suite (475) passes
+**Suite and roster state:** after PR-2 the pytest suite (475) passed
 with the render worker UP and with it removed — both runs recorded
-verbatim in `PRODUCTION_V1_REPORT.md` with the worker state pinned
-before and after each run, on final image `09ff920ccbbb`. The auto-gate
-roster is 22 scripts: 19 in-container with the worker removed (17 phase
-gates + `gate_pr1` + `gate_pr2`), `gate_pr3_auto` in both modes (static
-via stdin in-container, live on the host), `gate_phase9b_auto` with
-the worker up, and `gate_scope_audit_auto` (host or container — pure
-file checks, added 2026-09-01); `gate_phase14_auto` is SPLIT (container run covers
+verbatim in `PRODUCTION_V1_REPORT.md` on final image `09ff920ccbbb`;
+after LF-103A the suite is 514, passed in BOTH worker states on final
+image `9fe4c4328116` (2026-09-01/02) — verbatim chain in ADR-063. The
+auto-gate roster is 23 scripts: 20 in-container with the worker removed
+(17 phase gates + `gate_pr1` + `gate_pr2` + `gate_lf103a`, hermetic),
+`gate_pr3_auto` in both modes (static via stdin in-container, live on
+the host), `gate_phase9b_auto` with the worker up, and
+`gate_scope_audit_auto` (host or container — pure file checks); `gate_phase14_auto` is SPLIT (container run covers
 `geometry`, host `--frontend-only` covers `frontend` — run both, check
 each verdict's "sections run" line). Total live spend recorded since
 Phase 4 closed: $0.042916 (Phase 5 run) plus the operator's 2026-08-28
@@ -225,19 +231,32 @@ binding; the slice notes below carry the ones that bite.
       D-13…D-23, Milestone A/B/C roadmap) + LIMITATIONS §21 + roster
       script 22. Docs + offline gate only; no production code touched.
       Sign-off verbatim in `gate_scope_audit_visual.md`.
-- [ ] **LF-103A — Close the unsafe export boundary (owner ruling
-      2026-09-01, ADR-062; FIRST implementation slice after the audit
-      closes, BEFORE PR-2.5).** FAILED validation must never produce a
-      clean fabrication package. NEEDS_INPUT may produce only an
-      explicitly **PRE-FABRICATION** package — visibly watermarked,
-      carrying `ENGINEERING_WARRANT.txt` naming every unresolved check
-      and the professional input each requires. A package must never
-      appear production-ready while thresholds are unsigned. Viewing and
-      diagnostic exports are preserved; only clean fabrication/issuance
-      claims are blocked. Consumes the dead `LayeredGateReport.blocking`
-      primitive. **Deliberately does NOT wait for LF-102's
-      engineer-approved threshold values** (LF-102 stays separate under
-      B-5). Closes the export half of D-19 and LIMITATIONS §21.
+- [x] **LF-103A — Close the unsafe export boundary (CLOSED 2026-09-02,
+      ADR-063: auto gate PASS + full-roster re-run in both worker
+      states on image `9fe4c4328116` + operator visual gate personally
+      walked and signed PASS 2026-09-02, verbatim in
+      `gate_lf103a_visual.md`).** Delivered: three-class verdict
+      (REFUSED / PRE-FABRICATION / CLEAN) from persisted evidence only
+      in `backend/app/geometry/package_class.py`; the builder itself
+      raises `PackageRefused` (bypass closed, `app.main` maps to 409);
+      export POST refuses FAILED before any geometry work with the
+      failing numbers; fabrication-capable downloads
+      (STEP/BREP/STL/DXF/SVG incl. `/latest.step`) refuse for FAILED;
+      every attachment carries a class-marked Content-Disposition
+      filename (mesh for FAILED = DIAGNOSTIC-NOT-FOR-FABRICATION;
+      viewport streams untouched, ADR-034); PRE-FABRICATION packages
+      seal marked entry names + deterministic `ENGINEERING_WARRANT.txt`
+      (role map, no invented disciplines) + printed DXF/SVG
+      NOT-FOR-CONSTRUCTION notice; legacy zips = LEGACY_UNCLASSIFIED,
+      refuse with the one re-export action, bytes never rewritten;
+      CLEAN is builder/test-only until **D-24** closes and LF-102 must
+      not make it reachable before then. Canonical STEP bytes and
+      `e1a59fa6…` untouched; packages byte-reproducible per (design,
+      seed, class). Evidence: red-first (module absent + 9/10 boundary
+      tests failed on pristine image), then 39 new + 109 affected tests
+      green, `gate_lf103a_auto.py` PASS (hermetic, section [9] proves
+      the real DB and data/exports untouched), `gate_phase9a_auto.py`
+      PASS with the class assertion.
 - [ ] **PR-2.5 — Free-form amorphous sculpture: discovery/acceptance
       plan, then implementation (owner ruling 2026-08-28, ADR-060).**
       A dedicated `/lf-next` discovery slice runs AFTER PR-2 closes and
@@ -387,6 +406,14 @@ Pick one up when a slice finishes early. Each is one commit.
       decomposition** (hub + N blades; blade-root seam needs its own
       proof). PR-2.5 discovery CANDIDATE (ADR-060) — promote only when
       a reference design and fabrication method prove it required.
+- [ ] **D-24 — Validation rows carry no shared validation-run identity
+      (ADR-063, owner final condition 1).** Reports written by one
+      validation operation are tied to the design only structurally
+      (design_id FK + immutable geometry + the LF-103A seal-time hash
+      check), not cryptographically. Until an additive
+      `validation_basis` identity is persisted with every report of one
+      run, production classification is structurally barred from CLEAN.
+      **LF-102 must not make CLEAN reachable before this closes.**
 - [ ] **D-13 — Critic independence reads the model's self-claimed
       `meta.provider`, not dispatch truth** (`orchestrator.py`; the true
       provider is already persisted two lines away). One-line fix + an

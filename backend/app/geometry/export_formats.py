@@ -187,6 +187,68 @@ def _drawing_shapes(solid, ctx: dict[str, Any]) -> dict[str, list]:
     return layers
 
 
+#: LF-103A: the drawing notice. DXF and SVG are the only formats where a
+#: VISUAL in-format watermark genuinely exists (they are drawings); every
+#: other format is marked by filename only — never by touching its bytes.
+PREFAB_NOTICE_TEXT = "PRE-FABRICATION - NOT FOR CONSTRUCTION"
+PREFAB_NOTICE_LAYER = "PREFAB_NOTICE"
+
+
+def _add_dxf_prefab_notice(out: Path, solid, ctx: dict[str, Any]) -> None:
+    """Deterministic TEXT entity below the drawing, on its own layer.
+
+    Position and height derive from the solid's bbox only — no clock, no
+    randomness. ezdxf re-stamps GUIDs on save, so the file is
+    re-canonicalized afterwards (same discipline as the base drawing).
+    """
+    import ezdxf
+
+    bbox = solid.bounding_box()
+    plan_width = max(float(bbox.max.X) - float(bbox.min.X), 1.0)
+    height = round(max(plan_width * 0.04, 10.0), 3)
+    x = round(float(bbox.min.X), 3)
+    y = round(float(bbox.min.Y) - 3.0 * height, 3)
+
+    doc = ezdxf.readfile(str(out))
+    if PREFAB_NOTICE_LAYER not in doc.layers:
+        doc.layers.add(PREFAB_NOTICE_LAYER)
+    doc.modelspace().add_text(
+        PREFAB_NOTICE_TEXT,
+        dxfattribs={"layer": PREFAB_NOTICE_LAYER, "height": height,
+                    "insert": (x, y)},
+    )
+    doc.saveas(str(out))
+    canonicalize_dxf_file(out, int(ctx.get("seed", 0)),
+                          step_timestamp_for(int(ctx.get("seed", 0))))
+
+
+def _add_svg_prefab_notice(out: Path) -> None:
+    """Deterministic <text> element inside the SVG viewBox, bottom-left."""
+    import re
+
+    text = out.read_text(encoding="utf-8")
+    match = re.search(
+        r'viewBox="([-\d.eE]+)[,\s]+([-\d.eE]+)[,\s]+([-\d.eE]+)[,\s]+([-\d.eE]+)"',
+        text,
+    )
+    if match:
+        min_x, min_y, width, view_h = (float(g) for g in match.groups())
+        font = round(max(width * 0.03, 8.0), 3)
+        x = round(min_x + font, 3)
+        y = round(min_y + view_h - font, 3)
+    else:
+        font, x, y = 12.0, 12.0, 24.0
+    element = (
+        f'<text x="{x}" y="{y}" font-size="{font}" fill="#b00" '
+        f'font-family="sans-serif">{PREFAB_NOTICE_TEXT}</text>'
+    )
+    if "</svg>" in text:
+        text = text.replace("</svg>", element + "</svg>", 1)
+    else:
+        text += element
+    out.write_text(text, encoding="utf-8", newline="")
+
+
 def _write_dxf(solid, out: Path, ctx: dict[str, Any]) -> None:
     from build123d import ExportDXF, Unit
 
@@ -203,6 +265,8 @@ def _write_dxf(solid, out: Path, ctx: dict[str, Any]) -> None:
     # is drawing content, and both would make the package unreproducible.
     canonicalize_dxf_file(out, int(ctx.get("seed", 0)),
                           step_timestamp_for(int(ctx.get("seed", 0))))
+    if ctx.get("prefab_notice"):
+        _add_dxf_prefab_notice(out, solid, ctx)
     ctx["dxf_layers"] = {k: len(v) for k, v in layers.items() if v}
 
 
@@ -218,6 +282,8 @@ def _write_svg(solid, out: Path, ctx: dict[str, Any]) -> None:
         for shape in shapes:
             exporter.add_shape(shape, layer=name)
     exporter.write(str(out))
+    if ctx.get("prefab_notice"):
+        _add_svg_prefab_notice(out)
 
 
 # ---------------------------------------------------------------------------
@@ -542,6 +608,7 @@ def write_exports(
     formats: list[str] | None = None,
     render_worker_available: bool = False,
     seed: int = 0,
+    prefab_notice: bool = False,
 ) -> list[ExportResult]:
     """Write every requested format. One failure never aborts the rest.
 
@@ -557,7 +624,8 @@ def write_exports(
                       if f.tier == "render" and f.format in wanted
                       and f.writer is not None}
     ctx: dict[str, Any] = {"glb_path": glb_path, "step_path": step_path,
-                           "seed": seed, "blender_formats": blender_wanted,
+                           "seed": seed, "prefab_notice": bool(prefab_notice),
+                           "blender_formats": blender_wanted,
                            # A MUTABLE dict, shared deliberately. Each writer
                            # gets a shallow copy of ctx, so this same object
                            # reaches all four Blender writers and the first

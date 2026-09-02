@@ -3809,3 +3809,151 @@ verbatim in `gate_scope_audit_visual.md`. `SCOPE.md` is now
 owner-authoritative. The owner's binding closing line: "Nothing in this
 audit is authorization to claim the platform is presently
 production-ready."
+
+## ADR-063 - LF-103A: the export boundary enforces the gate verdict (2026-09-01)
+
+### Context
+
+The Master Scope audit (ADR-062) proved a design whose gates FAILED
+sealed the same clean-looking LUXEXCHANGE package as a passing one; the
+gate system's own blocking primitive (`LayeredGateReport.blocking`) had
+zero call sites; and no profile being signed meant nothing could fail
+AND failing would not have blocked. Owner rulings (plan + amendments +
+final conditions, 2026-09-01) shaped the slice.
+
+### Decisions
+
+1. **Three-class verdict from PERSISTED evidence only**
+   (`backend/app/geometry/package_class.py` - a geometry-layer module,
+   importable by builder and routers without cycles). REFUSED = any gate
+   fail. CLEAN = all pass AND every layered report snapshot-signed
+   (`profile_signed_off`) AND one coherent basis (same `gate_profile_id`
+   and `gate_profiles_version`) AND a shared `validation_basis` run
+   identity AND the sealed STEP's sha256 equals the design's persisted
+   `geometry_hash`. Everything else - unsigned, warn, needs_input,
+   missing/empty/mixed/duplicate-ambiguous evidence - is
+   PRE-FABRICATION, the fail-closed default. The classifier NEVER
+   re-reads `gate_profiles.yaml`: re-reading would launder old verdicts
+   the moment `signed_off` flips. Duplicates resolve `created_at DESC,
+   id DESC`; mesh evidence accepts exactly one row - `assembly_mesh`
+   preferred, legacy `mesh` as alias.
+2. **CLEAN is builder/test-only until D-24 closes** (final condition 1,
+   option B): no persisted row carries a `validation_basis`, so
+   production classification structurally cannot return CLEAN. The
+   branch is written now and proven with signed fixtures; **LF-102 must
+   not make CLEAN reachable until a shared validation-run identity is
+   persisted with every report of one validation operation (debt
+   D-24).**
+3. **Enforcement at the seal AND the route.** `build_luxexchange_package`
+   itself raises `PackageRefused` on REFUSED (only path to
+   `PackageBuilder.seal`; `app.main` maps it to HTTP 409 as defence in
+   depth). The export POST classifies BEFORE the geometry rebuild and
+   refuses with the failing checks' real numbers; the ADR-059
+   ambiguous-rebuild 409 deliberately still fires first.
+4. **Every downloadable geometry attachment is classified** (final
+   condition 2): fabrication-capable formats (STEP/BREP/STL/DXF/SVG -
+   raw STEP is fabrication-capable, never a viewing artifact) refuse for
+   FAILED designs, on the ExportRow route AND `/latest.step`;
+   PRE-FABRICATION downloads carry a marked Content-Disposition
+   filename and an `X-Package-Class` header with canonical bytes
+   untouched; FAILED mesh downloads serve marked
+   DIAGNOSTIC-NOT-FOR-FABRICATION; only the inline viewport/scene
+   stream is unmarked. The Phase 2 cascade STEP shares the marking
+   helper.
+5. **Marking is names, never bytes.** In-archive entry basenames gain
+   `.PRE-FABRICATION.`; the zip keeps its on-disk name
+   `luxexchange_v1.zip` (a rename breaks six call sites incl. a silent
+   false-green in backup restore-verify) while the download filename
+   carries the class. DXF/SVG gain a printed
+   "PRE-FABRICATION - NOT FOR CONSTRUCTION" notice (deterministic ezdxf
+   TEXT entity on layer PREFAB_NOTICE / SVG text element, both derived
+   from the drawing bbox) - the only formats where a visual in-format
+   watermark genuinely exists. No STEP-header claim is made: build123d
+   header support is unverified (ADR-009) and any in-writer mark would
+   break the Phase 2 canonical hash. `e1a59fa6...` is untouched;
+   packages remain byte-reproducible per (design, seed, class).
+6. **ENGINEERING_WARRANT.txt** seals into every PRE-FABRICATION package:
+   deterministic bytes (sorted persisted check rows, no clock/uuid),
+   every non-pass check with value/limit/basis/message, and the owning
+   professional from a documented deterministic role map (B-8
+   vocabulary; unknown mappings say "qualified professional review
+   required" - never an invented discipline; final condition 5).
+7. **Historical packages fail closed as LEGACY_UNCLASSIFIED** (final
+   condition 3): only the sealed enum {clean, pre_fabrication} is
+   accepted; missing/invalid/unreadable manifests refuse download with
+   the one exact re-export action; bytes on disk are never rewritten;
+   re-sealing is the operator's deliberate POST (the ADR-057 precedent).
+   All 13 packages on disk today are LEGACY_UNCLASSIFIED until re-sealed;
+   every current design classifies PRE-FABRICATION.
+
+### What this buys / gives up
+
+Buys: a fabricator can no longer receive a failed or unproven design
+that looks fabrication-ready - at the package, at every CAD download,
+and after extraction. Gives up: old zips stop downloading until
+re-sealed (deliberate, loud, with the action named); the sealed manifest
+shape changed, so re-exports of old designs get new digests (ADR-057
+precedent) - the stored DNA precedent `8c8829bc...` will not dedupe
+against a re-export (recorded, not silent).
+
+### Evidence
+
+Red-first on the pristine image: `test_package_class.py` collection
+error (module absent) + `test_export_boundary.py` 9 failed / 1 passed -
+verbatim in the LF-103A build record. Green: 39/39 new tests, 109/109
+across all affected suites, `gate_lf103a_auto.py` PASS (9 sections incl.
+hermeticity: real DB sha unchanged, 95 real export files untouched),
+`gate_phase9a_auto.py` PASS with the class assertion. Judgement values,
+flagged: the marking strings, notice layer/text size, role-map wording.
+
+### Post-build full-roster + suite evidence (2026-09-01 → 02)
+
+The session driving the runs closed mid-sequence; a read-only recovery
+audit on 2026-09-02 re-established the chain before anything was
+re-run: HEAD `e7d4617`, nothing staged, the 21-path LF-103A working
+tree byte-identical to backend image `9fe4c4328116` (12/12 sha256
+matches, host vs container, for every touched backend/scripts/tests
+file), no surviving pytest/gate process on host or in the container,
+and both orphaned background runs completed with their outputs intact
+(docker events corroborate every exec start/exit and the worker
+create at 13:54:54Z).
+
+All on final image `9fe4c4328116`, $0, offline, no AI call:
+
+- **Stage 1 (2026-09-01, render worker REMOVED — listing empty before
+  and after):** full suite `514 passed, 2 warnings in 993.23s
+  (0:16:33)`; then the 20-script in-container roster
+  (phase2/3/4/5/6a1/6a2/6b/6c/6c2/costing/8/8b/9a/11/13a/14/15 + pr1 +
+  pr2 + lf103a) plus `gate_pr3_auto.py --static --stdin`, all 21
+  `exit=0`, `worker-after-roster: []`; `gate_phase14_auto.py
+  --frontend-only` PASS on the host (typecheck + production build).
+- **Stage 2 (worker restored 2026-09-01T13:54:54Z, pinned `Up 43
+  seconds` before the suite):** full suite `514 passed, 2 warnings in
+  59808.04s (16:36:48)` — the wall clock was inflated by overnight
+  host suspension while the orphaned exec ran on after the session
+  died; valid functional evidence, not performance evidence: pytest's
+  own count is the verdict, and the worker stayed up throughout. Then
+  `gate_phase9b_auto` exit=0, worker still up after,
+  `image-after: 9fe4c4328116`.
+- **2026-09-02, recovery session, re-proven first-hand:**
+  `gate_pr3_auto.py --live` PASS (loopback 8000/5173 serve the real
+  services; all four LAN-address probes refused) and
+  `gate_scope_audit_auto.py` PASS.
+
+That is the complete 23-script roster green in its required states and
+the suite green in BOTH worker states, on the image the uncommitted
+tree hashes to.
+
+### Close (2026-09-02)
+
+The operator personally completed all four visual steps and signed
+PASS, dated 2026-09-02 — recorded verbatim in `gate_lf103a_visual.md`,
+including the eight-point confirmation (FAILED geometry viewable but
+refused fabrication-capable export; amber PRE-FABRICATION package;
+marked zip and in-archive filenames; correct ENGINEERING_WARRANT.txt;
+the printed NOT-FOR-CONSTRUCTION notice; classified standalone CAD
+downloads; legacy package refused with its on-disk hash unchanged;
+`gate_lf103a_auto.py` PASS). A first sign-off sent earlier that day,
+before the steps were performed, was withdrawn by the operator and
+never recorded. Slice closed as one commit on `main`. Next in queue:
+PR-2.5 free-form discovery, blocked on B-11.

@@ -381,9 +381,13 @@ def test_export_package_is_reproducible_and_self_verifying(client, tmp_path):
     assert "verify_luxexchange.py" in names
     assert "CHECKSUMS.sha256" in names
     assert "README_DWG_SKP.txt" in names
-    assert "exports/assembly.dxf" in names
+    # LF-103A: a needs_input design seals a PRE-FABRICATION package — the
+    # geometry entries are marked and the warrant is present.
+    assert "exports/assembly.PRE-FABRICATION.dxf" in names
+    assert "ENGINEERING_WARRANT.txt" in names
     assert "validation/structure_static_v1.json" in names
     assert manifest["schema"] == "luxexchange_v1"
+    assert manifest["package_class"] == "pre_fabrication"
     assert manifest["design"]["overall_status"] == "needs_input"
 
     proc = subprocess.run(
@@ -557,7 +561,12 @@ def test_each_included_format_downloads_on_its_own(client):
         assert len(resp.content) == row["bytes"]
         # Served as a file to save, not something to render in the page.
         assert "attachment" in resp.headers["content-disposition"]
-        assert row["filename"] in resp.headers["content-disposition"]
+        # LF-103A: a pre-fabrication design's saved filename says so; the
+        # format's own extension survives so the file still opens.
+        disposition = resp.headers["content-disposition"]
+        assert "PRE-FABRICATION" in disposition
+        from pathlib import Path as _P
+        assert _P(row["filename"]).suffix in disposition
 
     step = client.get(f"/api/geometry/assembly/{design_id}/exports/STEP/download")
     assert step.headers["content-type"].startswith("application/step")

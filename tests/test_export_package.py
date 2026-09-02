@@ -284,6 +284,9 @@ def test_package_is_byte_identical_for_the_same_design(tmp_path):
 
 
 def test_package_contains_everything_a_recipient_needs(tmp_path):
+    # LF-103A: this fixture supplies no layered gate evidence, so the
+    # package classifies PRE-FABRICATION — geometry entries are marked in
+    # their own filenames and the warrant travels inside the zip.
     path, _, _ = _package(tmp_path, "a")
     with zipfile.ZipFile(path) as zf:
         names = set(zf.namelist())
@@ -293,13 +296,17 @@ def test_package_contains_everything_a_recipient_needs(tmp_path):
         "CHECKSUMS.sha256",
         "verify_luxexchange.py",
         "README_DWG_SKP.txt",
+        "ENGINEERING_WARRANT.txt",
         "assembly_manifest.json",
         "validation/assembly_mesh.json",
-        "exports/assembly.step",
-        "exports/assembly.dxf",
-        "exports/assembly.stl",
+        "exports/assembly.PRE-FABRICATION.step",
+        "exports/assembly.PRE-FABRICATION.dxf",
+        "exports/assembly.PRE-FABRICATION.stl",
     ):
         assert required in names, f"{required} missing from the package"
+    # The unmarked names must NOT exist — a clean-looking STEP inside a
+    # pre-fabrication package is the defect LF-103A closes.
+    assert "exports/assembly.step" not in names
 
 
 def test_the_shipped_verifier_passes_on_an_intact_package(tmp_path):
@@ -325,7 +332,7 @@ def test_the_verifier_catches_a_single_altered_byte(tmp_path):
     with zipfile.ZipFile(path) as zf:
         zf.extractall(extracted)
 
-    target = extracted / "exports" / "assembly.step"
+    target = extracted / "exports" / "assembly.PRE-FABRICATION.step"
     data = bytearray(target.read_bytes())
     data[len(data) // 2] ^= 0x01
     target.write_bytes(bytes(data))
@@ -336,7 +343,7 @@ def test_the_verifier_catches_a_single_altered_byte(tmp_path):
     )
     assert proc.returncode != 0
     assert "VERIFICATION FAILED" in proc.stdout
-    assert "exports/assembly.step" in proc.stdout
+    assert "exports/assembly.PRE-FABRICATION.step" in proc.stdout
 
 
 def test_the_verifier_notices_a_deleted_file(tmp_path):
@@ -344,7 +351,7 @@ def test_the_verifier_notices_a_deleted_file(tmp_path):
     extracted = tmp_path / "extracted"
     with zipfile.ZipFile(path) as zf:
         zf.extractall(extracted)
-    (extracted / "exports" / "assembly.stl").unlink()
+    (extracted / "exports" / "assembly.PRE-FABRICATION.stl").unlink()
 
     proc = subprocess.run(
         [sys.executable, str(extracted / "verify_luxexchange.py")],

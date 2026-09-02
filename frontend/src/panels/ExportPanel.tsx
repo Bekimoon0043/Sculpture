@@ -25,6 +25,10 @@ interface ExportPanelProps {
   exports: ExportsResponse | null;
   exporting: boolean;
   onExport: () => void;
+  /** The design's live validation rollup — "fail" means REFUSED (LF-103A):
+   * the server will not seal a fabrication package, and this panel says so
+   * instead of offering a button that can only 409. */
+  overallStatus?: string | null;
 }
 
 const TIERS: Array<{
@@ -103,6 +107,7 @@ export default function ExportPanel({
   exports,
   exporting,
   onExport,
+  overallStatus,
 }: ExportPanelProps) {
   const [copied, setCopied] = useState(false);
 
@@ -141,13 +146,25 @@ export default function ExportPanel({
   const built = Boolean(exports?.package_built);
   const fileCount = included.filter((r) => r.format !== "LUXEXCHANGE").length;
 
+  // LF-103A (ADR-063): the panel never claims more than the server seals.
+  const refused = overallStatus === "fail";
+  const sealedClass = exports?.package_class ?? null;
+  const designClass = exports?.design_class ?? null;
+  const prefab = (sealedClass ?? designClass) === "pre_fabrication";
+  const clean = sealedClass === "clean";
+  const legacy = sealedClass === "legacy_unclassified";
+
   return (
     <div className="panel export-panel">
       <h2>
         Fabrication package{" "}
-        {built && (
+        {built && clean && (
           <span className="badge badge-pass">{fileCount} files</span>
         )}
+        {built && !clean && !legacy && (
+          <span className="badge badge-needs_input">PRE-FABRICATION</span>
+        )}
+        {refused && <span className="badge badge-fail">validation FAIL</span>}
       </h2>
 
       {jobFailed && (
@@ -156,7 +173,17 @@ export default function ExportPanel({
         </p>
       )}
 
-      {!built ? (
+      {refused && (
+        <p className="export-error">
+          This design's validation is FAIL, so no fabrication package can be
+          built and CAD downloads (STEP/BREP/STL/DXF/SVG) are refused. The
+          geometry stays viewable here, and mesh downloads are served marked
+          DIAGNOSTIC-NOT-FOR-FABRICATION. Fix the failing checks in the
+          Checks tab, rebuild, and re-validate.
+        </p>
+      )}
+
+      {!built && !refused ? (
         <>
           <button
             className="rebuild export-primary"
@@ -168,19 +195,57 @@ export default function ExportPanel({
           <p className="hint">
             {exporting
               ? "Writing every format and sealing the package. A few seconds."
-              : "Writes every format this machine can produce, hashes them, and seals a package you can send to a fabricator."}
+              : "Writes every format this machine can produce, hashes them, " +
+                "and seals a package. Until every gate passes under signed " +
+                "thresholds it seals as PRE-FABRICATION — marked in every " +
+                "filename, with ENGINEERING_WARRANT.txt naming what is " +
+                "unresolved."}
           </p>
+        </>
+      ) : !built && refused ? (
+        <button className="rebuild export-primary" disabled>
+          Package refused — validation FAIL
+        </button>
+      ) : legacy ? (
+        <>
+          <p className="export-error">
+            The package on disk was sealed before classification existed
+            (LEGACY_UNCLASSIFIED) and will not be served as a fabrication
+            package. Rebuild the export to re-seal it under the current
+            contract — the original file is untouched.
+          </p>
+          <button
+            className="rebuild export-primary"
+            onClick={onExport}
+            disabled={exporting}
+          >
+            {exporting ? "Re-sealing…" : "Re-seal package under LF-103A"}
+          </button>
         </>
       ) : (
         <>
           <a className="package-card" href={exports!.luxexchange_url}>
             <PackageCheck size={20} aria-hidden="true" />
-            <span className="package-title">Download LUXEXCHANGE package</span>
+            <span className="package-title">
+              {clean
+                ? "Download LUXEXCHANGE package"
+                : "Download PRE-FABRICATION package (not for construction)"}
+            </span>
             <span className="package-meta">
               .zip · {formatBytes(exports!.package_bytes)} · {fileCount} files ·
               verifier included
+              {!clean && " · ENGINEERING_WARRANT.txt inside"}
             </span>
           </a>
+          {prefab && (
+            <p className="hint">
+              Every geometry file in this package is marked PRE-FABRICATION
+              in its own filename, and the drawing carries a printed
+              NOT-FOR-CONSTRUCTION notice. Read ENGINEERING_WARRANT.txt
+              first — it names every unresolved check and the professional
+              input each needs.
+            </p>
+          )}
 
           {exports!.content_digest && (
             <div className="digest-row">

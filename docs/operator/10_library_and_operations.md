@@ -152,6 +152,13 @@ RESTORE VERIFICATION PASSED
 ```
 
 "The files are there" is not a restore proof. A package that re-verifies is.
+
+Note (LF-103A, 2026-09-01): a restored package sealed before 2026-09-01
+still re-verifies here — the verifier checks integrity, not class — but it
+will refuse to DOWNLOAD from the API as `LEGACY_UNCLASSIFIED` until you
+re-export the design once. That refusal is deliberate: an old zip carries
+no `package_class`, so the platform will not serve it as if it were a
+clean fabrication package.
 If the archive is corrupt you get a named finding, not a stack trace.
 
 Check an existing restore at any time:

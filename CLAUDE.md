@@ -63,10 +63,11 @@ to the loop is `docs/operator/06_the_loop.md`; the queue itself is `NEXT.md`.
 - After any change touching `backend/`, tell the operator to rebuild: `docker compose up --build -d`.
 - Gates: every `scripts\gate_*_auto.py` runs at $0 with no network beyond
   the operator's own machine. **The roster is exactly the files matching
-  that glob — 22 scripts as of 2026-09-01 (PR-3 added `gate_pr3_auto.py`,
+  that glob — 23 scripts as of 2026-09-01 (PR-3 added `gate_pr3_auto.py`,
   PR-1 added `gate_pr1_auto.py`, PR-2 added `gate_pr2_auto.py`, the
   Master Scope audit added `gate_scope_audit_auto.py` — pure file checks,
-  host or container). Nothing
+  host or container — and LF-103A added `gate_lf103a_auto.py`, hermetic,
+  in the backend container). Nothing
   discovers or runs them
   automatically: a session lists the glob and runs each one explicitly**,
   before and after any change to `backend/`. Historical counts stand as

@@ -811,32 +811,51 @@ The shell is a pipeline (ADR-041). What it does NOT do:
   layers via `min()` with the run cap, as before** — it narrows, never
   widens.
 
-## 21. Validation gates are ADVISORY at the export boundary (2026-09-01, Master Scope audit)
+## 21. ~~Validation gates are ADVISORY at the export boundary~~ — CLOSED by LF-103A (2026-09-01, ADR-063), with stated residuals
 
-This was true from Phase 9A and is recorded here now, found by the
-2026-09-01 audit at `bfa5a77`:
+The 2026-09-01 audit found that a FAILED design sealed the same
+clean-looking LUXEXCHANGE package as a passing one, and that
+`LayeredGateReport.blocking` was dead code. **LF-103A closed the export
+boundary** (evidence: `gate_lf103a_auto.py` PASS, `tests/
+test_export_boundary.py`, `tests/test_package_class.py`; operator
+visual gate personally walked and signed PASS 2026-09-02, verbatim in
+`gate_lf103a_visual.md`):
 
-- **A design whose validation gates FAILED still exports and seals a
-  clean LUXEXCHANGE package.** `POST /api/geometry/assembly/{id}/exports`
-  reads the gate statuses only to stamp them INSIDE the package; there is
-  no branch on them anywhere in that route, and the rebuild it performs
-  uses `assemble(strict=False)`. A fabricator cannot tell a failed
-  design's zip from a passed one without opening the metadata.
-- **The gate system's own blocking primitive is dead code.**
-  `LayeredGateReport.blocking` is defined and has zero call sites.
-- **No profile ships signed off** (see §12), so the structural and
-  hydraulic gates cannot currently return `fail` on a threshold at all —
-  the two facts compound: nothing can fail, and failing would not block.
-- **The budget check has the same shape**: it binds only on the BOM
-  route, only when the caller passes `?budget_amount=`, and the export
-  path bypasses it entirely.
-- The only enforced downstream refusal in the platform is DesignDNA's
-  accept (`fail` designs cannot become precedents) — which blocks the
-  cheapest action while export ships freely.
+- **FAILED never packages.** The export POST refuses with HTTP 409
+  naming the failing checks with real numbers, BEFORE any geometry work;
+  the package builder itself raises `PackageRefused` (bypass closed);
+  fabrication-capable downloads (STEP/BREP/STL/DXF/SVG — raw STEP is
+  fabrication-capable, never "just viewing") refuse too. The viewport
+  stream stays untouched (ADR-034), and mesh downloads stay served with
+  a `DIAGNOSTIC-NOT-FOR-FABRICATION` filename.
+- **Everything not proven clean seals as PRE-FABRICATION**: the download
+  is named `…_PRE-FABRICATION.zip`, every `exports/` entry is marked in
+  its own filename, the DXF/SVG drawings carry a printed
+  NOT-FOR-CONSTRUCTION notice (the only formats where a visual in-format
+  mark genuinely exists), and `ENGINEERING_WARRANT.txt` names every
+  unresolved check and the professional input it requires. Marking is
+  filename/entry-only — canonical bytes and the Phase 2 hash are
+  untouched, and the package stays byte-reproducible.
+- **CLEAN is currently unreachable in production, by design** (ADR-063):
+  it requires all gates pass + `profile_signed_off` at validation time +
+  one coherent profile/version basis + a shared `validation_basis` run
+  identity that no persisted row carries yet + a geometry-hash match.
+  The branch exists and is proven with signed fixtures; LF-102 must not
+  make it reachable until the validation-run identity debt (D-24) closes.
+- **Old packages fail closed as LEGACY_UNCLASSIFIED**: a zip sealed
+  without a `package_class` never downloads as if clean — it refuses
+  with the exact re-export action; the file on disk is never rewritten.
 
-**LF-103A (queued first, before PR-2.5) closes the export half:** FAILED
-will never package clean; NEEDS_INPUT will package only as an explicitly
-watermarked PRE-FABRICATION package carrying `ENGINEERING_WARRANT.txt`
-naming every unresolved check and the professional input each requires;
-viewing and diagnostic exports stay available. Until LF-103A lands, treat
-every package as unwarranted geometry, whatever its paperwork looks like.
+**What this deliberately does NOT close:**
+
+- Validation rows still carry no cryptographic run identity (D-24) —
+  the reason CLEAN stays builder-only.
+- The budget check still binds only on the BOM route with
+  `?budget_amount=`, and the sealed BOM is not budget-gated (D-19's
+  remaining half; PR-6).
+- The Phase 2 cascade path and build-time GLB/scene streams remain
+  reachable without a package — cascade designs classify
+  PRE-FABRICATION and their downloads are marked, but no gate refuses
+  the viewport, deliberately.
+- DesignDNA accept still refuses only `fail`, not `needs_input` — a
+  separate ruling, out of LF-103A's scope.

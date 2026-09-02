@@ -49,7 +49,15 @@ outright — now builds as 9 pieces of at most 1,472 kg, volume conserved
 to 0.0000000000%, with the seams counted once per interface and matched
 to hand arithmetic. The crane line on the BOM prices the heaviest module
 instead of the whole fountain, and the seam and transport lines move from
-"we cannot compute this" to "supply the rate".
+"we cannot compute this" to "supply the rate". Since 2026-09-02
+(LF-103A, ADR-063) the export boundary enforces the gate verdict: a
+FAILED design stays viewable but never packages or downloads as
+fabrication-capable CAD, everything not proven clean ships only as an
+unmistakable PRE-FABRICATION deliverable — marked download name, marked
+in-archive filenames, a printed NOT-FOR-CONSTRUCTION notice on the
+drawings and an `ENGINEERING_WARRANT.txt` naming every unresolved check
+— and packages sealed before the rule refuse to download until
+deliberately re-sealed.
 
 Rendering and the vision-critique loop (Phase 5), the remaining primitive
 library work (Phase 6), exports beyond STEP/GLB, and DesignDNA/recovery

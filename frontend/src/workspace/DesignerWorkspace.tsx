@@ -1512,6 +1512,7 @@ export default function DesignerWorkspace({
                     exports={exports}
                     exporting={exporting}
                     onExport={onExport}
+                    overallStatus={overallStatus}
                   />
                 </ErrorBoundary>
               </div>

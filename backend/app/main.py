@@ -7,7 +7,8 @@ never deleted — SPEC_PHASE2 §2).
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from app.api import (
     routes_costing,
@@ -22,6 +23,7 @@ from app.api import (
     routes_render,
 )
 from app.db.database import get_default_db
+from app.geometry.package_class import PackageRefused
 
 app = FastAPI(
     title="LuxuryForm Studio v1",
@@ -32,6 +34,15 @@ app = FastAPI(
         "API; Phase 2 geometry kernel and viewport remain available."
     ),
 )
+
+
+@app.exception_handler(PackageRefused)
+async def _package_refused_handler(request: Request, exc: Exception) -> JSONResponse:
+    """LF-103A defence in depth: if any internal caller reaches the package
+    builder with FAILED evidence, the builder raises and this maps it to
+    the same 409 the route-level check produces — never a 500, never a
+    sealed package."""
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 
 @app.on_event("startup")

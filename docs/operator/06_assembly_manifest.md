@@ -64,6 +64,18 @@ Phase 7A passes when:
   successful build.
 - LUXEXCHANGE v1 includes the assembly manifest, validation reports, and
   included geometry artifacts.
+- **Since LF-103A (2026-09-01) the package tells the truth about itself.**
+  A design whose validation FAILED will not package at all (and its
+  STEP/BREP/STL/DXF/SVG downloads refuse — the message names the failing
+  check). A design that is not yet proven safe packages only as
+  **PRE-FABRICATION**: the download is named
+  `luxexchange_<id>_PRE-FABRICATION.zip`, every geometry file inside says
+  PRE-FABRICATION in its own filename, the drawing carries a printed
+  NOT-FOR-CONSTRUCTION notice, and `ENGINEERING_WARRANT.txt` lists every
+  unresolved check and whose professional input it needs. **Read the
+  warrant first.** Packages sealed before 2026-09-01 refuse to download
+  until you re-export them (one click / one POST) — the old file on disk
+  is never touched.
 - Unknown primitives fail with HTTP 422 before artifacts are written.
 
 ## Fabricated assemblies (Phase 6 slice A2)

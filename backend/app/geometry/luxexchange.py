@@ -31,6 +31,17 @@ from typing import Any
 
 from app.geometry.export_formats import DWG_SKP_README, ExportResult
 from app.geometry.kernel import step_timestamp_for
+from app.geometry.package_class import (
+    CLASS_CLEAN,
+    CLASS_PRE_FABRICATION,
+    CLASS_REFUSED,
+    PackageRefused,
+    classify_reports,
+    marked_entry_name,
+    warrant_text,
+)
+
+WARRANT_NAME = "ENGINEERING_WARRANT.txt"
 
 SCHEMA = "luxexchange_v1"
 
@@ -239,7 +250,32 @@ def build_luxexchange_package(
     renders: list[Path] | None = None,
     provenance: dict[str, Any] | None = None,
 ) -> tuple[Path, dict[str, Any], str]:
-    """Assemble and seal one package. Returns (path, manifest, content_digest)."""
+    """Assemble and seal one package. Returns (path, manifest, content_digest).
+
+    LF-103A (ADR-063): the seal itself enforces the gate verdict. REFUSED
+    raises `PackageRefused` before any byte is written — the enforcement
+    lives here, at the only path to `PackageBuilder.seal`, so an internal
+    caller cannot bypass the route. Classification is derived from the
+    `validation_reports` this function already receives: absent or empty
+    evidence classifies PRE-FABRICATION, never clean.
+    """
+    # Geometry identity: the STEP being sealed must be the bytes the
+    # persisted geometry_hash names. Verifiable here from inputs alone;
+    # anything unverified caps at PRE-FABRICATION.
+    step_sha = next(
+        (r.sha256 for r in exports
+         if r.format == "STEP" and r.status == "included"), None)
+    recorded_hash = design.get("geometry_hash") if isinstance(design, dict) else None
+    geometry_hash_matches: bool | None = None
+    if step_sha is not None and recorded_hash is not None:
+        geometry_hash_matches = step_sha == recorded_hash
+
+    classification = classify_reports(
+        validation_reports or {}, geometry_hash_matches=geometry_hash_matches)
+    if classification.package_class == CLASS_REFUSED:
+        raise PackageRefused(classification.reasons)
+    prefab = classification.package_class == CLASS_PRE_FABRICATION
+
     builder = PackageBuilder(seed)
 
     # Paths in the manifest are relative to the PACKAGE, never absolute host
@@ -299,6 +335,11 @@ def build_luxexchange_package(
         entry = result.to_manifest_entry()
         if result.status == "included" and result.path:
             name = f"exports/{Path(result.path).name}"
+            if prefab:
+                # Marking is the ENTRY NAME only — the file bytes are the
+                # canonical artifacts, untouched. After extraction every
+                # geometry file says PRE-FABRICATION in its own filename.
+                name = marked_entry_name(name)
             builder.add_file(name, Path(result.path))
             entry["path"] = name
             entry["in_package"] = True
@@ -318,6 +359,11 @@ def build_luxexchange_package(
 
     manifest: dict[str, Any] = {
         "schema": SCHEMA,
+        # LF-103A: the sealed, digest-covered truth about what this package
+        # may claim. Only "clean" and "pre_fabrication" are ever sealed; a
+        # package without this key is LEGACY_UNCLASSIFIED and refuses to
+        # download (ADR-063).
+        "package_class": classification.package_class,
         "design": design,
         "request": request_payload,
         "assembly_manifest": assembly_manifest,
@@ -338,7 +384,12 @@ def build_luxexchange_package(
             VERIFIER_NAME: "stdlib-only verifier — run: python verify_luxexchange.py",
             "assembly_manifest.json": "the geometry manifest this package was built from",
             "validation/": "one JSON per validation gate",
-            "exports/": "geometry files",
+            "exports/": (
+                "geometry files (PRE-FABRICATION packages mark every "
+                "filename)" if prefab else "geometry files"),
+            **({WARRANT_NAME: (
+                "every unresolved check and the professional input it "
+                "requires — read before anything else")} if prefab else {}),
             "renders/": "render images, when the render worker produced them",
             "costing/": "bill of materials, when it could be computed",
             "README_DWG_SKP.txt": "how to get DWG and SketchUp from these files",
@@ -360,8 +411,13 @@ def build_luxexchange_package(
         )
 
     builder.add_json("assembly_manifest.json", assembly_manifest)
-    for gate_name, report in sorted(validation_reports.items()):
+    for gate_name, report in sorted((validation_reports or {}).items()):
         builder.add_json(f"validation/{gate_name}.json", report)
+    if prefab:
+        design_id = str(design.get("design_id", "unknown")) if isinstance(
+            design, dict) else "unknown"
+        builder.add_text(
+            WARRANT_NAME, warrant_text(design_id, seed, classification))
     builder.add_text("README_DWG_SKP.txt", DWG_SKP_README)
     builder.add_text(VERIFIER_NAME, VERIFIER_SOURCE)
     builder.add_json(MANIFEST_NAME, manifest)

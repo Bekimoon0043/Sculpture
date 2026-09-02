@@ -58,6 +58,18 @@ from app.geometry.exporters import export_glb, export_step
 from app.geometry.gates import WaterContext, validate_layered_gates, worst_status
 from app.geometry.kernel import step_timestamp_for
 from app.geometry.luxexchange import build_luxexchange_package
+from app.geometry.package_class import (
+    CLASS_REFUSED,
+    FABRICATION_CAPABLE_FORMATS,
+    LEGACY_UNCLASSIFIED,
+    Classification,
+    PackageRefused,
+    classify_reports,
+    download_filename,
+    package_download_filename,
+    read_sealed_package_class,
+    select_reports,
+)
 from app.geometry.scene_glb import export_scene_glb
 from app.geometry.validate import validate_assembly
 
@@ -671,20 +683,73 @@ def get_latest_manifest() -> dict[str, Any]:
     }
 
 
+def _design_classification(design_id: str) -> Classification:
+    """LF-103A verdict from PERSISTED evidence only (ADR-063).
+
+    Duplicate rows resolve `created_at DESC, id DESC`; the geometry-hash
+    identity is not verifiable here, so CLEAN is unreachable on this path
+    by construction — every real design classifies pre_fabrication or
+    refused until the validation-run identity debt closes.
+    """
+    db = get_default_db()
+    with db.get_session() as session:
+        rows = session.execute(
+            select(ValidationReportRow)
+            .where(ValidationReportRow.design_id == design_id)
+        ).scalars().all()
+        tuples = []
+        for r in rows:
+            try:
+                report = json.loads(r.numbers_json)
+            except (ValueError, TypeError):
+                report = {}
+            tuples.append((r.gate_name, r.created_at or "", r.id, report))
+    return classify_reports(select_reports(tuples))
+
+
+def _refuse_fabrication_download(design_id: str, what: str,
+                                 classification: Classification) -> None:
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            f"{what} refused: design {design_id} validation is FAIL — "
+            + "; ".join(classification.reasons[:4])
+            + ". Fabrication-capable files are not served for a failed "
+            "design (LF-103A, ADR-063). Fix the failing checks, rebuild "
+            "and re-validate. The geometry stays viewable in the Designer, "
+            "and mesh downloads remain available marked "
+            "DIAGNOSTIC-NOT-FOR-FABRICATION."
+        ),
+    )
+
+
 @router.get("/latest.glb")
 def get_latest_glb() -> FileResponse:
     row = _latest_assembly_design()
     if not row.glb_path or not Path(row.glb_path).exists():
         raise HTTPException(status_code=404, detail="latest assembly has no GLB on disk")
-    return FileResponse(row.glb_path, media_type="model/gltf-binary", filename="assembly.glb")
+    cls = _design_classification(row.id)
+    return FileResponse(
+        row.glb_path, media_type="model/gltf-binary",
+        filename=download_filename(row.id, "assembly.glb", cls.package_class),
+        headers={"X-Package-Class": cls.package_class},
+    )
 
 
 @router.get("/latest.step")
 def get_latest_step() -> FileResponse:
+    """The canonical STEP is fabrication-capable — never 'just viewing'."""
     row = _latest_assembly_design()
     if not row.step_path or not Path(row.step_path).exists():
         raise HTTPException(status_code=404, detail="latest assembly has no STEP on disk")
-    return FileResponse(row.step_path, media_type="application/step", filename="assembly.step")
+    cls = _design_classification(row.id)
+    if cls.package_class == CLASS_REFUSED:
+        _refuse_fabrication_download(row.id, "STEP download", cls)
+    return FileResponse(
+        row.step_path, media_type="application/step",
+        filename=download_filename(row.id, "assembly.step", cls.package_class),
+        headers={"X-Package-Class": cls.package_class},
+    )
 
 
 def _validation_payload(row: DesignRow) -> dict[str, Any]:
@@ -841,7 +906,14 @@ def get_design_glb(design_id: str) -> FileResponse:
     row = _design_or_404(design_id)
     if not row.glb_path or not Path(row.glb_path).exists():
         raise HTTPException(status_code=404, detail="design has no GLB on disk")
-    return FileResponse(row.glb_path, media_type="model/gltf-binary", filename="assembly.glb")
+    # Mesh-tier attachment: stays available for a FAILED design, but the
+    # saved filename says DIAGNOSTIC-NOT-FOR-FABRICATION (LF-103A cond. 2).
+    cls = _design_classification(row.id)
+    return FileResponse(
+        row.glb_path, media_type="model/gltf-binary",
+        filename=download_filename(row.id, "assembly.glb", cls.package_class),
+        headers={"X-Package-Class": cls.package_class},
+    )
 
 
 @router.get("/{design_id}/manifest")
@@ -970,7 +1042,26 @@ def post_design_exports(design_id: str) -> dict[str, Any]:
     row = _design_or_404(design_id)
     # The export job REBUILDS the solid from the stored request — refuse
     # rather than silently reinterpret a collapsed-spec scalar (ADR-059).
+    # This refusal deliberately fires FIRST; the LF-103A class refusal
+    # comes second and must never shadow it.
     _refuse_ambiguous_rebuild(row, "export/package rebuild")
+    # LF-103A (ADR-063): a FAILED design never packages. Classified from
+    # persisted evidence BEFORE the rebuild, so a refused design does no
+    # geometry work. The builder re-checks (defence in depth).
+    classification = _design_classification(design_id)
+    if classification.package_class == CLASS_REFUSED:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"fabrication package refused: design {design_id} "
+                "validation is FAIL — "
+                + "; ".join(classification.reasons[:4])
+                + ". Fix the failing checks, rebuild and re-validate; the "
+                "geometry stays viewable in the Designer and mesh "
+                "downloads remain available marked "
+                "DIAGNOSTIC-NOT-FOR-FABRICATION."
+            ),
+        )
     stored = json.loads(row.parameter_json)
     manifest = stored["manifest"]
     request_payload = stored["request"]
@@ -1027,6 +1118,10 @@ def post_design_exports(design_id: str) -> dict[str, Any]:
         step_path=Path(row.step_path) if row.step_path else None,
         glb_path=Path(row.glb_path) if row.glb_path else None,
         seed=seed,
+        # LF-103A: the drawings (DXF/SVG) carry a printed PRE-FABRICATION
+        # notice — the only formats where a visual in-format mark genuinely
+        # exists. Deterministic per (design, class).
+        prefab_notice=classification.package_class == "pre_fabrication",
     )
 
     costing, costing_reason = _costing_for(design_id)
@@ -1034,6 +1129,9 @@ def post_design_exports(design_id: str) -> dict[str, Any]:
     package_path = out_dir / PACKAGE_NAME
     versions = _tool_versions()
 
+    # If the route-level classification and the builder's own check ever
+    # disagree (defence in depth), the builder raises PackageRefused and
+    # app.main maps it to HTTP 409 — never a sealed package.
     _, package_manifest, digest = build_luxexchange_package(
         package_path,
         seed=seed,
@@ -1082,16 +1180,20 @@ def post_design_exports(design_id: str) -> dict[str, Any]:
     _finish("completed", {
         "design_id": design_id, "step": "sealed",
         "content_digest": digest, "duration_ms": duration_ms,
+        "package_class": package_manifest["package_class"],
     })
 
     log.info(
-        "export job %s completed for design %s: digest=%s in %.0f ms",
-        job_id, design_id, digest, duration_ms,
+        "export job %s completed for design %s: digest=%s class=%s in %.0f ms",
+        job_id, design_id, digest, package_manifest["package_class"],
+        duration_ms,
     )
     return {
         "design_id": design_id,
         "job_id": job_id,
         "schema": package_manifest["schema"],
+        "package_class": package_manifest["package_class"],
+        "warrant_reasons": classification.reasons,
         "content_digest": digest,
         "package_path": str(package_path),
         "package_sha256": entries[-1]["sha256"],
@@ -1120,6 +1222,13 @@ def _exports_status(row: DesignRow) -> dict[str, Any]:
     return {
         "design_id": row.id,
         "schema": "luxexchange_v1",
+        # LF-103A: the design's LIVE verdict class, and the class the sealed
+        # package actually claims (LEGACY_UNCLASSIFIED for pre-LF-103A zips).
+        "design_class": _design_classification(row.id).package_class,
+        "package_class": (
+            read_sealed_package_class(package_path)
+            if package_path.exists() else None
+        ),
         "package_built": package_path.exists(),
         "package_path": str(package_path) if package_path.exists() else None,
         "package_bytes": package_path.stat().st_size if package_path.exists() else None,
@@ -1293,9 +1402,28 @@ def _serve_package(row: DesignRow) -> FileResponse:
                 f"/api/geometry/assembly/{row.id}/exports to build one"
             ),
         )
+    # LF-103A (ADR-063): only the sealed enum is trusted. A package sealed
+    # before classification existed — or carrying anything unreadable or
+    # unknown — is LEGACY_UNCLASSIFIED and fails CLOSED: it is never served
+    # as if clean. The file on disk is never rewritten; re-exporting seals
+    # a new, classified package over it as the operator's deliberate act.
+    sealed = read_sealed_package_class(package_path)
+    if sealed == LEGACY_UNCLASSIFIED:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"package for design {row.id} is unclassified — it was "
+                "sealed before LF-103A and carries no package_class, so it "
+                "will not be served as a fabrication package. Re-export: "
+                f"POST /api/geometry/assembly/{row.id}/exports to re-seal "
+                "it under the current contract. The original file on disk "
+                "is untouched, and the design's geometry stays viewable."
+            ),
+        )
     return FileResponse(
         package_path, media_type="application/zip",
-        filename=f"luxexchange_{row.id}.zip",
+        filename=package_download_filename(row.id, sealed),
+        headers={"X-Package-Class": sealed},
     )
 
 
@@ -1312,6 +1440,14 @@ def _serve_export_file(row: DesignRow, fmt: str) -> FileResponse:
             status_code=404,
             detail=f"unknown format {fmt!r}; known: {sorted(FORMATS_BY_NAME)}",
         )
+    # LF-103A (ADR-063): the class check runs BEFORE the export-row lookup,
+    # so a FAILED design refuses its fabrication-capable formats whether or
+    # not historical rows exist. Mesh-tier files stay served, marked.
+    classification = _design_classification(row.id)
+    if (classification.package_class == CLASS_REFUSED
+            and spec.format in FABRICATION_CAPABLE_FORMATS):
+        _refuse_fabrication_download(
+            row.id, f"{spec.format} download", classification)
     db = get_default_db()
     with db.get_session() as session:
         export = session.execute(
@@ -1339,7 +1475,12 @@ def _serve_export_file(row: DesignRow, fmt: str) -> FileResponse:
                 f"(status: {status}). {error or spec.reason or ''}".strip()
             ),
         )
-    return FileResponse(path, media_type=spec.media_type, filename=spec.filename)
+    return FileResponse(
+        path, media_type=spec.media_type,
+        filename=download_filename(
+            row.id, spec.filename, classification.package_class),
+        headers={"X-Package-Class": classification.package_class},
+    )
 
 
 @router.get("/latest/exports/{fmt}/download")

@@ -172,11 +172,27 @@ export interface ExportEntry {
   download_url?: string | null;
 }
 
+/** LF-103A (ADR-063): what a package may claim. Only "clean" and
+ * "pre_fabrication" are ever sealed; "legacy_unclassified" is a pre-LF-103A
+ * zip that fails closed and refuses to download; "refused" is a live
+ * design verdict, never a sealed value. */
+export type PackageClass =
+  | "clean"
+  | "pre_fabrication"
+  | "refused"
+  | "legacy_unclassified";
+
 export interface ExportsResponse {
   design_id: string;
   package_built: boolean;
   package_bytes?: number | null;
   content_digest: string | null;
+  /** The design's LIVE verdict class, computed from persisted gates. */
+  design_class?: PackageClass;
+  /** The class the sealed zip on disk actually claims (null = no package). */
+  package_class?: PackageClass | null;
+  /** Why the package is not clean — mirrors ENGINEERING_WARRANT.txt. */
+  warrant_reasons?: string[];
   exports: ExportEntry[];
   counts: Record<string, number>;
   luxexchange_url: string;
