@@ -6,3 +6,6 @@ __pycache__/
 .pytest_cache/
 scripts/assets/
 *.egg-info/
+
+# PR-2.5 (ADR-064): reference images never enter the backend image either.
+briefs/freeform_references/*.jpg

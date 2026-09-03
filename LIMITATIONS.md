@@ -859,3 +859,58 @@ visual gate personally walked and signed PASS 2026-09-02, verbatim in
   the viewport, deliberately.
 - DesignDNA accept still refuses only `fail`, not `needs_input` — a
   separate ruling, out of LF-103A's scope.
+
+## 22. Free-form amorphous sculpture: kernel feasibility probed; no user-facing free-form capability implemented
+
+PR-2.5 discovery (2026-09-02/03, ADR-064; closed 2026-09-03 on
+definitive image `52209e4a6eea` — 540 tests both worker states, full
+roster green, discovery host gate 217/217) ran sandboxed probes against
+the owner's B-11 references. **Discovery probes are evidence, not
+product capability**: nothing free-form is reachable from a brief, the
+Council, the Designer or the export pipeline, the ten-primitive
+registry is unchanged, and the Master Scope audit score (31.6/100 at
+`bfa5a77`) does not move on probe results.
+
+What the probes established is recorded with verbatim numbers in
+`PR2_5_FREEFORM_DISCOVERY.md`. The owner's independent visual review
+(2026-09-03) ruled the probe forms **NOT reference-faithful** — the
+probes prove operation/kernel feasibility, not reference-faithful
+geometry; the fidelity gap is the implementation slice's burden under
+the changed acceptance gate. What remains missing, honestly:
+
+- **No free-form primitive, spec vocabulary, API surface or Designer
+  control exists.** That is the (yet-unplanned) implementation slice,
+  which starts only after the operator approves the discovery report's
+  acceptance plan at `gate_pr25_discovery_visual.md`.
+- **B-11b — mesh/lattice ground truth — is OPEN and release-blocking**
+  for any mesh-capability claim and for Production v1 (owner ruling,
+  2026-09-02): none of the 16 supplied references shows an open mesh,
+  wire lattice, perforated skin or cellular structure, and the import
+  probe's generated blob deliberately does not stand in for one.
+  Nothing mesh/lattice is specified, promised or scored until the owner
+  supplies a real reference.
+- **GRC fabrication data is entirely FABRICATOR-INPUT-REQUIRED** —
+  density, minimum shell thickness, reinforcement, panel size,
+  connection details, mold limits. `config/materials.yaml` carries no
+  GRC entry on purpose; probes used clearly-labeled non-engineering
+  sample parameters for topology only and produced no mass, lifting,
+  structural or fabrication claims for GRC.
+- **316L total assembly mass is not computable until the armature is
+  designed**; only skin-only figures exist, labeled non-engineering
+  discovery estimates.
+- **The 16 reference JPGs are operator-local and uncommitted** (owner
+  amendment 1): git and docker both ignore them; the committed record
+  is `briefs/freeform_references/reference_manifest.json` (hashes,
+  roles) plus `REFERENCE_ANALYSIS.md`. The permanent roster gate stays
+  reproducible without them; the operator's visual gate requires them.
+- **Approach-(b) procedural meshes have no boolean/fusion machinery**
+  in the installed stack (no CGAL/libigl/OpenVDB; scikit-image is not
+  installed), and **approach-(c) imports prove transform/validate/
+  re-serialize only** — where trustworthy artist meshes would come from
+  is an open trust problem for the implementation ruling.
+- **Minimum-thickness sampling is unavailable on the pinned image**:
+  `trimesh.proximity.thickness` requires `rtree`, which is not
+  installed (a download, so the operator's call — same class as D-7).
+  The validator records the error honestly instead of a number; a
+  free-form implementation slice needs either `rtree` or an
+  alternative thickness check before thin-wall limits can bind.

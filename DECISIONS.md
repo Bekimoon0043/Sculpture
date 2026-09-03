@@ -3957,3 +3957,186 @@ downloads; legacy package refused with its on-disk hash unchanged;
 before the steps were performed, was withdrawn by the operator and
 never recorded. Slice closed as one commit on `main`. Next in queue:
 PR-2.5 free-form discovery, blocked on B-11.
+
+## ADR-064 - PR-2.5 free-form discovery: execution model, evidence rules, owner rulings (2026-09-02)
+
+### Context
+
+The owner supplied the B-11 references on 2026-09-02 (16 images +
+`REFERENCE_ANALYSIS.md`), ruled on materials/scale/controls/fidelity,
+approved the discovery plan v2 with nine binding amendments, and issued
+six final execution clarifications. This ADR records every decision with
+a real trade-off; the probe evidence itself lives in
+`PR2_5_FREEFORM_DISCOVERY.md`.
+
+### Owner rulings (recorded)
+
+1. **Materials**: the free-form capability must cover **welded 316L
+   plate over an internal armature** AND **cast GRC / white concrete**.
+2. **Scale**: primary references validate at **monumental 3.5-5.0 m**
+   (owner-ruling tag; NOT measured from any image).
+3. **Controls**: **brief-driven generation plus parameter/control-point
+   editing** in the Designer; no full manual sculpting in v1.
+4. **Fidelity**: acceptance = **silhouette + topology** (void count,
+   crossings, twist direction, proportions), not surface-exact match.
+5. **Reference images stay local**: not committed, not pushed, not
+   baked into any image until the owner explicitly confirms repository
+   privacy AND permission for every image (gitignore + dockerignore
+   entries; committed record = `reference_manifest.json` + the text
+   analysis).
+6. **B-11b (mesh/lattice ground truth) stays OPEN and
+   release-blocking** for any mesh-capability claim and for
+   Production v1; none of the 16 images defines it and nothing is
+   invented in its place.
+
+### Decisions
+
+1. **ADR-005 interpretation for AI-authored probes** (owner amendment
+   3): every module that CONSTRUCTS geometry
+   (`scripts/probes/probe_freeform_*.py`, `gen_import_fixture.py`) runs
+   ONLY in the geo-worker sandbox, launched from the host by
+   `scripts/run_pr25_discovery.py` as
+   `docker compose run --rm -T --no-deps geo-worker python
+   /scratch/pr25_discovery/probes/<probe> ...` - the scripts are copied
+   into the scratch mount exactly like fabrication-loop jobs, so the
+   pinned image is never rebuilt to run them. The service definition
+   supplies network none / user 1000:1000 / read-only fs / cpus 1.0 /
+   mem 2 GB; the hard timeout the worker's watcher normally enforces is
+   supplied HOST-SIDE (subprocess timeout + `docker rm -f`). The
+   backend container runs only ANALYSIS of produced artifacts
+   (`validate_freeform.py`, `annotate_views.py` - they open files,
+   never construct design geometry) and never orchestrates Docker.
+   Unit tests exercise analysis functions against literal numeric
+   fixtures (a hand-written tetrahedron); no test constructs kernel
+   geometry. Trade-off: two copies of probe sources exist at run time
+   (repo + scratch); the orchestrator re-copies from the repo on every
+   run so the repo stays canonical.
+2. **Discovery artifacts live in `data/geo_scratch/pr25_discovery/`**
+   (+ render jobs under `data/render_scratch/pr25_*`). The sandbox has
+   exactly one writable mount, so the dedicated discovery directory
+   must live inside it; it never touches the DB or `data/exports`, the
+   orchestrator wipes ONLY these two discovery areas at start (clean
+   rerun from a fresh checkout), and the evidence is preserved until
+   the operator signs `gate_pr25_discovery_visual.md`. Controlled
+   cleanup after close: delete the two `pr25_*` areas; generated
+   binary artifacts are NOT committed.
+3. **Split gate semantics** (owner amendments 1/5/7):
+   `gate_pr25_discovery_auto.py` (roster script 24) always runs its
+   repo-reproducible sections; artifact sections and the
+   operator-local reference-image section SKIP LOUDLY when their
+   inputs are absent instead of failing another checkout; the git
+   drift check runs only under `--host-drift` on the host because the
+   image carries no `.git`. Trade-off: after post-close cleanup the
+   roster covers only the repo sections - every run prints exactly
+   which sections ran and which were skipped, so coverage is always
+   visible.
+4. **Determinism contract for probe artifacts**: STEP bytes (via the
+   Phase 2 `export_step` + `step_timestamp_for(20260902)`) and the
+   canonical OBJ writer (`%.6f`, fixed order, LF, ASCII) are
+   contractual and must be byte-identical across two separate sandbox
+   processes. **GLB is viewing-only and non-contractual** - measured
+   2026-09-02 on the installed stack: build123d `export_gltf` writes
+   METRES and per-face primitives, so a valid fused solid loads as ~10
+   unwelded bodies (`watertight False`). The validator therefore
+   tessellates the imported STEP itself (1.0 mm deflection, exact-merge
+   weld) and checks in millimetres end to end.
+5. **Independent validation stack** (owner amendment 5): OCC
+   BRepCheck_Analyzer; OCC BRepAlgoAPI_Check with self-interference
+   testing - the binding's usable call pattern is discovered at
+   runtime and RECORDED (`ctor(shape, testSE=True, testSI=True)` on
+   this image), never assumed from recall (ADR-009); kernel-vs-
+   tessellation volume cross-check (REL_VOL_TOL = 2 %, a printed
+   probe-only-judgement value); trimesh watertight/winding checks;
+   boundary/non-manifold edge count computed networkx-free (the image
+   deliberately lacks networkx, D-7 - `trimesh.repair.broken_faces`
+   is unusable); duplicate-face detection; Euler-characteristic genus;
+   minimum-thickness sampling at <= 200 deterministic vertex samples
+   (`max_sphere`) -- WHICH IS UNAVAILABLE on the pinned image
+   (trimesh.proximity.thickness needs the absent `rtree`; measured
+   2026-09-02) and therefore degrades to a recorded `thickness_error`,
+   never a silent number; restoring it is an implementation-slice
+   dependency decision. OCC's BRepAlgoAPI_Check can also return
+   IsValid=False with HasErrors=False -- an INDETERMINATE verdict that
+   fails closed under its own honest label. A DELIBERATELY
+   self-crossing sweep must be refused by this stack (or by the kernel
+   at construction); the gate fails loudly otherwise.
+6. **Renders reuse the Phase 9B protocol untouched**: job dirs in
+   `data/render_scratch/pr25_*` with `job.json`
+   (ortho_front/ortho_side/perspective_3q, 768 px, 24 samples, 90 s
+   budget - probe-only-judgement values), rendered by the running
+   worker; captions (fixture, approach, GLB hash, pass) are stamped
+   UNDER the PNGs by Pillow in the backend (render pixels untouched)
+   because the clay renderer deliberately draws no text. PNG bytes are
+   not determinism-gated (ADR-045 precedent).
+7. **Provenance vocabulary is the owner's six tags** - owner-ruling,
+   measured-from-dimensioned-reference, image-derived-estimate,
+   materials.yaml, probe-only-judgement, FABRICATOR-INPUT-REQUIRED -
+   and the tests/gate enforce both the tags and the ABSENCE of the
+   struck invented numbers (GRC density/wall guesses, armature
+   percentage, the 560 kg example, "crane-trivial").
+8. **Scope guards**: no file under `backend/app/`, `config/` or
+   `schemas/` changes in this slice; the audit score does not move on
+   probe results; LIMITATIONS 22 carries the exact sentence "kernel
+   feasibility probed; no user-facing free-form capability
+   implemented".
+
+### Library facts verified against the installed stack (2026-09-02)
+
+build123d 0.11.1: `sweep(sections, path, multisection, is_frenet, ...)`,
+`loft(sections, ruled, ...)`, `Spline(*pts, periodic=...)`,
+`Shape.tessellate(tolerance, angular_tolerance)`, `Shape.is_valid` is a
+PROPERTY (calling it is the bug the smoke run caught), `export_gltf`
+writes metres. trimesh 5.0.0: `is_watertight`, `is_winding_consistent`,
+`body_count`, `euler_number`, `proximity.thickness(...,
+method='max_sphere')`; `repair.broken_faces` requires the absent
+networkx. OCP: `BRepCheck_Analyzer`; `BRepAlgoAPI_Check` accepts
+`(shape, True, True)` and reports self-interference. All signatures
+read via `inspect` inside the backend container, not from recall.
+
+### Evidence
+
+Red-first on pristine image `9fe4c4328116`: pytest
+"file or directory not found: tests/test_pr25_discovery_assets.py" and
+gate "can't open file '/app/scripts/gate_pr25_discovery_auto.py'"
+(exit 2). Post-build evidence: `PR2_5_FREEFORM_DISCOVERY.md` (capability
+matrix + verbatim failures),
+`data/geo_scratch/pr25_discovery/summary.json`, the gate transcript and
+test runs recorded in the loop docs at close.
+
+**Operator-found red, 2026-09-03 (recorded honestly):** after the first
+in-container rebuild, `test_watertight_tetrahedron_is_clean` FAILED --
+obtained `volume_mm3: 166666.667`, expected `166666.66666666666` at
+`rel=1e-9`. The defect was in the TEST, not the validator: the
+validator's deterministic 3-decimal contract
+(`round(float(mesh.volume), 3)`) is intentional and stands; the test
+compared the unrounded analytic value at a tolerance tighter than the
+rounding error. Fix: the test now asserts the rounded contract exactly
+(`== round(100.0 ** 3 / 6.0, 3)`). Production validation was not
+weakened; only the test and this evidence record changed.
+
+### Close (2026-09-03) -- a DISCOVERY result, not capability
+
+The operator walked `gate_pr25_discovery_visual.md` with independent
+review and ruled: Step 1 YES, **Step 2 NO** (the probe forms are NOT
+reference-faithful -- five per-reference findings recorded verbatim in
+the sign-off), Step 3 YES, Step 4 YES; **BREP-first APPROVED WITH
+CONDITIONS; acceptance gate design CHANGED** (eight owner conditions,
+integrated into the report); **STEP canonical for the 316L family
+CONFIRMED**. An earlier draft of the gate document wrongly implied the
+in-container run verifies the local images; the operator caught it and
+it was corrected before the walk (the host run carries that section).
+
+Definitive /lf-gate evidence on image `52209e4a6eea` (start == end):
+540 tests passed in BOTH worker states (worker removed: 1013.06 s;
+worker up: 597.63 s), all 21 in-container roster scripts exit 0,
+PR-3 static AND live PASS, Phase 9B + scope audit + Phase 14 frontend
+PASS, PR-2.5 host gate 217/217 with zero skipped sections, $0, no
+providers. Commit scope verified: exactly 20 paths (5 modified + 15
+new); no JPG staged or tracked -- all 16 reference images remain
+local, ignored and unpublished; probe/render evidence preserved on
+disk pending the operator's post-close cleanup ruling.
+
+**Reference-faithful geometry and user-facing free-form capability
+remain UNBUILT.** Next: the free-form implementation slice via
+/lf-next under the changed acceptance gate; its operator dependencies
+are B-11b and the fabricator inputs.

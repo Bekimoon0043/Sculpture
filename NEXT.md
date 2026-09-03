@@ -5,7 +5,19 @@ the start of every session (`/lf-orient`) and rewritten at the end of every
 slice (`/lf-close`). If this file and a phase plan disagree, this file is
 stale and must be corrected in the same commit as the work.
 
-Last updated: 2026-09-02 — **LF-103A CLOSED** (ADR-063: the export
+Last updated: 2026-09-03 — **LF-103A CLOSED 2026-09-02 (e32805f)** and
+the **free-form DISCOVERY slice CLOSED 2026-09-03** (ADR-064), closed
+strictly as a DISCOVERY result, NOT completed capability:
+**reference-faithful geometry and user-facing free-form capability
+remain UNBUILT.** Definitive evidence on image `52209e4a6eea`: 540
+tests passed in BOTH worker states, all 21 in-container roster scripts
+exit 0, PR-3 static+live PASS, 9B + scope audit + Phase 14 frontend
+PASS, discovery host gate 217/217 zero skipped, $0, no providers.
+Operator visual ruling preserved verbatim: **Step 2 = NO** (probe forms
+NOT reference-faithful), BREP-first APPROVED WITH CONDITIONS,
+acceptance gate CHANGED (eight conditions), STEP canonical for 316L
+CONFIRMED; **B-11b (mesh/lattice reference) stays open and
+release-blocking**. The LF-103A close (ADR-063: the export
 boundary enforces the gate verdict — FAILED never packages,
 PRE-FABRICATION is marked+warranted, legacy zips fail closed, CLEAN is
 builder-only until D-24; red-first 9-failed baseline recorded; 39 new +
@@ -14,8 +26,9 @@ PASS incl. hermeticity; full-roster re-run on image `9fe4c4328116` —
 514 passed in BOTH worker states, all 23 roster scripts green, verbatim
 chain in ADR-063; operator personally walked and signed the visual gate
 PASS 2026-09-02, verbatim in `gate_lf103a_visual.md`; one commit + push
-this close). Next in queue: **PR-2.5 free-form discovery — BLOCKED on
-B-11** (reference designs + fabrication processes from the owner). Master Scope
+this close). Next in queue: **the free-form implementation slice**
+(planned via `/lf-next` under the CHANGED acceptance gate; its operator
+dependencies are B-11b and the fabricator inputs). Master Scope
 audit CLOSED same day (ADR-062, countersigned: 31.6/100, one-third
 complete; SCOPE.md authoritative). PR-0, PR-3, PR-1, PR-2 closed
 (designs `76595edb…`/`313e5d20…` preserved pending a separate ruling).
@@ -60,13 +73,20 @@ workflow controls, folded into PR-7B) ruled 2026-08-28.
 | **PR program (PR-0 … PR-9) — delivers Milestone B, not Production v1 (ADR-062)** | **APPROVED 2026-08-27; PR-0, PR-3, PR-1, PR-2 CLOSED** | `PRODUCTION_V1_REPORT.md` (historical filename), ADR-057/058/059/061 |
 | **Master Scope audit vs owner's 30-system scope** | **31.6/100 at `bfa5a77` — approximately one-third complete; only Geometry Integrity ≥4/5 among safety-critical systems** | `SCOPE.md`, `DEVELOPMENT_AUDIT.md`, ADR-062 |
 | **LF-103A — export boundary enforces the gate verdict** | **CLOSED 2026-09-02** | ADR-063; auto gate + 23-script roster PASS on `9fe4c4328116`, 514 both worker states; visual gate signed 2026-09-02 |
+| **PR-2.5 free-form DISCOVERY (not capability)** | **CLOSED 2026-09-03; visual Step 2 = NO — probe forms not reference-faithful; capability UNBUILT** | ADR-064; 540 both worker states + 24-script roster on `52209e4a6eea`; BREP-first approved with conditions; STEP canonical confirmed |
 
 **Suite and roster state:** after PR-2 the pytest suite (475) passed
 with the render worker UP and with it removed — both runs recorded
 verbatim in `PRODUCTION_V1_REPORT.md` on final image `09ff920ccbbb`;
-after LF-103A the suite is 514, passed in BOTH worker states on final
-image `9fe4c4328116` (2026-09-01/02) — verbatim chain in ADR-063. The
-auto-gate roster is 23 scripts: 20 in-container with the worker removed
+after LF-103A the suite was 514 on `9fe4c4328116` (ADR-063); after the
+discovery close the suite is **540, passed in BOTH worker states on
+definitive image `52209e4a6eea` (2026-09-03)** — verbatim chain in
+ADR-064. The
+auto-gate roster is 24 scripts (PR-2.5 discovery added
+`gate_pr25_discovery_auto.py`, SPLIT-MODE: repo sections run anywhere;
+artifact + operator-local reference sections skip loudly when their
+inputs are absent; `--host-drift` git section runs only on the host —
+ADR-064); before that it was 23: 20 in-container with the worker removed
 (17 phase gates + `gate_pr1` + `gate_pr2` + `gate_lf103a`, hermetic),
 `gate_pr3_auto` in both modes (static via stdin in-container, live on
 the host), `gate_phase9b_auto` with the worker up, and
@@ -130,18 +150,18 @@ Those marked **[release]** block calling the project Production v1.
       spec, resumable status, failure recovery, and automatic opening
       of the resulting design. Do not implement it early as a blocking
       browser request.
-- [ ] **B-11 [release] — Free-form sculpture ground truth (feeds
-      PR-2.5).** Supply: (1) **3–5 reference designs** of the
-      amorphous/organic/mesh-like sculpture class the company must sell
-      — photos, sketches, competitor pieces, anything visual; (2) the
-      **intended materials and fabrication processes** for them (carved
-      stone? cast concrete/GRC in molds? welded armature + sculpted
-      skin? — this decides parameter ranges per Rule 11 and what
-      "fabrication-ready" means for a free-form module); (3) whether
-      **manual sculpting controls** are required in the Designer, or
-      brief-driven generation with parameter edits suffices. The PR-2.5
-      discovery plan cannot be approved without at least the reference
-      designs; nothing will be invented in their place (ADR-060).
+- [ ] **B-11 [release] — MOSTLY RESOLVED 2026-09-02 (ADR-064): 16
+      reference images supplied (operator-local, uncommitted —
+      manifest committed), materials ruled (316L welded plate +
+      armature AND cast GRC), scale ruled (3.5–5.0 m), controls ruled
+      (brief + parameter/control-point editing), fidelity ruled
+      (silhouette + topology). STILL OPEN, split out as B-11b
+      [release]:** at least one REAL mesh/lattice/perforated-skin
+      reference image — none of the 16 shows one, and mesh capability
+      stays release-blocking and unspecified until it arrives. Also
+      still owed by fabricators: GRC datasheet (density, min shell,
+      reinforcement, panel size, connections, mold limits), 316L
+      forming radius + armature design basis.
 - [ ] **B-9 — Confirm or deny the four unattributed render-worker starts**
       (12:12:30 / 12:17:29 / 12:25:36 UTC on 2026-08-27, after each
       deliberate stop; the earlier ~06:59/~07:19 pair you already
@@ -257,32 +277,32 @@ binding; the slice notes below carry the ones that bite.
       green, `gate_lf103a_auto.py` PASS (hermetic, section [9] proves
       the real DB and data/exports untouched), `gate_phase9a_auto.py`
       PASS with the class assertion.
-- [ ] **PR-2.5 — Free-form amorphous sculpture: discovery/acceptance
-      plan, then implementation (owner ruling 2026-08-28, ADR-060).**
-      A dedicated `/lf-next` discovery slice runs AFTER PR-2 closes and
-      BEFORE PR-4. **PR-4 does not start merely because the PR-2.5 plan
-      was approved — it waits until the resulting free-form capability
-      is built, gated, committed and pushed**, unless the operator
-      explicitly changes that ruling. Blocked on B-11. The discovery
-      must: compare THREE construction approaches without preselecting
-      one — (a) controlled OpenCASCADE BREP loft/sweep/spline
-      construction, (b) deterministic procedural/implicit or mesh-native
-      construction, (c) human-authored reference-mesh import or fitting;
-      distinguish polygon-mesh EXPORT (exists today) from amorphous
-      design GENERATION (unproven); keep the architectural rule that an
-      LLM writes a constrained spec/program a deterministic kernel
-      executes — it may never emit unchecked vertices; determine from
-      the B-11 reference designs and fabrication processes whether
-      STEP/BREP is mandatory or a deterministic watertight mesh is the
-      correct manufacturing artifact — **any change to STEP as the
-      canonical artifact requires an explicit architectural ruling,
-      never an assumption**; and design the acceptance gate proving
-      real brief → Council alternatives → deterministic watertight
-      free-form geometry → validation → segmentation → render → export.
-      The old three-primitive list (`basin_elliptical`, `basin_spline`,
-      `spline_loft_mass`) is a hypothesis, NOT the requirement. D-11
-      and D-12 are discovery CANDIDATES only — promote either only when
-      a reference design and fabrication method prove it required.
+- [ ] **PR-2.5 — Free-form amorphous sculpture (ADR-060/ADR-064).
+      DISCOVERY CLOSED 2026-09-03 — strictly a discovery result, NOT
+      capability: visual Step 2 = NO, reference-faithful geometry and
+      user-facing free-form capability remain UNBUILT. The
+      IMPLEMENTATION slice(s) are next, via `/lf-next`, under the
+      owner's CHANGED acceptance gate (eight conditions in
+      `PR2_5_FREEFORM_DISCOVERY.md`).** Delivered: the three-approach comparison (BREP /
+      procedural mesh / import) with NO preselection, run in the
+      geo-worker sandbox twice at real 3.5–5.0 m scale — all five
+      primary geometric languages constructed as single kernel solids
+      on the BREP route (closed varying-section loops only via
+      butt-joined half-lofts; periodic sweeps are seam-defective or
+      refused, kept as evidence), 13/13 contractual artifacts
+      byte-identical cross-process, independent validation stack
+      (OCC analyzer + self-interference + tessellation cross-check +
+      genus) that REFUSED both deliberate-defect specimens, mesh route
+      proven boolean-less, import route proven
+      transform/validate/re-serialize only. Report:
+      `PR2_5_FREEFORM_DISCOVERY.md` (BREP-first recommendation, STEP
+      stays canonical — **any change to STEP as the canonical artifact
+      requires an explicit architectural ruling, never an assumption**;
+      acceptance-gate design for the implementation slice). **PR-4
+      still waits until the free-form capability itself is built,
+      gated, committed and pushed** (ADR-060). B-11b (mesh/lattice)
+      and the fabricator inputs stay open; D-11 and D-12 remain
+      discovery CANDIDATES only.
 - [ ] **PR-4 — Honest module transport costing.** Per-module masses
       carried into the drivers; refuse when any module exceeds
       `truck_payload_kg`; deterministic first-fit-decreasing allocation
@@ -395,7 +415,11 @@ Pick one up when a slice finishes early. Each is one commit.
       (`pycollada`, `networkx`) — a download, so the operator's call.
 - [ ] **D-8 — The Council panel has no `use_precedents` toggle.**
 - [ ] **D-10 — Gate examples with a built-in expiry.** Bit three times
-      (6a1 exact-four, 6a2 `water_wall`, 6a1 "slice C" string). The tell
+      (6a1 exact-four, 6a2 `water_wall`, 6a1 "slice C" string), and a
+      fourth instance surfaced 2026-09-02: `gate_scope_audit_auto.py`
+      §5 enforces queue order via FIRST-OCCURRENCE of "LF-103A" vs
+      "PR-2.5" in NEXT.md, which any status paragraph can trip (worked
+      around by wording, not by weakening the gate). The tell
       is a roadmap phrase inside an assertion. Full sweep folded into
       PR-5; re-sweep before slice D ever widens the registry.
 - [ ] **D-11 — Radial segmentation for round vessels.** Needs the

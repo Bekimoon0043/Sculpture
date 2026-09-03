@@ -1,0 +1,93 @@
+﻿{
+    "manifest":  "B-11 free-form reference set (PR-2.5, ADR-064)",
+    "date_received":  "2026-09-02",
+    "source":  "operator-supplied local files; NOT committed, NOT published (owner amendment 1, 2026-09-02)",
+    "storage":  "briefs/freeform_references/ on the operator\u0027s machine only; gitignored and dockerignored",
+    "analysis":  "REFERENCE_ANALYSIS.md",
+    "mesh_lattice_note":  "None of these images shows a mesh/lattice/perforated-skin structure; B-11b stays OPEN and release-blocking for any mesh-capability claim (ADR-060/ADR-064).",
+    "images":  [
+                   {
+                       "file":  "01_african_union_fountain_fabrication_drawing.jpg",
+                       "sha256":  "eca60dc88dc2ed15c1337eae02a7c7d04c7b13b99d1d65df15514828d7671c20",
+                       "role":  "engineering-context",
+                       "dimension_notes":  "Dimensioned fabrication drawing: basin dia 6000 mm, sculpture width 5200 mm, arcs 3800/2400 mm, Africa panel 2200 mm, basin 450 mm above grade; 6 mm Grade 316L plate, hollow welded box sections, M20 anchors."
+                   },
+                   {
+                       "file":  "02_lotus_fountain_service_routing_section.jpg",
+                       "sha256":  "6ea0487428130f5458c5f9b80b1b1c2e46120bcfbb7da6e59eeed8bb176a4efa",
+                       "role":  "engineering-context"
+                   },
+                   {
+                       "file":  "03_lotus_fountain_water_flow_diagram.jpg",
+                       "sha256":  "a6975b1886d070e4a157b41fe235a0089d0cfdd50e1978b0ce19a213b3581c46",
+                       "role":  "engineering-context"
+                   },
+                   {
+                       "file":  "04_lotus_fountain_lighting_zones.jpg",
+                       "sha256":  "57594322f86c645baaba0ca53a888e86399ccda594eb1a9a688fc2d944487f03",
+                       "role":  "engineering-context"
+                   },
+                   {
+                       "file":  "05_african_union_arc_fountain_render.jpg",
+                       "sha256":  "1ee28de3e4ad43566afaf636906bb40405fa5f813bf2c29997b3994f664dc359",
+                       "role":  "engineering-context"
+                   },
+                   {
+                       "file":  "06_lotus_fountain_stone_render.jpg",
+                       "sha256":  "705c5ab6e6dfea44cee821610a7cb4a27e9c30ba49b60e1d3b75a01921618ffd",
+                       "role":  "engineering-context"
+                   },
+                   {
+                       "file":  "07_lotus_fountain_dimensions.jpg",
+                       "sha256":  "b79d93edafb3bb34e54c047d7e284c73dc6fd367699f0e650a79e1ec1e0eeb79",
+                       "role":  "engineering-context",
+                       "dimension_notes":  "Preliminary dimensioned elevation: overall height ~3600 mm, basin dia ~5000 mm, basin wall ~500 mm; marked subject to engineering verification."
+                   },
+                   {
+                       "file":  "08_organic_void_sculpture_water_court.jpg",
+                       "sha256":  "bfe1662b587807b50e6654e756563fa7b3524415767db3cfb8573a34c3f87a02",
+                       "role":  "primary"
+                   },
+                   {
+                       "file":  "09_nested_flame_ribbon_sculpture.jpg",
+                       "sha256":  "4e3bc8bd06bd466b1c70961a347da95f143fc5b57a8b1d4f9d69add9d8d20fdc",
+                       "role":  "secondary"
+                   },
+                   {
+                       "file":  "10_interlocking_loop_sculpture.jpg",
+                       "sha256":  "99c8d88493bdb6efde494d5c8e73aa4b2786a8f6fbf66b5704e8fb4853edadd1",
+                       "role":  "secondary"
+                   },
+                   {
+                       "file":  "11_twisted_ribbon_fountain_sculpture.jpg",
+                       "sha256":  "9ff6ba02bb271ce6f9e0cff0578bf9094bf96891885ea5be3f0320af994f4c27",
+                       "role":  "primary"
+                   },
+                   {
+                       "file":  "12_crescent_figure_sculpture.jpg",
+                       "sha256":  "07d9544818fe2d1c0b01e09b69beeedb1f6d283e53c9692e21d4fbd6d45840d5",
+                       "role":  "secondary",
+                       "dimension_notes":  "Dimensions printed on image: height 1.9 m, length 2 m, width 0.4 m."
+                   },
+                   {
+                       "file":  "13_double_loop_garden_sculpture.jpg",
+                       "sha256":  "cab6534f7799620bd18cea4b6af26803b31f5d8409aacb1763a9b476be5e32ed",
+                       "role":  "primary"
+                   },
+                   {
+                       "file":  "14_interwoven_ribbon_garden_sculpture.jpg",
+                       "sha256":  "e04dc0dd0e6b9704b858bfb1ad609fc64d6e75eb46f81f9105fd5a6d77e5e1cc",
+                       "role":  "primary"
+                   },
+                   {
+                       "file":  "15_ring_cascade_fountain_sculpture.jpg",
+                       "sha256":  "924d67db8864eb4d16f6c02c6dc9c08b7c7a4e60a56b57088f6ad9ed62af492f",
+                       "role":  "secondary"
+                   },
+                   {
+                       "file":  "16_split_ribbon_garden_sculpture.jpg",
+                       "sha256":  "dc906c62663b5acaf8a3457a7d6882d85fc3284dfe21e432119719bd7949ff34",
+                       "role":  "primary"
+                   }
+               ]
+}
