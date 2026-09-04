@@ -53,7 +53,11 @@ function PrecedentCard({
       <p className="precedent-note">“{precedent.acceptance_note}”</p>
       <p className="precedent-meta">
         {tags?.materials.join(", ")} · {tags?.primitives.join(" + ")} ·{" "}
-        {tags?.height_m} m × {tags?.footprint_m} m · {tags?.total_mass_kg} kg ·{" "}
+        {tags?.height_m} m × {tags?.footprint_m} m ·{" "}
+        {tags?.total_mass_kg != null
+          ? `${tags.total_mass_kg} kg`
+          : "mass incomplete"}{" "}
+        ·{" "}
         {tags?.has_water ? "water" : "dry"}
         {tags?.total_cost_usd != null && <> · ${tags.total_cost_usd}</>}
       </p>

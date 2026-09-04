@@ -196,9 +196,27 @@ export default function InspectorPanel({
 
       {manifestElement ? (
         <div className="built-facts">
-          <span title="from the built manifest — real numbers, not estimates">
-            {fmt(manifestElement.mass_kg)} kg
-          </span>
+          {manifestElement.mass_model &&
+          !manifestElement.mass_model.mass_complete ? (
+            // FF-A1 (ADR-065): an incomplete mass is never shown as a
+            // bare figure — the known-geometry basis and the missing
+            // inputs travel with it, and there is no total to show.
+            <span
+              className="warn-hint"
+              title={
+                "known-geometry mass only — INCOMPLETE. Missing: " +
+                manifestElement.mass_model.missing_mass_inputs.join("; ") +
+                ". Total mass: unavailable."
+              }
+            >
+              {fmt(manifestElement.mass_model.known_geometry_mass_kg)} kg
+              (incomplete)
+            </span>
+          ) : (
+            <span title="from the built manifest — measured geometry × material density">
+              {fmt(manifestElement.mass_kg)} kg
+            </span>
+          )}
           <span>
             {manifestElement.bbox_mm.map((d) => Math.round(d)).join(" × ")} mm
           </span>
@@ -206,7 +224,7 @@ export default function InspectorPanel({
       ) : (
         <p className="hint warn-hint">
           Not in the last build — press <strong>Build &amp; validate</strong> to
-          see its geometry and real mass.
+          see its geometry and its computed mass.
         </p>
       )}
 

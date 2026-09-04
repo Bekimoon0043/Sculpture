@@ -422,6 +422,17 @@ export async function createProject(
   );
 }
 
+// FF-A1 (ADR-065): the explicit mass-truth block. Present on every
+// non-legacy element; when mass_complete is false, total_mass_kg is null
+// (never zero) and the known-geometry figure may only be shown WITH the
+// missing inputs named.
+export interface MassModel {
+  mass_complete: boolean;
+  known_geometry_mass_kg: number;
+  missing_mass_inputs: string[];
+  total_mass_kg: number | null;
+}
+
 export interface ManifestElement {
   element_id: string;
   primitive: string;
@@ -429,7 +440,10 @@ export interface ManifestElement {
   parameters: Record<string, number | string>;
   placement_mm: { x: number; y: number; z: number };
   volume_mm3: number;
+  // Geometry-known mass of this element (volume x density). Whether it is
+  // the element's TOTAL mass is what mass_model says.
   mass_kg: number;
+  mass_model?: MassModel;
   bbox_mm: number[];
   bbox_min_mm: number[];
   bbox_max_mm: number[];
@@ -447,7 +461,9 @@ export interface DesignManifestResponse {
     schema: string;
     elements: ManifestElement[];
     joints: Array<Record<string, unknown>>;
-    total_mass_kg: number;
+    // null when the mass truth is incomplete (FF-A1, ADR-065) — never 0.
+    total_mass_kg: number | null;
+    mass_model?: MassModel;
     [key: string]: unknown;
   };
   request: {
@@ -731,7 +747,9 @@ export interface PrecedentTags {
   primitives: string[];
   height_m: number;
   footprint_m: number;
-  total_mass_kg: number;
+  // null when the precedent's mass truth was incomplete (ADR-065).
+  total_mass_kg: number | null;
+  mass_complete?: boolean;
   has_water: boolean;
   gate_profile_id: string | null;
   overall_status: string;

@@ -42,6 +42,7 @@ from app.core.config import (
     Material,
     load_config_bundle,
 )
+from app.geometry.mass_model import assembly_mass_truth, element_mass_truth
 from app.geometry.primitives.base import load_materials
 from app.geometry.segmentation import (
     axes_fit_mm,
@@ -346,13 +347,31 @@ def validate_structural_gate(
         message="assembly must be one fused B-rep body",
     )
 
-    total_mass = float(manifest.get("total_mass_kg") or 0.0)
-    b.add(
-        "total_mass_kg",
-        ok=total_mass > 0, value=round(total_mass, 3), limit="> 0", units="kg",
-        basis="sum of per-element B-rep volume x materials.yaml density",
-        message="total assembly mass is computed from per-element volumes and densities",
-    )
+    # FF-A1 (ADR-065): every mass-dependent verdict below binds on the
+    # COMPLETE total mass. When the manifest's mass truth is incomplete,
+    # total/centroid/overturning/bearing all report needs_input naming the
+    # missing inputs — a partial mass must never pass a stability check.
+    mass_truth = assembly_mass_truth(manifest)
+    if mass_truth.mass_complete:
+        total_mass = float(manifest.get("total_mass_kg") or 0.0)
+        b.add(
+            "total_mass_kg",
+            ok=total_mass > 0, value=round(total_mass, 3), limit="> 0", units="kg",
+            basis="sum of per-element B-rep volume x materials.yaml density",
+            message="total assembly mass is computed from per-element volumes and densities",
+        )
+    else:
+        total_mass = 0.0
+        b.needs_input(
+            "total_mass_kg",
+            missing="; ".join(mass_truth.missing_mass_inputs),
+            basis="ADR-065 mass model: structural verdicts require the "
+                  "COMPLETE assembly mass",
+            message=(f"total assembly mass is INCOMPLETE — known-geometry "
+                     f"mass {mass_truth.known_geometry_mass_kg:.1f} kg "
+                     "excludes required inputs"),
+            units="kg",
+        )
 
     by_id = {str(e.get("element_id")): e for e in elements}
     roots = _roots(manifest)
@@ -386,11 +405,16 @@ def validate_structural_gate(
             )
 
     if not roots or total_mass <= 0:
+        missing = "one root element and a positive total mass"
+        if not mass_truth.mass_complete:
+            missing = ("the complete assembly mass — "
+                       + "; ".join(mass_truth.missing_mass_inputs))
         b.needs_input(
             "stability",
-            missing="one root element and a positive total mass",
+            missing=missing,
             basis="rigid-body statics requires a support footprint and a mass",
-            message="stability cannot be evaluated for this assembly",
+            message=("stability (centroid, overturning, ground bearing) "
+                     "cannot be evaluated for this assembly"),
         )
         return b.report()
 
@@ -902,12 +926,28 @@ def validate_fabrication_gate(
                     if seg_measured else mass)
 
         # --- lift mass ---------------------------------------------------
+        # FF-A1 (ADR-065): a lift/crane PASS requires the COMPLETE element
+        # mass. Unknown armature/allocation can never pass a pick decision
+        # on known-geometry mass alone — the check reports needs_input with
+        # the real known figure and the missing inputs named.
+        el_truth = element_mass_truth(e)
         if max_lift is None:
             b.needs_input(
                 f"{eid}.mass_kg",
                 missing="Design Spec fabrication.max_lift_kg",
                 basis="per-element mass vs the declared workshop lift limit",
                 message="element lift mass cannot be gated without a lift limit",
+                units="kg",
+            )
+        elif not el_truth.mass_complete:
+            b.needs_input(
+                f"{eid}.mass_kg",
+                missing="; ".join(el_truth.missing_mass_inputs),
+                basis="ADR-065 mass model: pick decisions require the "
+                      "COMPLETE mass, per module",
+                message=(f"lift cannot be gated: element mass is INCOMPLETE "
+                         f"— heaviest module known-geometry mass "
+                         f"{heaviest:.1f} kg excludes required inputs"),
                 units="kg",
             )
         else:
@@ -1096,6 +1136,27 @@ def _rigging_check(
         for e in manifest.get("elements") or []
         if float(e.get("mass_kg") or 0.0) > profile.manual_handling_limit_kg
     ]
+    # FF-A1 (ADR-065): "no rigging required" is a MASS claim — it cannot
+    # pass while any element's mass is incomplete (its true mass could sit
+    # above the limit its known-geometry mass sits below).
+    incomplete = [
+        (str(e.get("element_id")), t)
+        for e in manifest.get("elements") or []
+        if not (t := element_mass_truth(e)).mass_complete
+    ]
+    if incomplete and not heavy:
+        eid, t = incomplete[0]
+        b.needs_input(
+            "rigging_declared",
+            missing="; ".join(t.missing_mass_inputs),
+            basis=f"gate_profiles.yaml:{profile_id}.manual_handling_limit_kg "
+                  f"= {profile.manual_handling_limit_kg:g} kg — the "
+                  "no-rigging-needed claim requires COMPLETE masses (ADR-065)",
+            message=(f"cannot rule rigging out: {len(incomplete)} element(s) "
+                     f"(first: {eid}) carry incomplete mass"),
+            units="elements",
+        )
+        return
     if not heavy:
         b.add(
             "rigging_declared",

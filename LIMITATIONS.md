@@ -908,6 +908,18 @@ the changed acceptance gate. What remains missing, honestly:
   installed), and **approach-(c) imports prove transform/validate/
   re-serialize only** — where trustworthy artist meshes would come from
   is an open trust problem for the implementation ruling.
+- **FF-A1 (2026-09-03, ADR-065) built the incomplete-mass truth model
+  and the production `freeform_integrity_v1` stack — as INTERNAL
+  foundation only.** No user-facing path can create an incomplete-mass
+  design and no registry primitive requires integrity validation yet;
+  both are exercised through fixtures and a shim test primitive, and
+  activate only when FF-A2 ships a real free-form primitive. Until
+  then: every mass-dependent check (centroid, overturning, bearing,
+  lift, crane, rigging ruled-out, costing, BOM, quote) refuses or
+  reports needs_input on incomplete mass BY CONSTRUCTION; there is
+  deliberately no input contract that makes them pass — the complete
+  armature contract (mass + centroid + per-module allocation, or a
+  documented conservative worst case) is FF-A2 design work.
 - **Minimum-thickness sampling is unavailable on the pinned image**:
   `trimesh.proximity.thickness` requires `rtree`, which is not
   installed (a download, so the operator's call — same class as D-7).

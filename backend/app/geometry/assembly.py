@@ -64,6 +64,12 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.config import Material
+from app.geometry.mass_model import (
+    FREEFORM_INTEGRITY_GATE,
+    LEGACY_COMPLETE_MASS_PRIMITIVES,
+    MassTruth,
+    assembly_mass_truth,
+)
 from app.geometry.primitives import PRIMITIVES
 from app.geometry.primitives.base import ConstraintViolation, load_materials
 from app.geometry.segmentation import (
@@ -766,7 +772,7 @@ def assemble(
         bb_max = [float(bb.max.X), float(bb.max.Y), float(bb.max.Z)]
         com = s.center(CenterOf.MASS)
         x, y, z = placements[eid]
-        manifest_elements.append({
+        entry = {
             "element_id": eid,
             "primitive": el["primitive"],
             "material_id": p.material_id,
@@ -779,7 +785,21 @@ def assemble(
             "bbox_min_mm": bb_min,
             "bbox_max_mm": bb_max,
             "centroid_mm": {"x": float(com.X), "y": float(com.Y), "z": float(com.Z)},
-        })
+        }
+        # FF-A1 (ADR-065): every NON-legacy primitive persists an explicit
+        # mass_model block — incomplete-capable ones name their missing
+        # inputs, complete ones say so outright. The frozen legacy ten emit
+        # NOTHING here, which is exactly how their manifests stay
+        # byte-identical (mass_model.py explains the versioning seam).
+        module = PRIMITIVES[el["primitive"]]
+        incomplete_inputs = tuple(
+            getattr(module, "INCOMPLETE_MASS_INPUTS", ()) or ())
+        if incomplete_inputs:
+            entry["mass_model"] = MassTruth(
+                False, mass, incomplete_inputs).wire()
+        elif el["primitive"] not in LEGACY_COMPLETE_MASS_PRIMITIVES:
+            entry["mass_model"] = MassTruth(True, mass, ()).wire()
+        manifest_elements.append(entry)
     # --- segmentation (slice C2, ADR-056) -----------------------------------
     # An oversized element is no longer refused outright: it is CUT, by the
     # kernel, into modules that are then what the workshop limits bind on.
@@ -874,6 +894,9 @@ def assemble(
         "fabrication_limit_violations": limit_violations,
         "strict": bool(strict),
         "total_mass_kg": sum(e["mass_kg"] for e in manifest_elements),
+        # NOTE (FF-A1): when any element's mass is incomplete this value is
+        # REPLACED with None just below — never zero, never a partial sum
+        # posing as a total (owner correction 5, ADR-065).
         "assembly_bbox_min_mm": [
             min(e["bbox_min_mm"][i] for e in manifest_elements) for i in range(3)
         ],
@@ -882,6 +905,25 @@ def assemble(
         ],
         "body_count_brep": 1,
     }
+
+    # ---- FF-A1 (ADR-065): mass truth + validation applicability ----------
+    # Both keys are emitted ONLY when they carry information, so every
+    # manifest composed of the frozen legacy ten stays byte-identical.
+    mass_truth = assembly_mass_truth({"elements": manifest_elements})
+    if not mass_truth.mass_complete:
+        manifest["total_mass_kg"] = None  # never zero (owner correction 5)
+        manifest["mass_model"] = mass_truth.wire()
+    required_gates = sorted({
+        FREEFORM_INTEGRITY_GATE
+        for e in manifest_elements
+        if getattr(PRIMITIVES[e["primitive"]],
+                   "REQUIRES_FREEFORM_INTEGRITY", False)
+    })
+    if required_gates:
+        # The persisted applicability snapshot: export classification reads
+        # THIS, never today's registry (owner correction 1).
+        manifest["required_validation_gates"] = required_gates
+
     if return_solids:
         return fused, manifest, solids
     return fused, manifest

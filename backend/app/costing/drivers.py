@@ -35,6 +35,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.geometry.mass_model import assembly_mass_truth
 from app.geometry.validate import AssemblyValidationReport, ValidationReport
 
 #: mm3 -> m3
@@ -109,6 +110,22 @@ NEEDS_REBUILD = (
 )
 
 
+class IncompleteMassError(ValueError):
+    """FF-A1 (ADR-065): raised when costing is asked to price an
+    INCOMPLETE mass. Material, transport and crane lines all derive from
+    mass, so no honest BOM or quote exists until the named inputs do —
+    the route maps this to a structured HTTP 409 not_computable."""
+
+    def __init__(self, known_geometry_mass_kg: float,
+                 missing_mass_inputs: tuple[str, ...]) -> None:
+        self.known_geometry_mass_kg = round(float(known_geometry_mass_kg), 3)
+        self.missing_mass_inputs = tuple(missing_mass_inputs)
+        super().__init__(
+            "refusing to cost an INCOMPLETE mass — known-geometry "
+            f"{self.known_geometry_mass_kg} kg excludes: "
+            + "; ".join(self.missing_mass_inputs))
+
+
 def drivers_from_validation(report: ValidationReport) -> CostDrivers:
     """Convert an already-computed ValidationReport into cost drivers.
 
@@ -167,8 +184,24 @@ def drivers_for_assembly(report: AssemblyValidationReport,
             "refusing to cost an assembly whose validation FAILED — "
             "fix the geometry before pricing it "
             f"(watertight={report.watertight}, body_count={report.body_count}, "
-            f"total_mass_kg={report.total_mass_kg:.3f})"
+            f"total_mass_kg={report.total_mass_kg})"
         )
+    # FF-A1 (ADR-065): an incomplete mass never becomes a price. The
+    # incompleteness signals are (a) a null report total — the manifest
+    # persisted total_mass_kg: null — or (b) any incomplete ELEMENT in the
+    # manifest. A manifest without an element list (the minimal legacy
+    # shape costing has always accepted) is judged by its report total
+    # alone: that total came from a legacy complete-mass manifest.
+    elements = list((manifest or {}).get("elements") or [])
+    truth = assembly_mass_truth({"elements": elements}) if elements else None
+    if report.total_mass_kg is None or (
+            truth is not None and not truth.mass_complete):
+        if truth is not None and not truth.mass_complete:
+            raise IncompleteMassError(truth.known_geometry_mass_kg,
+                                      truth.missing_mass_inputs)
+        raise IncompleteMassError(
+            sum((report.element_masses_kg or {}).values()),
+            ("complete mass model for this design",))
     mass_kg = float(report.total_mass_kg)
     volume_m3 = float(report.volume_mm3) / _MM3_PER_M3
     surface_area_m2 = float(report.surface_area_mm2) / _MM2_PER_M2

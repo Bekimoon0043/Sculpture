@@ -456,9 +456,19 @@ def objective_score(params: dict[str, Any],
         across ortho views
     """
     silhouette_areas = silhouette_areas or {}
-    mass = float(params.get("total_mass_kg", 0.0) or 0.0)
-    max_lift = float(params.get("max_lift_kg", 1000.0) or 1000.0)
-    handling_score = max(0.0, 1.0 - mass / max_lift)
+    # FF-A1 (ADR-065): an INCOMPLETE mass (total_mass_kg None) must not
+    # feed a mass-derived score as if it were real. The handling component
+    # is marked unavailable by contributing a neutral 0.0 — the score can
+    # only get better once the real mass exists, never look good on a
+    # partial one. (D-14 records that this scorer is not yet a steering
+    # objective at all.)
+    raw_mass = params.get("total_mass_kg", 0.0)
+    if raw_mass is None:
+        handling_score = 0.0
+    else:
+        mass = float(raw_mass or 0.0)
+        max_lift = float(params.get("max_lift_kg", 1000.0) or 1000.0)
+        handling_score = max(0.0, 1.0 - mass / max_lift)
 
     # Constraint margin: arbitrary normalised distance from a 5% envelope.
     # Real ranges come from validate_params; this is the minimal honest version.

@@ -4140,3 +4140,199 @@ disk pending the operator's post-close cleanup ruling.
 remain UNBUILT.** Next: the free-form implementation slice via
 /lf-next under the changed acceptance gate; its operator dependencies
 are B-11b and the fabricator inputs.
+
+## ADR-065 - FF-A1: incomplete-mass truth + production free-form validation (2026-09-03)
+
+### Context
+
+The FF-A/FF-A1+FF-A2 split was approved 2026-09-03 with eight binding
+corrections plus one clerical correction (this ADR's accounting must
+include `package_class.classify_reports`). FF-A1 is an INTERNAL
+truth-foundation slice: it creates no user-facing incomplete-mass or
+free-form capability and claims none — the model is exercised through
+integration fixtures and a shim test primitive; the operator-visible
+demonstration belongs to FF-A2.
+
+### Decisions
+
+1. **The mass model** (`app.geometry.mass_model`). `MassTruth`
+   {mass_complete, known_geometry_mass_kg, missing_mass_inputs};
+   `total_mass_kg` is a PROPERTY: the known figure when complete, None
+   — never zero — when not. Unknown, malformed or inconsistent block
+   data fails closed as incomplete with the defect named. Absent mass
+   fields mean complete ONLY for manifests composed entirely of the
+   frozen `LEGACY_COMPLETE_MASS_PRIMITIVES` ten — a PERMANENT
+   versioning seam (it must never grow; growing it would change how old
+   evidence is read; it is deliberately not a D-10 expiry). Every
+   non-legacy primitive persists an explicit block.
+2. **Digest policy**: `mass_model` and `required_validation_gates` are
+   emitted only when they carry information. Byte-identical forever:
+   manifests, packages, digests and re-exports of all-legacy designs
+   (gate section 6 proved all 67 stored manifests legacy-clean and the
+   real DB byte-identical). Legitimately new bytes: only future
+   incomplete-capable/integrity-requiring designs.
+3. **Applicability snapshot**: primitives may declare
+   `REQUIRES_FREEFORM_INTEGRITY`/`INCOMPLETE_MASS_INPUTS`; `assemble()`
+   persists `required_validation_gates` into the manifest; export
+   classification reads ONLY that persisted snapshot (never the live
+   registry/config — the ADR-063 no-laundering rule extended).
+4. **`freeform_integrity_v1`** (`app.geometry.freeform_validation`) —
+   the ADR-064 stack as reviewed production code (analyzer,
+   self-interference with the INDETERMINATE IsValid=False/
+   HasErrors=False verdict failing closed as needs_input, tessellation
+   watertight/winding/edge/duplicate checks, 2 % volume cross-check,
+   body count, genus; NO thickness check — rtree absent, LIMITATIONS
+   22). NOT an import of the discovery probe. Row written by
+   `persist_assembly_design` in the same validation operation and
+   table as every layered row, duplicate-resolved by the same
+   `created_at DESC, id DESC` rule, sharing the same structural run
+   linkage AND the same D-24 identity gap — CLEAN stays unreachable.
+5. **REFUSED ruling** (owner, 2026-09-03): for an applicable design a
+   MISSING, FAILED or INDETERMINATE `freeform_integrity_v1` row —
+   or an unknown/malformed required name — refuses export outright
+   (`classify_reports(..., required_validation_gates=...)`; both
+   callers pass the persisted snapshot). Deliberately harsher than
+   PRE-FABRICATION marking: possibly self-intersecting CAD does not
+   leave the building watermarked. Non-applicable legacy designs are
+   untouched by construction. When a required row PASSED but the
+   design is otherwise unproven, the package seals PRE-FABRICATION and
+   the warrant carries the row's verdict; refusals never reach a
+   warrant because no package exists.
+6. **The null/fail-closed consumer contract**: total None never zero;
+   the known figure only ever shown with its basis; structural
+   centroid/overturning/bearing, fabrication lift/crane and the
+   no-rigging-needed claim -> needs_input naming
+   `missing_mass_inputs`; costing/BOM/quote -> `IncompleteMassError`
+   -> structured HTTP 409 `incomplete_mass` (not_computable); DNA tags
+   carry null + `mass_complete`; the critique handling component
+   contributes nothing on incomplete mass (D-14 unchanged otherwise);
+   API and frontend types accept null. There is NO input contract that
+   makes mass-dependent checks pass on a partial mass — the complete
+   armature contract (mass + centroid + per-module allocation, or a
+   documented conservative worst case) is FF-A2 design work.
+7. **Census** (gate section 1): an AST walk (string keys, attributes,
+   names, args, keywords for mass_kg/total_mass_kg/crane_pick_kg/
+   known_geometry_mass_kg) resolved to module::symbol against this
+   audited allowlist — 28 consumer symbols found, all listed, each
+   with a behavioral test or an audited no-change story:
+   `mass_model::*` (the model);
+   `assembly::assemble` (emits truth; legacy byte-identical),
+   `assembly::build_segmentation` + `segmentation::_module_record` /
+   `segment_solid` / `SegmentResult` (module masses are
+   geometry-known; completeness gating lives in the fabrication gate);
+   `validate::ElementReport`/`ValidationReport` (cascade = legacy
+   complete), `validate::AssemblyValidationReport`/`validate_assembly`
+   /`validate_mesh` (total row carries the labeled composite, None
+   handled); `gates::_mass_centroid`/`validate_structural_gate`/
+   `validate_fabrication_gate`/`_rigging_check`/`stored_water_mass_kg`
+   (needs_input paths); `freeform_validation::run_freeform_integrity`;
+   `costing.drivers::*` (IncompleteMassError), `costing.bom::*` +
+   `costing.report::render_bom` (consume CostDrivers, which cannot
+   exist for incomplete mass); `dna.store::derive_tags`/
+   `precedent_block` (null + honest text); `critique::objective_score`;
+   `council.prompts::*` (guidance text; PR-5 scope);
+   `routes_assembly::persist_assembly_design`/`list_designs` (summary
+   null + mass_model passthrough); `routes_costing::*` (409 mapping);
+   `luxexchange::build_luxexchange_package` (seals the manifest
+   wholesale; classification input); **`package_class::classify_reports`
+   (+ `KNOWN_REQUIRED_GATES`, `_missing_row`) — the clerical
+   correction: its persisted-applicability handling changed as
+   decision 5.** Frontend consumers (typed, typecheck-proven; no test
+   runner exists): `api/client.ts::MassModel/ManifestElement/
+   DesignManifestResponse/PrecedentTags` (null unions),
+   `workspace/InspectorPanel.tsx` (incomplete label; the "real mass"
+   phrase removed), `panels/LibraryPanel.tsx` (null guard);
+   `HistoryStrip`/`CompareView`/`DesignerWorkspace` already null-safe.
+8. **Scope guards**: no new primitive, no registry change, no schema
+   change, `e1a59fa6...` untouched; FF-A2 returns through /lf-next.
+
+### What this buys / gives up
+
+Buys: the platform cannot present a partial mass as a real one on any
+surface, and free-form geometry has a production integrity layer that
+export obeys before any free-form primitive exists. Gives up: the
+sealed-manifest shape will change for FUTURE incomplete-capable
+designs (new digests for them only — the ADR-057 precedent); costing
+refuses rather than partially prices (deliberate); the critique
+handling term goes neutral on incomplete mass rather than pretending.
+
+### Evidence
+
+Red-first on pristine `52209e4a6eea`: pytest "file or directory not
+found: tests/test_mass_model.py" (exit 4) and gate "can't open file
+'/app/scripts/gate_ffa1_auto.py'" (exit 2).
+
+**Development run (image `a0948d1c5466` — evidence of the build
+process, NOT the definitive chain; the gate's census fix reached the
+container via docker cp)**: 51/51 new tests; gate PASS 35/35 after
+the census caught four consumers the first allowlist draft missed
+(render_bom, build_segmentation, _module_record, ValidationReport —
+audited and added, never suppressed); then the full suite FAILED
+honestly — 7 failed / 584 passed: the first drivers incompleteness
+check failed closed on element-less manifests, the minimal legacy
+shape costing has always accepted ("IncompleteMassError ... manifest
+has no elements"). Fix: the incompleteness signals are a null
+persisted report total or incomplete ELEMENTS; an element-less
+manifest is judged by its report total (which came from a legacy
+complete-mass manifest).
+
+**Gate correction during /lf-gate (2026-09-04, operator-approved — the
+fifth D-10-class instance):** the definitive roster run surfaced a real
+FAIL in `gate_pr25_discovery_auto.py --host-drift` section 12 — it
+asserted "backend/app, config, schemas untouched vs HEAD" against the
+LIVE working tree, and FF-A1's ten legitimate uncommitted backend edits
+tripped it. A slice-scoped promise had been written into a permanent
+gate. Corrected per binding ruling: section 12 now pins the discovery
+close commit `5cb0af3e2445c09b7426037fb8d02104be1ffeae` by FULL hash
+(failure to resolve FAILS the check) and asserts that THAT COMMIT
+changed no backend/app, config or schemas paths — the permanent
+historical truth the section always meant; the timeless
+no-reference-JPG-tracked check is unchanged; no production code was
+touched by the correction. Recorded under D-10 in NEXT.md. Post-correction reruns (final image
+`704fefba74fa`, which supersedes `2a317019b5b3` only by baking this
+gate correction + documentation; the operator ruled the two-worker
+suite evidence remains valid): host `--host-drift` PASS 218/218 zero
+skipped (218, not 217 — the mandated commit-resolves verification is
+its own check); in-container normal mode PASS 198 with only the
+by-design operator-local-images skip; `gate_ffa1_auto.py` — the FIRST
+run in the rebuild chain FAILED 1 of 35 with the failing check line
+NOT captured (the chain kept only a 3-line tail; an orchestration
+capture defect, recorded honestly), then THREE consecutive clean PASS
+35/35 runs on the same image, including a backend-restart attempt and
+an exact-sequence recreation+pr25-first attempt that both failed to
+reproduce it. Probable cause — the first boot of a freshly built
+image settling the DB (idempotent schema patches / WAL checkpoint)
+while section 8 fingerprinted it — is DIAGNOSIS, not evidence.
+Operational lesson: let the backend settle after a rebuild before the
+first hermeticity-fingerprinting gate run, and never truncate gate
+output in an evidence chain.
+
+### Close (2026-09-04)
+
+Preconditions met: authoritative in-container `gate_ffa1_auto.py`
+PASS 35/35 zero skipped (three consecutive reproductions on final
+image `704fefba74fa`); the operator walked and signed
+`gate_ffa1_visual.md` YES/YES/YES on 2026-09-04 — with the honest
+caveat, preserved verbatim in the sign-off, that Step 2's two
+content-digest strings arrived as unfilled template placeholders and
+byte identity rests on the operator's YES plus gate section 6's
+independent machine evidence. Full /lf-gate chain: 591 tests passed
+in BOTH worker states, all 22 hermetic roster scripts + PR-3
+static/live + 9B + scope audit + Phase 14 frontend green; the PR-2.5
+host-drift FAIL and its corrected 218/218 PASS, the out-of-contract
+host gate_ffa1 invocation error, and the uncaptured 1/35 first-run
+transient are all preserved above exactly as they happened. No
+reference JPG staged or tracked; no probe/render artifact committed.
+Closed as one commit on `main`. Next: FF-A2 (the ref-08 primitive)
+via `/lf-next`; FF-A1's foundation stays dormant until it ships.
+
+**Definitive run (final image `4ff126586ec3`, rebuilt from the final
+working tree, identical at start and end; no docker-cp anywhere)**:
+51/51 focused tests (`51 passed, 2 warnings in 41.63s`);
+`gate_ffa1_auto.py` PASS — all 35 checks, zero skipped sections (67
+real designs legacy-clean, real DB byte-identical, 20-attempt
+impossible-PASS proof, torus_ring genus 1 with volume cross-diff
+0.083 %); full regression suite `591 passed, 3 warnings in 649.71s
+(0:10:49)` (540 pre-slice + 51 new). Frontend
+`gate_phase14_auto.py --frontend-only` PASS (typecheck + production
+build). $0 throughout; no providers.

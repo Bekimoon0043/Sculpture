@@ -317,15 +317,38 @@ def _data_fingerprint():
     return db_sha, listing
 
 
+#: The PR-2.5 discovery close commit, pinned by FULL hash (operator
+#: ruling 2026-09-04, the fifth D-10-class correction): the original
+#: section 12 asserted "no production drift" against the LIVE working
+#: tree vs HEAD — a slice-scoped promise in a permanent gate, which
+#: correctly failed the moment FF-A1 carried legitimate uncommitted
+#: backend work. The permanent truth this section records is HISTORICAL:
+#: the discovery commit itself changed nothing under backend/app,
+#: config or schemas.
+DISCOVERY_CLOSE_COMMIT = "5cb0af3e2445c09b7426037fb8d02104be1ffeae"
+
+
 def host_drift():
     section("12 host drift check (--host-drift)")
     try:
+        resolved = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet",
+             DISCOVERY_CLOSE_COMMIT + "^{commit}"],
+            capture_output=True, text=True, cwd=str(REPO), timeout=60)
+        if not ok("12", "discovery close commit %s resolves"
+                  % DISCOVERY_CLOSE_COMMIT[:12],
+                  resolved.returncode == 0
+                  and resolved.stdout.strip() == DISCOVERY_CLOSE_COMMIT,
+                  resolved.stdout.strip() or resolved.stderr.strip()):
+            return
         diff = subprocess.run(
-            ["git", "diff", "--name-only", "HEAD", "--", "backend/app",
-             "config", "schemas"], capture_output=True, text=True,
-            cwd=str(REPO), timeout=60)
+            ["git", "diff", "--name-only",
+             DISCOVERY_CLOSE_COMMIT + "~1", DISCOVERY_CLOSE_COMMIT, "--",
+             "backend/app", "config", "schemas"],
+            capture_output=True, text=True, cwd=str(REPO), timeout=60)
         touched = [ln for ln in diff.stdout.splitlines() if ln.strip()]
-        ok("12", "backend/app, config, schemas untouched vs HEAD",
+        ok("12", "the discovery commit changed no backend/app, config or "
+                 "schemas paths (historical, permanent)",
            diff.returncode == 0 and not touched, ", ".join(touched))
         tracked = subprocess.run(
             ["git", "ls-files", "briefs/freeform_references"],

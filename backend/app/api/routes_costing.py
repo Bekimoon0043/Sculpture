@@ -16,7 +16,11 @@ from fastapi import APIRouter, HTTPException, Response
 from app.core.config import load_config_bundle
 from app.costing.bom import build_bom
 from app.costing.budget import BudgetViolation, check_budget
-from app.costing.drivers import drivers_for_assembly, drivers_from_validation
+from app.costing.drivers import (
+    IncompleteMassError,
+    drivers_for_assembly,
+    drivers_from_validation,
+)
 from app.costing.report import render_bom
 from app.db.database import get_default_db
 from app.db.models import DesignRow, ValidationReportRow
@@ -135,11 +139,24 @@ def _bom_for(design_id: str, *, reproducible: bool = False):
     if material is None:
         raise HTTPException(
             409, f"design material {material_id!r} is not in materials.yaml")
-    drivers = (
-        drivers_for_assembly(report, params.get("manifest"))
-        if isinstance(report, AssemblyValidationReport)
-        else drivers_from_validation(report)
-    )
+    try:
+        drivers = (
+            drivers_for_assembly(report, params.get("manifest"))
+            if isinstance(report, AssemblyValidationReport)
+            else drivers_from_validation(report)
+        )
+    except IncompleteMassError as exc:
+        # FF-A1 (ADR-065): an incomplete mass can never price anything —
+        # material, transport and crane lines all derive from it. The BOM
+        # and every quote are not_computable until the named inputs exist.
+        raise HTTPException(409, {
+            "error": "incomplete_mass",
+            "message": ("costing is not computable: the design's mass is "
+                        "INCOMPLETE and a known-geometry mass must never be "
+                        "priced as a total (ADR-065)"),
+            "known_geometry_mass_kg": exc.known_geometry_mass_kg,
+            "missing_mass_inputs": list(exc.missing_mass_inputs),
+        }) from exc
     bom = build_bom(bundle.costing, drivers,
                     material_id, material, design_id=design_id,
                     spec_hash=spec_hash,

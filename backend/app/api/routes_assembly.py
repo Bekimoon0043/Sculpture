@@ -71,6 +71,11 @@ from app.geometry.package_class import (
     select_reports,
 )
 from app.geometry.scene_glb import export_scene_glb
+from app.geometry.freeform_validation import (
+    FREEFORM_INTEGRITY_GATE,
+    run_freeform_integrity,
+)
+from app.geometry.mass_model import required_validation_gates
 from app.geometry.validate import validate_assembly
 
 log = logging.getLogger("luxuryform.api.assembly")
@@ -400,6 +405,18 @@ def persist_assembly_design(
 
     gate_statuses = {"assembly_mesh": "pass" if mesh_report.passed else "fail"}
     gate_statuses.update({name: r.status for name, r in layered_reports.items()})
+
+    # FF-A1 (ADR-065): when the manifest's persisted applicability snapshot
+    # requires geometry-integrity evidence, run it HERE — same validation
+    # operation, same persistence point, same structural run linkage (and
+    # the same D-24 identity gap) as every other row. Dormant until a
+    # primitive sets REQUIRES_FREEFORM_INTEGRITY; no registry primitive
+    # does in FF-A1.
+    integrity_report: dict[str, Any] | None = None
+    if FREEFORM_INTEGRITY_GATE in required_validation_gates(manifest):
+        integrity_report = run_freeform_integrity(solid)
+        gate_statuses[FREEFORM_INTEGRITY_GATE] = integrity_report["status"]
+
     overall = worst_status(gate_statuses.values())
 
     now = datetime.now(timezone.utc).isoformat()
@@ -459,6 +476,16 @@ def persist_assembly_design(
                     passed=1 if report.status == "pass" else 0,
                     status=report.status,
                     numbers_json=json.dumps(report.model_dump_wire(), sort_keys=True),
+                )
+            )
+        if integrity_report is not None:
+            session.add(
+                ValidationReportRow(
+                    id=str(uuid.uuid4()), created_at=now, design_id=design_id,
+                    gate_name=FREEFORM_INTEGRITY_GATE,
+                    passed=1 if integrity_report["status"] == "pass" else 0,
+                    status=integrity_report["status"],
+                    numbers_json=json.dumps(integrity_report, sort_keys=True),
                 )
             )
 
@@ -704,7 +731,23 @@ def _design_classification(design_id: str) -> Classification:
             except (ValueError, TypeError):
                 report = {}
             tuples.append((r.gate_name, r.created_at or "", r.id, report))
-    return classify_reports(select_reports(tuples))
+        # FF-A1 (ADR-065): the applicability snapshot lives in the design's
+        # PERSISTED manifest. A design row without a readable manifest has
+        # no snapshot — the legacy interpretation — but a snapshot that
+        # exists is honored verbatim, never re-derived from the registry.
+        design_row = session.get(DesignRow, design_id)
+        stored_manifest: dict[str, Any] = {}
+        if design_row is not None and design_row.parameter_json:
+            try:
+                stored = json.loads(design_row.parameter_json)
+                if isinstance(stored, dict) and isinstance(
+                        stored.get("manifest"), dict):
+                    stored_manifest = stored["manifest"]
+            except (ValueError, TypeError):
+                stored_manifest = {}
+    return classify_reports(
+        select_reports(tuples),
+        required_validation_gates=required_validation_gates(stored_manifest))
 
 
 def _refuse_fabrication_download(design_id: str, what: str,
@@ -887,7 +930,11 @@ def list_designs(
             "element_count": len(elements),
             "primitives": [e.get("primitive") for e in elements],
             "element_ids": [e.get("element_id") for e in elements],
+            # FF-A1 (ADR-065): None (JSON null) when incomplete — never
+            # zero; the mass_model block, when present, names what is
+            # missing so no surface shows a bare partial figure as total.
             "total_mass_kg": manifest.get("total_mass_kg"),
+            "mass_model": manifest.get("mass_model"),
             "overall_status": worst_status(statuses.values()) if statuses else None,
             "glb_url": f"/api/geometry/assembly/{row.id}.glb",
             "scene_glb_url": f"/api/geometry/assembly/{row.id}/scene.glb",

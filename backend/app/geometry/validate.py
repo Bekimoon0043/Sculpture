@@ -204,7 +204,10 @@ class AssemblyValidationReport(BaseModel):
     degenerate_face_count: int
     face_count: int
     element_masses_kg: dict[str, float]
-    total_mass_kg: float
+    #: None when the manifest's mass truth is incomplete (FF-A1, ADR-065)
+    #: — never zero. The check row then carries the labeled known-geometry
+    #: figure instead of posing a partial sum as a total.
+    total_mass_kg: float | None
     volume_crosscheck: VolumeCrossCheck
     passed: bool
 
@@ -226,8 +229,18 @@ class AssemblyValidationReport(BaseModel):
             {"check": "element_masses_kg",
              "value": {k: round(v, 3) for k, v in self.element_masses_kg.items()},
              "passed": all(v > 0 for v in self.element_masses_kg.values())},
-            {"check": "total_mass_kg", "value": round(self.total_mass_kg, 3),
-             "passed": self.total_mass_kg > 0},
+            ({"check": "total_mass_kg", "value": round(self.total_mass_kg, 3),
+              "passed": self.total_mass_kg > 0}
+             if self.total_mass_kg is not None else
+             # Incomplete mass (ADR-065): the row shows the labeled
+             # known-geometry figure; `passed` verifies that figure's
+             # sanity — it is NOT a claim that a total exists.
+             {"check": "total_mass_kg",
+              "value": {"mass_complete": False,
+                        "known_geometry_mass_kg":
+                            round(sum(self.element_masses_kg.values()), 3),
+                        "total_mass_kg": None},
+              "passed": sum(self.element_masses_kg.values()) > 0}),
             {"check": "volume_crosscheck",
              "value": (
                  f"trimesh {cc.trimesh_volume_mm3:.3f} vs brep "
@@ -289,7 +302,8 @@ def validate_assembly(glb_path: str | Path, manifest: dict) -> AssemblyValidatio
         degenerate_face_count=degenerate,
         face_count=int(len(mesh.faces)),
         element_masses_kg=element_masses,
-        total_mass_kg=float(manifest["total_mass_kg"]),
+        total_mass_kg=(float(manifest["total_mass_kg"])
+                       if manifest.get("total_mass_kg") is not None else None),
         volume_crosscheck=crosscheck,
         passed=passed,
     )

@@ -31,6 +31,7 @@ from typing import Any
 
 from app.geometry.export_formats import DWG_SKP_README, ExportResult
 from app.geometry.kernel import step_timestamp_for
+from app.geometry.mass_model import required_validation_gates
 from app.geometry.package_class import (
     CLASS_CLEAN,
     CLASS_PRE_FABRICATION,
@@ -271,7 +272,12 @@ def build_luxexchange_package(
         geometry_hash_matches = step_sha == recorded_hash
 
     classification = classify_reports(
-        validation_reports or {}, geometry_hash_matches=geometry_hash_matches)
+        validation_reports or {}, geometry_hash_matches=geometry_hash_matches,
+        # FF-A1 (ADR-065): the PERSISTED applicability snapshot decides
+        # which extra integrity evidence this design must carry — never
+        # today's registry. Missing/failed/indeterminate => PackageRefused.
+        required_validation_gates=required_validation_gates(
+            assembly_manifest or {}))
     if classification.package_class == CLASS_REFUSED:
         raise PackageRefused(classification.reasons)
     prefab = classification.package_class == CLASS_PRE_FABRICATION

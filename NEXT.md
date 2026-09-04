@@ -5,7 +5,11 @@ the start of every session (`/lf-orient`) and rewritten at the end of every
 slice (`/lf-close`). If this file and a phase plan disagree, this file is
 stale and must be corrected in the same commit as the work.
 
-Last updated: 2026-09-03 — **LF-103A CLOSED 2026-09-02 (e32805f)** and
+Last updated: 2026-09-04 — **FF-A1 CLOSED** (ADR-065, see the queue
+entry: incomplete-mass truth + production freeform_integrity_v1, an
+internal foundation with NO user-facing capability; visual gate signed
+2026-09-04 with the unpasted-digest caveat recorded; next is FF-A2 via
+`/lf-next`). Before that: **LF-103A CLOSED 2026-09-02 (e32805f)** and
 the **free-form DISCOVERY slice CLOSED 2026-09-03** (ADR-064), closed
 strictly as a DISCOVERY result, NOT completed capability:
 **reference-faithful geometry and user-facing free-form capability
@@ -74,6 +78,7 @@ workflow controls, folded into PR-7B) ruled 2026-08-28.
 | **Master Scope audit vs owner's 30-system scope** | **31.6/100 at `bfa5a77` — approximately one-third complete; only Geometry Integrity ≥4/5 among safety-critical systems** | `SCOPE.md`, `DEVELOPMENT_AUDIT.md`, ADR-062 |
 | **LF-103A — export boundary enforces the gate verdict** | **CLOSED 2026-09-02** | ADR-063; auto gate + 23-script roster PASS on `9fe4c4328116`, 514 both worker states; visual gate signed 2026-09-02 |
 | **PR-2.5 free-form DISCOVERY (not capability)** | **CLOSED 2026-09-03; visual Step 2 = NO — probe forms not reference-faithful; capability UNBUILT** | ADR-064; 540 both worker states + 24-script roster on `52209e4a6eea`; BREP-first approved with conditions; STEP canonical confirmed |
+| **FF-A1 — incomplete-mass truth + freeform_integrity_v1 (internal foundation, no user-facing capability)** | **CLOSED 2026-09-04; visual signed (digest strings not pasted — caveat recorded)** | ADR-065; 591 both worker states + 25-script roster; in-container gate 35/35 zero skipped ×3 on `704fefba74fa` (one uncaptured 1/35 first-run transient recorded honestly); fifth D-10 instance corrected in the PR-2.5 host gate (218/218) |
 
 **Suite and roster state:** after PR-2 the pytest suite (475) passed
 with the render worker UP and with it removed — both runs recorded
@@ -82,11 +87,12 @@ after LF-103A the suite was 514 on `9fe4c4328116` (ADR-063); after the
 discovery close the suite is **540, passed in BOTH worker states on
 definitive image `52209e4a6eea` (2026-09-03)** — verbatim chain in
 ADR-064. The
-auto-gate roster is 24 scripts (PR-2.5 discovery added
+auto-gate roster is 25 scripts (FF-A1 added `gate_ffa1_auto.py`,
+hermetic, in the backend container — ADR-065; PR-2.5 discovery added
 `gate_pr25_discovery_auto.py`, SPLIT-MODE: repo sections run anywhere;
 artifact + operator-local reference sections skip loudly when their
 inputs are absent; `--host-drift` git section runs only on the host —
-ADR-064); before that it was 23: 20 in-container with the worker removed
+ADR-064); before those it was 23: 20 in-container with the worker removed
 (17 phase gates + `gate_pr1` + `gate_pr2` + `gate_lf103a`, hermetic),
 `gate_pr3_auto` in both modes (static via stdin in-container, live on
 the host), `gate_phase9b_auto` with the worker up, and
@@ -281,9 +287,34 @@ binding; the slice notes below carry the ones that bite.
       DISCOVERY CLOSED 2026-09-03 — strictly a discovery result, NOT
       capability: visual Step 2 = NO, reference-faithful geometry and
       user-facing free-form capability remain UNBUILT. The
-      IMPLEMENTATION slice(s) are next, via `/lf-next`, under the
-      owner's CHANGED acceptance gate (eight conditions in
-      `PR2_5_FREEFORM_DISCOVERY.md`).** Delivered: the three-approach comparison (BREP /
+      IMPLEMENTATION slice(s) run via `/lf-next` under the owner's
+      CHANGED acceptance gate (eight conditions in
+      `PR2_5_FREEFORM_DISCOVERY.md`), split FF-A1 → FF-A2 (approved
+      2026-09-03).**
+- [x] **FF-A1 — Incomplete-mass truth + production free-form
+      validation (CLOSED 2026-09-04, ADR-065: full two-worker-state
+      roster evidence + operator visual gate signed 2026-09-04 —
+      Step 2's digest strings arrived as unpasted placeholders, caveat
+      recorded verbatim in `gate_ffa1_visual.md`).** Internal
+      truth foundation, no user-facing capability: `MassTruth`
+      (total None never zero; malformed fails closed; frozen
+      legacy-ten versioning seam keeps every old byte identical — 67
+      real designs proven legacy-clean), all 28 audited mass consumers
+      refuse/label incomplete mass (AST census + behavioral tests +
+      20-attempt impossible-PASS proof), `freeform_integrity_v1`
+      production stack persisted via the standard validation rows with
+      missing/failed/indeterminate ⇒ REFUSED for applicable designs
+      (persisted applicability snapshot, never the live registry;
+      inherits D-24 — CLEAN stays unreachable). Evidence: red-first on
+      `52209e4a6eea`; a development run caught + fixed a real
+      regression (7 costing tests: the first incompleteness check
+      failed closed on element-less legacy manifests); then the
+      definitive chain on final image `4ff126586ec3` — 51/51 new
+      tests, `gate_ffa1_auto.py` PASS 35/35 zero skipped (roster
+      script 25), full suite **591 passed** (540 + 51), frontend
+      typecheck PASS. Both runs verbatim in ADR-065. **FF-A2 (the
+      ref-08 primitive) returns through `/lf-next` after FF-A1
+      closes.** Delivered: the three-approach comparison (BREP /
       procedural mesh / import) with NO preselection, run in the
       geo-worker sandbox twice at real 3.5–5.0 m scale — all five
       primary geometric languages constructed as single kernel solids
@@ -415,11 +446,20 @@ Pick one up when a slice finishes early. Each is one commit.
       (`pycollada`, `networkx`) — a download, so the operator's call.
 - [ ] **D-8 — The Council panel has no `use_precedents` toggle.**
 - [ ] **D-10 — Gate examples with a built-in expiry.** Bit three times
-      (6a1 exact-four, 6a2 `water_wall`, 6a1 "slice C" string), and a
+      (6a1 exact-four, 6a2 `water_wall`, 6a1 "slice C" string), a
       fourth instance surfaced 2026-09-02: `gate_scope_audit_auto.py`
       §5 enforces queue order via FIRST-OCCURRENCE of "LF-103A" vs
       "PR-2.5" in NEXT.md, which any status paragraph can trip (worked
-      around by wording, not by weakening the gate). The tell
+      around by wording, not by weakening the gate), and a FIFTH bit
+      for real 2026-09-04: `gate_pr25_discovery_auto.py` §12 asserted
+      "no production drift" against the LIVE working tree vs HEAD — a
+      slice-scoped promise in a permanent roster gate, which correctly
+      FAILED during FF-A1's uncommitted backend work. Corrected by
+      operator ruling (ADR-065 evidence): the check now pins the
+      discovery close commit `5cb0af3e2445…` by full hash (must
+      resolve, else FAIL) and asserts THAT COMMIT changed no
+      backend/app, config or schemas paths — a permanent historical
+      truth; the timeless no-JPG-tracked check is unchanged. The tell
       is a roadmap phrase inside an assertion. Full sweep folded into
       PR-5; re-sweep before slice D ever widens the registry.
 - [ ] **D-11 — Radial segmentation for round vessels.** Needs the

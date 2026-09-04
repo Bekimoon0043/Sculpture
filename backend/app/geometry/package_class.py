@@ -53,6 +53,12 @@ REQUIRED_LAYERED_GATES = ("structure_static_v1", "hydraulics", "fabrication")
 MESH_GATE = "assembly_mesh"
 LEGACY_MESH_GATE = "mesh"
 
+#: FF-A1 (ADR-065): the only names a manifest's persisted
+#: required_validation_gates snapshot may carry today. An unknown
+#: required name fails closed at classification — it can never have
+#: passing evidence.
+KNOWN_REQUIRED_GATES = frozenset({"freeform_integrity_v1"})
+
 _KNOWN_STATUSES = frozenset({"pass", "warn", "fail", "needs_input"})
 
 _ENTRY_MARK = "PRE-FABRICATION"
@@ -170,6 +176,7 @@ def classify_reports(
     reports: dict[str, dict[str, Any]],
     *,
     geometry_hash_matches: bool | None = None,
+    required_validation_gates: tuple[str, ...] | list[str] = (),
 ) -> Classification:
     """Classify a design's persisted evidence.
 
@@ -178,6 +185,18 @@ def classify_reports(
     verified", which — like everything unproven here — caps at
     PRE-FABRICATION (validation rows carry no cryptographic run identity;
     see the module docstring and ADR-063).
+
+    `required_validation_gates` (FF-A1, ADR-065): the PERSISTED
+    applicability snapshot from the design's assembly manifest — never
+    today's registry or config. For every gate named here, a MISSING,
+    FAILED or INDETERMINATE row REFUSES (owner ruling 2026-09-03): a
+    marked PRE-FABRICATION package of possibly self-intersecting CAD is
+    still CAD in a workshop's hands. An unknown or malformed required
+    name can never have passing evidence, so it refuses too. Legacy
+    manifests carry no snapshot and are untouched by this parameter.
+    Its rows share the same structural run linkage — and the same D-24
+    identity gap — as every other row; this parameter does not and must
+    not make CLEAN reachable.
     """
     reasons: list[str] = []
     warrant: list[dict[str, Any]] = []
@@ -185,6 +204,54 @@ def classify_reports(
 
     reports = dict(reports or {})
     mesh_name, mesh = _mesh_report(reports)
+
+    # -- extra required gates (persisted applicability, ADR-065) -----------
+    extra_refusals: list[str] = []
+    for gate in tuple(required_validation_gates or ()):
+        if gate not in KNOWN_REQUIRED_GATES:
+            statuses[gate] = "needs_input"
+            extra_refusals.append(
+                f"required validation gate {gate!r} is unknown or the "
+                "persisted required_validation_gates snapshot is malformed "
+                "— fails closed (ADR-065)")
+            warrant.append(_missing_row(gate))
+            continue
+        report = reports.get(gate)
+        if report is None:
+            statuses[gate] = "needs_input"
+            extra_refusals.append(
+                f"{gate}: MISSING — this design's persisted manifest "
+                "requires geometry-integrity evidence and none exists")
+            warrant.append(_missing_row(gate))
+            continue
+        raw_status = report.get("status") if isinstance(report, dict) else None
+        if raw_status == "pass":
+            statuses[gate] = "pass"
+            continue
+        if raw_status == "fail":
+            statuses[gate] = "fail"
+            fail_rows = [r for r in _check_rows(gate, report)
+                         if r.get("status") == "fail"]
+            for row in fail_rows:
+                warrant.append(row)
+                extra_refusals.append(
+                    f"{gate}: {row['check']} FAIL "
+                    f"(value {row.get('value')}, limit {row.get('limit')} "
+                    f"{row.get('units') or ''})".rstrip())
+            if not fail_rows:
+                extra_refusals.append(f"{gate}: FAIL")
+            continue
+        statuses[gate] = "needs_input"
+        extra_refusals.append(
+            f"{gate}: INDETERMINATE (status {raw_status!r}) — the "
+            "integrity stack could not reach a verdict; fails closed "
+            "(ADR-065)")
+        for row in _check_rows(gate, report):
+            if row.get("status") != "pass":
+                warrant.append(row)
+    if extra_refusals:
+        return Classification(CLASS_REFUSED, extra_refusals, warrant,
+                              statuses)
 
     # -- collect statuses; missing evidence is needs_input, never pass -----
     if mesh_name is None:

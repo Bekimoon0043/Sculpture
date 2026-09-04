@@ -92,7 +92,12 @@ def derive_tags(
         "element_count": len(elements),
         "height_m": round(height_m, 3),
         "footprint_m": round(footprint_m, 3),
-        "total_mass_kg": round(float(manifest.get("total_mass_kg") or 0.0), 1),
+        # FF-A1 (ADR-065): None — never zero, never a partial sum — when
+        # the manifest's mass truth is incomplete; the flag says which.
+        "total_mass_kg": (
+            round(float(manifest["total_mass_kg"]), 1)
+            if manifest.get("total_mass_kg") is not None else None),
+        "mass_complete": manifest.get("total_mass_kg") is not None,
         "has_water": bool(water.get("has_water")),
         "gate_profile_id": request.get("gate_profile_id"),
         "overall_status": overall_status,
@@ -362,9 +367,12 @@ def precedent_block(precedents: list[dict[str, Any]]) -> str:
             f"  materials: {', '.join(tags.get('materials') or []) or 'unknown'}"
             f" | primitives: {', '.join(tags.get('primitives') or []) or 'unknown'}"
         )
+        mass_text = (f"{tags.get('total_mass_kg')} kg"
+                     if tags.get("total_mass_kg") is not None
+                     else "incomplete (ADR-065)")
         lines.append(
             f"  height {tags.get('height_m')} m, footprint {tags.get('footprint_m')} m,"
-            f" mass {tags.get('total_mass_kg')} kg,"
+            f" mass {mass_text},"
             f" water: {'yes' if tags.get('has_water') else 'no'}"
         )
         lines.append(
