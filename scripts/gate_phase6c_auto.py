@@ -146,15 +146,19 @@ def main() -> int:
            sha_b == DEFAULT_BASIN_STEP_SHA256)
 
     # ------------------------------------------------------------------
-    _section(2, "REGISTRY & SURFACE — ten primitives, two-tier detail")
+    _section(2, "REGISTRY & SURFACE — the C1 ten, two-tier detail")
+    # Operator ruling 2026-08-26 (recorded in gate_phase6a1_auto.py),
+    # applied here by the FF-A2-approved conversion (ADR-066): an earlier
+    # slice's gate asserts its primitives are a SUBSET; the exact-set
+    # assertion belongs to the newest slice's gate (gate_ffa2_auto).
     expected = {
         "tiered_cascade", "basin_round", "plinth", "sculptural_column",
         "basin_rect", "stepped_monolith", "water_wall", "torus_ring",
         "blade_fin_array", "lotus_petal_array",
     }
     print(f"registered: {', '.join(sorted(PRIMITIVES))}")
-    _check(failures, "registry lists exactly the ten slice-A1+C1 primitives",
-           set(PRIMITIVES) == expected)
+    _check(failures, "registry contains the ten slice-A1+C1 primitives",
+           expected <= set(PRIMITIVES))
     from app.council import prompts
 
     surface = prompts.registry_surface(["torus_ring", "plinth"])

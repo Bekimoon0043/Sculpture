@@ -406,17 +406,32 @@ def legacy_compat() -> None:
         skipped("6 legacy byte-compat on real designs",
                 "no production DB on this checkout")
         return
-    section("6 legacy byte-compat on real persisted designs (read-only)")
+    section("6 legacy byte-compat + key consistency on real persisted "
+            "designs (read-only)")
+    # D-10 INSTANCE SIX (corrected by operator ruling 2026-09-07): the
+    # original check asserted EVERY stored manifest is legacy-clean — a
+    # truth of the FF-A1 era with a built-in expiry, which correctly
+    # FAILED 1-of-35 on 2026-09-07 the moment the operator persisted the
+    # first real freeform_loop design (70b12dd3…) during the FF-A2
+    # visual walk. That FAIL is preserved verbatim in ADR-066/NEXT.md.
+    # The timeless checks below state ADR-065 decision 2 exactly:
+    # legacy-clean applies to ALL-LEGACY manifests; new keys and a
+    # non-legacy primitive must imply each other, both directions.
     import sqlite3
-    from app.geometry.mass_model import required_validation_gates
+    from app.geometry.mass_model import (
+        LEGACY_COMPLETE_MASS_PRIMITIVES,
+        required_validation_gates,
+    )
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
         rows = con.execute(
             "SELECT id, parameter_json FROM designs").fetchall()
     finally:
         con.close()
-    checked = 0
-    offenders = []
+    n_legacy = 0
+    n_nonlegacy = 0
+    legacy_offenders = []
+    key_offenders = []
     for design_id, raw in rows:
         try:
             stored = json.loads(raw or "{}")
@@ -425,16 +440,36 @@ def legacy_compat() -> None:
         manifest = (stored or {}).get("manifest") or {}
         if not manifest:
             continue
-        checked += 1
-        if "mass_model" in manifest or \
-                "required_validation_gates" in manifest:
-            offenders.append((design_id, "new keys present"))
-        if required_validation_gates(manifest) != ():
-            offenders.append((design_id, "snapshot not empty"))
-        if manifest.get("total_mass_kg") in (None, 0):
-            offenders.append((design_id, "stored total is null/zero"))
-    ok("6", "every stored manifest is legacy-clean (%d checked)" % checked,
-       not offenders, str(offenders[:3]))
+        prims = {e.get("primitive") for e in manifest.get("elements", [])}
+        all_legacy = prims <= LEGACY_COMPLETE_MASS_PRIMITIVES
+        has_new_keys = ("mass_model" in manifest
+                        or "required_validation_gates" in manifest)
+        if all_legacy:
+            n_legacy += 1
+            if has_new_keys:
+                legacy_offenders.append((design_id, "new keys present"))
+            if required_validation_gates(manifest) != ():
+                legacy_offenders.append((design_id, "snapshot not empty"))
+            if manifest.get("total_mass_kg") in (None, 0):
+                legacy_offenders.append(
+                    (design_id, "stored total is null/zero"))
+        else:
+            n_nonlegacy += 1
+            # No silent validation bypass: an incomplete-capable design
+            # must carry its truth keys explicitly.
+            if "mass_model" not in manifest:
+                key_offenders.append((design_id, "non-legacy without "
+                                                 "mass_model"))
+            if "required_validation_gates" not in manifest:
+                key_offenders.append((design_id, "non-legacy without "
+                                                 "required_validation_gates"))
+    print("  designs: %d all-legacy, %d non-legacy (incomplete-capable)"
+          % (n_legacy, n_nonlegacy))
+    ok("6", "every ALL-LEGACY manifest is legacy-clean (%d checked)"
+       % n_legacy, not legacy_offenders, str(legacy_offenders[:3]))
+    ok("6", "new keys <=> non-legacy primitive, both directions "
+       "(%d non-legacy checked)" % n_nonlegacy,
+       not key_offenders, str(key_offenders[:3]))
 
 
 def frontend_truth() -> None:

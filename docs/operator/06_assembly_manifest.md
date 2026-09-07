@@ -98,3 +98,29 @@ the same STEP bytes, the same endpoints as a build you run yourself:
 - If `design_id` is null on a successful fabrication, the response's
   `artifacts.design_bridge_error` says why. The fabrication itself still
   passed; nothing is faked to look complete.
+
+## Free-form designs (FF-A2, ADR-066)
+
+A `freeform_loop` design's manifest carries four keys legacy manifests
+never have (legacy bytes are untouched — ADR-065):
+
+- `mass_model` — the honest mass: `total_mass_kg` is **null** (the
+  armature is undesigned), and `known_geometry_mass_kg` is every
+  modeled 316L volume (lens shell + interface plate) × density. Every
+  screen and check treats null as "incomplete", never as zero.
+- `required_validation_gates` — the persisted applicability snapshot:
+  export refuses outright if the `freeform_integrity_v1` row is
+  missing, failed or indeterminate.
+- `expected_topology` — the declared shape contract (one solid, one
+  window, a sealed internal cavity); the integrity check FAILS any
+  build that does not match it exactly.
+- `wall_measurement` — the measured shell wall (`brepextrema_v1`).
+  This is a measurement, **never approval**: the gate shows
+  `geometric_wall_measurement` as needs-input unless the measured wall
+  actually confirms the nominal gauge, and `fabrication_wall_approval`
+  and `forming_radius` always wait for your fabricator. The
+  `bore_to_cavity_clearance` row is the measured proof the window bore
+  never touches the sealed cavity — it FAILS below wall − 0.5 mm.
+
+Every free-form export seals **PRE-FABRICATION** at best, with the
+warrant naming exactly what a professional still owes.

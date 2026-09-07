@@ -4336,3 +4336,347 @@ impossible-PASS proof, torus_ring genus 1 with volume cross-diff
 (0:10:49)` (540 pre-slice + 51 new). Frontend
 `gate_phase14_auto.py --frontend-only` PASS (typecheck + production
 build). $0 throughout; no providers.
+
+
+## ADR-066 - FF-A2: freeform_loop, the first free-form primitive (2026-09-04)
+
+### Context
+
+FF-A2 was planned via /lf-next through four operator rounds (v1 -> 7
+amendments -> v3 measurement record -> v4 final corrections), approved
+2026-09-04 with binding conditions (bands unchanged; wall 6-20 with
+3 mm embedment and >= 3 mm ligament; thin interface plate, never a
+structural-foundation claim; honest stop on any construction/topology/
+wall/fidelity failure; PRE-FABRICATION only; $0). Mid-build the
+approved tube-annulus construction FAILED development (evidence below);
+the owner ruled Option A: replace it with the hollow-lens + walled-
+window-bore construction (short delta approved same day, with three
+clarifications: the bore_center_height_fraction rename; the MEASURED
+BRepExtrema bore-to-cavity distance is authoritative, >= wall - 0.5 mm
+or FAIL, with no exact-clearance-by-construction claim; exact defaults
+and ranges recorded in PARAMETERS, this ADR and the gate transcript).
+
+### Decisions
+
+1. **Construction (owner delta, as built):** OUTER lens = one loft
+   along the straight vertical spine (2 tip vertices + 21 ellipse
+   stations; width/depth from a deterministic sin^0.8 profile warped to
+   the waist fraction; per-station y-offset = bow; per-station rotation
+   = twist). CAVITY = inner lens (sections drawn in by wall_mm, tips
+   pulled to the 2xwall profile crossing) minus the clearance cylinder
+   (bore + wall + 2 mm liner allowance, full-through). M = OUTER -
+   CAVITY - bore cylinder + interface plate (thickness = wall_mm,
+   embedment exactly 3 mm). Both lens tips are TRUNCATED wall_mm short
+   of the point - [arith] a formed 316L tip cannot be sharper than
+   min_internal_radius = wall, and the loft-to-vertex apex tessellates
+   degenerately (measured: 4 boundary/non-manifold edges; a blunting
+   sphere fused onto the degenerate cone fails silently at 2 solids).
+2. **The 2 mm bore-liner allowance [J, measured]:** growing an
+   ellipse's semi-axes by wall_mm is NOT a parallel offset; the +wall
+   corridor measured a 5.236 mm liner vs the 5.5 mm threshold, so the
+   corridor is bore + wall + 2 mm and the AUTHORITATIVE clearance is
+   the measured bore_to_cavity_mm (window-tube faces to the whole
+   cavity component, one BRepExtrema call): 7.978 mm at the defaults;
+   the fabrication gate FAILS below wall - 0.5 (owner clarification 2).
+3. **Parameters (owner clarification 3 - exact values):** height_mm
+   4250 [3500-5000, owner]; width_mm 2569 [1680-3600, img x owner];
+   depth_mm 900 [300-1800, J - not image-measurable, stated];
+   wall_mm 6 [6-20, arith embedment+ligament / mat]; section_twist_deg
+   20 [-90..90, J; direction landmark img]; wobble_mm 150 [+/-1250 and
+   <= 0.25 x height, J/owner]; plan_skew_ratio 0.15 [img +0.1466;
+   -0.30..0.30] = the bore's horizontal offset fraction (changed
+   meaning, approved); bore_width_mm 1110 [200-2000, img 0.4337xW];
+   bore_height_mm 1290 [200-2500, img aspect 0.864];
+   bore_center_height_fraction 0.485 [0.25-0.75, img 0.4854];
+   waist_height_fraction 0.45 [0.25-0.65, J]; base_plate_diameter_mm
+   600 [150-1500; floor = tip landing chord + 2x20 weld margin,
+   derived]; material_id stainless_316l_sheet ONLY. REMOVED (tube-
+   specific): taper_ratio, section_major_mm, section_minor_mm.
+   Constants: N_STATIONS 21 [J], PROFILE_EXPONENT 0.8 [J],
+   BORE_LINER_EXTRA_MM 2.0 [J measured], truncation = wall [arith].
+   316L-only is ENFORCED, not assumed: validate() refuses every other
+   material_id by name as an UNBUILT process; 316L is the SELECTED
+   PROTOTYPE MANUFACTURING HYPOTHESIS (owner ruling - the photograph
+   proves no material).
+4. **Topology contract enforced in production:**
+   freeform_validation.run_freeform_integrity gained an optional
+   expected-topology comparison (per-boundary-component census:
+   edge-connected face components of the welded tessellation, per-
+   component Euler/genus, cavities = negative signed volume under
+   consistent winding - networkx/scipy-free). The primitive declares
+   EXPECTED_TOPOLOGY {1 solid, 1 through-opening, 2 boundary
+   components, 1 sealed cavity, genus [1,1], euler [0,0], 0 extras};
+   assemble() persists it (single-applicable-primitive designs only)
+   and the persist hook passes THE SNAPSHOT, never the live registry;
+   any mismatch FAILS => REFUSED for applicable designs (ADR-065 d.5).
+   Without a declared contract the census is informational (FF-A1
+   rows unchanged).
+5. **Wall truth rows (fabrication gate):** geometric_wall_measurement
+   (calibrated brepextrema_v1; PASS only when the controls-proven
+   method measures min >= max(3 mm floor, wall - tol) AND max <= wall
+   + tol with junction exceedances itemized, tol = max(0.5 mm, 5%);
+   else needs_input - a 3.1 mm shell can never pass on the floor
+   alone); fabrication_wall_approval (ALWAYS needs_input - nominal
+   gauge is not engineering approval); forming_radius_mm (ALWAYS
+   needs_input, FABRICATOR-INPUT-REQUIRED); bore_to_cavity_clearance
+   (measured, FAIL below wall - 0.5). All four ride into the warrant
+   only while unresolved; the passing integrity verdict seals into
+   validation/freeform_integrity_v1.json, never the warrant.
+6. **Registry widening + the approved subset conversions:** PRIMITIVES
+   10 -> 11; gate_phase6c_auto.py:157 and test_slice_c.py:33 convert
+   exact-ten to ten-is-a-subset per the recorded 2026-08-26 convention;
+   the exact-eleven assertion lives in gate_ffa2_auto.py (roster
+   script 26). The frozen LEGACY_COMPLETE_MASS_PRIMITIVES ten is
+   untouched (permanent seam, ADR-065). The D-10 pre-widening sweep
+   found exactly those two exact-set sites; gate_phase6a1 was already
+   subset.
+7. **Fidelity instrumentation:** projection_metrics() rasterizes the
+   tessellation's front view (10 mm grid, deterministic) and measures
+   the six committed ref08_landmarks.json bands from geometry - pixel
+   comparison is never an auto-gate check. W/H + through-opening
+   preservation are HARD validate() constraints; the other bands are
+   fixture-fidelity checks in gate_ffa2_auto section 5, asserted
+   verbatim and never adjusted.
+
+8. **The mesh gate learns sealed cavities from the snapshot
+   (2026-09-05):** the first full chain run FAILED honestly —
+   `assembly_mesh: FAIL, body_count=2`: the Phase 2 mesh contract has
+   always demanded ONE mesh body, and a sealed hollow shell
+   legitimately tessellates as two closed surfaces (outer + cavity),
+   which cascaded into costing/export/warrant/determinism failures.
+   Fix: `validate_assembly` holds `body_count` to the PERSISTED
+   `expected_topology.boundary_components` when the manifest declares
+   one (exactly 2 for the lens — a tightening) and to exactly 1
+   otherwise (legacy behaviour byte-unchanged; stored rows and legacy
+   re-exports untouched because export reads persisted rows).
+9. **Integrity tessellation refined (1.0 mm, 0.1 rad) -> (0.5 mm,
+   0.05 rad) (2026-09-05):** the 5.0 m thin shell measured a 2.4-2.5 %
+   kernel-vs-mesh volume gap that did NOT converge with deflection
+   alone — measurement located the artifact in the ANGULAR tolerance
+   (0.1 rad = ~0.6 mm sagitta at R 500 mm, dominating on curved
+   shells). At the finer instrument the default lens agrees to 0.23 %
+   and the 5.0 m envelope to 0.02 % (measured at 0.25/0.03).
+   Strictly finer in both knobs — harder to fool; REL_VOL_TOL stays
+   0.02. Cost: integrity runs slower on monumental shells.
+10. **No predictive fold guard — loud build refusals instead
+   (measured, 2026-09-05):** a section-extent/spine-curvature guard
+   (0.75) was tried and DISPROVEN: it refused a proven-buildable
+   combination (ratio 0.85 at 3.5 m) while missing real kernel
+   failures (ratio 0.57 at 5.0 m — the cliff does not follow that
+   arithmetic). Removed. Instead, every construction stage's checks
+   raise a deterministic ConstraintViolation refusal (HTTP 422) with
+   the real stage numbers when the kernel's robustness cliff bites
+   (large twisted thin shells; silent no-op booleans measured at
+   5000x3200 with twist -90 at bow 600-900, and at waist fraction
+   0.25), and the measured cliff combinations are PINNED as refusal
+   tests so any future image that moves the cliff says so loudly.
+   Trade-off: some in-range extreme combinations refuse at build
+   rather than being predicted at validate() — recorded in
+   LIMITATIONS 22.
+
+### What this buys / gives up
+
+Buys: the first user-reachable free-form primitive, earned under the
+changed eight-condition acceptance gate, with FF-A1's whole truth
+foundation ACTIVE for the first time (incomplete mass, integrity-gated
+export, PRE-FABRICATION-only). Gives up: the lens surface is a lofted
+approximation whose real wall varies (measured, never claimed); the
+global wall minimum sits at the truncated tips and reports needs_input
+- the wall claim stays unearned until a professional rules the gauge;
+one fidelity band (rim_ratio) is measured against a landmark whose
+operational basis is under owner review (Evidence, below).
+
+### Development evidence - the FAILED tube-annulus construction (preserved per owner ruling; NOT capability)
+
+Red-first on pristine image 704fefba74fa: pytest exit 4 (four test
+files not found), gate exit 2 (script absent), registry 10 without
+freeform_loop. The originally-approved tube-annulus (butt-joined
+half-loft loop) then failed development, all measured in-container
+2026-09-04: 11-section half-lofts NECK on the strongly 3-D path (one
+half 5.088e8 mm3 vs ~1.7e9 expected; loft interpolates sections with
+no path); open multisection sweep REFUSED
+(BRepOffsetAPI_MakePipeShell MakeSolid StdFail_NotDone, then
+Standard_TypeMismatch - the ADR-064 PipeShell family); 3-section
+segments COLLAPSE (1.6e3 mm3, invalid); 40 ruled segments BREACH the
+cavity (1 boundary component, genus 3); 60 seal it (2 components,
+genus [1,1]) but the wall pinches to a measured 1.032 mm at the
+high-curvature shoulder (t=0.100) and does NOT improve with density
+(0.904 at n=100, 0.917 at n=140 - an intrinsic near-fold pinch, not
+chord sag); true-offset inner wires mis-rule against the outer
+ellipses and BREACH (genus 16); the kernel 3-D solid offset REFUSES
+on the C0 seams (both corner kinds); the reduced-axes station defect
+measured 5.183 mm at a 600/200 station. The fidelity sweep (wobble
+300-800, twist 30-90, sections 300-560, taper 0-0.45) measured
+void_aspect 0.39-0.43 vs [0.69, 1.03], rim 1.24-1.57, offset ~0 - and
+the projection argument (wobble moves limbs in DEPTH, which a front
+projection flattens) plus the width identity made the aspect band
+arithmetically unreachable for ANY tube parameterization. Reported;
+the owner ruled Option A (this construction).
+
+### Evidence - hollow-lens development runs (image 704fefba74fa via docker cp; the definitive chain on the rebuilt image is recorded below when run)
+
+Defaults: build 31-38 s, one valid solid, 1.066e8 mm3 (~853 kg total
+modeled 316L incl. the 13.6 kg plate at 8000 kg/m3); integrity PASS
+with the full topology contract (2 components, genus [1,1], 1 sealed
+cavity, volume cross-check 0.010-0.017); bore_to_cavity 7.978 mm PASS;
+wall min 1.666 / max 5.998 => geometric_wall_measurement needs_input
+(honest - the minimum sits at the truncated tips); fidelity measured:
+W/H 0.6061 PASS, void_width_fraction 0.4319 PASS, void_aspect 0.8605
+PASS, void_centroid 0.4839 PASS, void_offset 0.1496 PASS, rim_ratio
+0.6358 FAIL vs [1.6, 2.4] - with rims left/right/apex 1100/340/1730 mm
+against the photograph's own 1104/351/1774 mm under the same
+instrument: the geometry matches the reference to ~1-3% on every rim;
+the recorded 110px/55px ratio-2.0 landmark pair mixes a silhouette rim
+with a 3-D scoop band that no projection measure reproduces (the
+reference itself scores ~0.64 under the committed operational
+definition). The band is NOT weakened; the discrepancy is reported
+for an owner ruling.
+
+### Definitive evidence (2026-09-05, rebuilt image bd85f7d13fb7 — no
+### docker cp anywhere in this chain; 8 key files verified sha-identical
+### between the working tree and the baked image; image identical at
+### start and end of every run)
+
+Focused tests: 81 passed, 0 failed in 2379.71s (0:39:39) across
+test_freeform_loop (loop contract), test_wall_measurement (controls
+calibration + gate rule), test_freeform_topology (7-combination matrix
++ 3 pinned kernel-cliff refusals + mechanism tests) and
+test_freeform_chain (real API end to end). An earlier dev run recorded
+64173s wall-clock (17:49:33) — suspension-inflated overnight, the
+known environment class; functional evidence only.
+
+gate_ffa2_auto.py (roster script 26): **FAIL — 1 of 60 checks, all 8
+sections run, zero skipped** — the single failure is the standing
+fidelity question: rim_ratio measured 0.6416 vs band [1.6, 2.4].
+Everything else green, highlights: two-process STEP determinism
+pid=138 vs pid=148, both sha256
+c4136aec8495d4b715d2f2218759397560b18e9b263c26c314d31d4ad1d30842;
+topology contract [1,1]/2 components/1 sealed cavity PASS;
+authoritative bore-to-cavity clearance 7.978 mm PASS; wall min 1.666 /
+max 7.999 => geometric_wall_measurement needs_input (honest);
+fidelity: W/H 0.6061, void_width 0.428, void_aspect 0.8527,
+void_centroid 0.4834, void_offset 0.149 — five of six bands PASS;
+REFUSED on missing/failed/indeterminate rows (three 409s);
+PRE-FABRICATION sealed with the passing integrity verdict in
+validation/freeform_integrity_v1.json and an unresolved-only warrant;
+segmentation analysis volume-conserved to 0.000000%, over-envelope
+raised loudly; hermeticity: real DB byte-identical, data/exports
+unchanged, no JPG in the tree. (Capture note: the orchestration line
+printed exit 0 because the gate ran through a tee pipe — the pipe
+exit is an artifact of the capture; the verdict is the transcript
+banner: FAIL 1 of 60.)
+
+gate_ffa1_auto.py on the same image: PASS — all 35 checks, zero
+skipped (the census found no new unlisted mass consumers in FF-A2).
+
+The rim_ratio question, precisely: under the committed operational
+instrument (widest side rim at the void-centroid row / apex-column
+band) the built geometry measures rims left/right/apex within ~1-3%
+of the reference photograph itself (1100/340/1730 mm vs the photo
+1104/351/1774 mm), and the photo scores ~0.64 on the same instrument
+— but the approved band [1.6, 2.4] encodes the 110px/55px pixel pair
+whose 55px apex reading is a 3-D surface-scoop feature no projection
+can reproduce. The band was NOT touched; the gate FAILS honestly; the
+ruling on the landmark's operational basis is the owner s.
+
+11. **The rim_ratio ruling (owner option (a), 2026-09-05):** the band
+   was re-derived from the reference image under the SAME deterministic
+   projection instrument, with the acquisition and every raw number
+   recorded in ref08_landmarks.json: segmentation = mean(R,G,B) >= 160
+   AND max channel difference <= 20 inside a recorded 13-vertex ROI
+   polygon (excluding the bright facade rail that merges with the
+   sculpture s upper-right edge), binary closing 3x3 x1, largest
+   4-connected component; native 1280x959 pixel raster, y down, single
+   below-left perspective camera; image sha256 bfe1662b... Metric
+   renamed **projected_side_to_apex_band_ratio** and made continuous:
+   numerator = wider of the left/right rims at the void-centroid ROW
+   (122/67 px), denominator = occupied run from the silhouette top at
+   the void-centroid COLUMN (139 px at image-x 735; the retired
+   topmost-pixel column was discontinuous — it missed the void on the
+   reference and hit it on the geometry). **Exact reference result
+   122/139 = 0.877698; band = +/-20% = [0.7022, 1.0532].** The
+   geometry measures 0.9167 under the same definition — within 4.5% of
+   the reference. HISTORY PRESERVED, not rewritten: the original
+   110 px/55 px = 2.0 landmark and its [1.6, 2.4] band stand in
+   ref08_landmarks.json as rim_ratio_HISTORICAL, and the definitive
+   1-of-60 gate FAIL of 2026-09-05 above stands as recorded — the 55 px
+   reading measured the reference s 3-D concave surface scoop, a
+   feature invisible to any front projection and therefore incompatible
+   with the automatic metric. The scoop and rim shaping remain a
+   SEPARATE MANDATORY visual-gate comparison (gate_ffa2_visual.md
+   Question 1b); passing the projection metric claims nothing about
+   them. No other fidelity band changed.
+
+### Definitive post-ruling evidence (2026-09-05, rebuilt image
+### 8cb914b6e200 — key files sha-verified into the bake; image
+### identical at start and end; runs completed before an operator
+### machine sleep, verified intact after wake)
+
+Focused tests: 81 passed, 0 failed in 2461.94s (0:41:01).
+gate_ffa2_auto.py: **PASS — all 63 checks, all 8 sections, zero
+skipped, exit 0** — incl. the re-derived
+projected_side_to_apex_band_ratio measured 0.925 on the definitive
+image vs band [0.7022, 1.0532] (the 0.9167 figure earlier in decision
+11 was the pre-rebuild dev measurement; the definitive value is
+0.925), the three history-preservation checks (band-from-exact-
+instrument, rim_ratio_HISTORICAL intact, no-3D-scoop-claim), and
+two-process STEP determinism pid 62/72 both sha256 c4136aec8495... —
+IDENTICAL to the pre-ruling hash: the ruling changed measurement and
+documentation, not one byte of geometry. gate_ffa1_auto.py: PASS
+35/35, exit 0. Host scope audit: PASS, exit 0.
+
+### D-10 instance six (2026-09-07, operator-ruled correction)
+
+During the FF-A2 /lf-gate stage-1 run (image 8cb914b6e200, suite 672
+passed in the worker-removed state), gate_ffa1_auto.py FAILED 1 of 35,
+verbatim: FAIL [6] every stored manifest is legacy-clean (72 checked)
+-- [(70b12dd3-de56-4eae-9ad8-214718d7a872, new keys present)]. The
+design is the OPERATOR S first real freeform_loop, persisted
+2026-09-07 05:40:29 during the FF-A2 visual walk — its mass_model /
+required_validation_gates / expected_topology keys are exactly what
+ADR-065 decision 2 calls legitimately new bytes. The section had
+encoded an FF-A1-era truth (no primitive could emit the keys) as a
+permanent assertion — the sixth D-10 instance. Operator-ruled
+correction (production behavior untouched, design untouched, FAIL
+preserved): section 6 now asserts the timeless form — every ALL-LEGACY
+manifest (elements within the frozen ten) is legacy-clean and
+byte-compatible; a manifest carrying the new keys must contain a
+non-legacy primitive AND every non-legacy design must explicitly carry
+mass_model + required_validation_gates (no silent validation bypass);
+legacy/non-legacy counts printed. An earlier same-day stage-1 attempt
+(06:00-06:23Z) died at 54%% of the suite when the Docker Desktop
+engine crashed (500s on the docker socket, likely sleep-cycle
+fallout); it produced no gate verdicts and is recorded as
+infrastructure, not evidence.
+
+### Close (2026-09-07)
+
+Preconditions met: gate_ffa2_auto.py PASS — all 63 checks, zero
+skipped — on the definitive chain, and the operator personally signed
+gate_ffa2_visual.md on 2026-09-07: Question 1 YES (the freeform_loop
+appearance is correct and acceptable; the apparent left/right opening
+difference accepted as viewing-orientation dependent), Question 1b
+(the 3-D apex scoop and rim shaping, the separate mandatory
+comparison) ACCEPTABLE, Questions 2 and 3 YES. A 570-second render
+timeout during the walk is preserved as operational finding D-25 —
+the verdict stands on viewport inspection, which the gate permits.
+
+Definitive /lf-gate chain, ONE final image 044446e54c0e (identical at
+start and end, 07:37-09:35Z 2026-09-07; corrected gate_ffa1 sha
+f56afbc40817 verified host==container): suite **672 passed in BOTH
+worker states** (worker REMOVED via rm -sf, pinned, 2746.79s; worker
+UP, pinned Up-Less-than-a-second -> Up-48-minutes, 2828.09s); all 23
+in-container roster gates exit 0 incl. gate_ffa2 63/63, corrected
+gate_ffa1 36/36 (71 all-legacy + 1 non-legacy printed), lf103a, pr25
+normal 198/198 with only the by-design operator-local skip, pr1, pr2
+and the 17 phase gates; PR-3 static (stdin) + live both PASS;
+gate_phase9b PASS; Phase 14 geometry (container) + frontend (host)
+PASS; scope audit PASS; pr25 --host-drift 218/218 zero skipped. /usr/bin/bash
+throughout; no providers; no downloads. An earlier stage-1 attempt
+(06:00Z) was voided by a Docker Desktop engine crash and recorded as
+infrastructure. No reference JPG tracked (committed record:
+reference_manifest.json, REFERENCE_ANALYSIS.md, ref08_landmarks.json
+— text only); no generated probe/render artifact committed. Closed as
+one commit on main. Next: /lf-next picks the queue (PR-4 is next in
+the approved order now that the free-form capability exists,
+ADR-060); FF-A2 does not start it.

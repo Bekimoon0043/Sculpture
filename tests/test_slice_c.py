@@ -30,11 +30,15 @@ from app.geometry.primitives import (  # noqa: E402
 
 
 def test_registry_lists_ten_primitives():
-    assert set(PRIMITIVES) == {
+    # FF-A2 (ADR-066, operator-approved conversion): the C1 ten are a
+    # SUBSET — the exact-set assertion lives in the newest slice's gate
+    # (gate_ffa2_auto asserts the eleven), per the recorded 2026-08-26
+    # convention in gate_phase6a1_auto.py.
+    assert {
         "tiered_cascade", "basin_round", "plinth", "sculptural_column",
         "basin_rect", "stepped_monolith", "water_wall", "torus_ring",
         "blade_fin_array", "lotus_petal_array",
-    }
+    } <= set(PRIMITIVES)
 
 
 def _build(module, params):

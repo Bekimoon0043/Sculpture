@@ -624,6 +624,7 @@ def assemble(
     from build123d import CenterOf, Pos  # noqa: F401  (Pos used below)
 
     solids: dict[str, Any] = {}
+    locals_by_eid: dict[str, Any] = {}
     fixtures_by_eid: dict[str, list[dict[str, Any]]] = {}
     for eid in sorted(by_id):
         el = by_id[eid]
@@ -637,6 +638,7 @@ def assemble(
             eid, el, module, validated[eid], local, materials,
             violations, fixtures_by_eid,
         )
+        locals_by_eid[eid] = local
         solids[eid] = Pos(*placements[eid]) * local
     if violations:
         raise ConstraintViolation(violations)
@@ -799,6 +801,15 @@ def assemble(
                 False, mass, incomplete_inputs).wire()
         elif el["primitive"] not in LEGACY_COMPLETE_MASS_PRIMITIVES:
             entry["mass_model"] = MassTruth(True, mass, ()).wire()
+        # FF-A2 (ADR-066): a primitive exposing measure_wall persists its
+        # calibrated-or-unavailable wall measurement in the manifest, so
+        # the fabrication gate can hold geometric_wall_measurement to the
+        # v4 rule from PERSISTED evidence. Measured on the LOCAL solid —
+        # the junction rule is defined in the primitive's own frame.
+        # Legacy primitives expose no hook: their manifests are untouched.
+        measure = getattr(module, "measure_wall", None)
+        if callable(measure):
+            entry["wall_measurement"] = measure(p, locals_by_eid[eid])
         manifest_elements.append(entry)
     # --- segmentation (slice C2, ADR-056) -----------------------------------
     # An oversized element is no longer refused outright: it is CUT, by the
@@ -923,6 +934,17 @@ def assemble(
         # The persisted applicability snapshot: export classification reads
         # THIS, never today's registry (owner correction 1).
         manifest["required_validation_gates"] = required_gates
+        # FF-A2 (ADR-066): the per-component topology contract is only
+        # assertable when the assembly IS one applicable primitive — a
+        # fused multi-element assembly has a different (uncontracted)
+        # topology, so integrity then runs its generic checks only, and
+        # the report says so. Persisted here so the validation row is
+        # built from the snapshot, never the live registry.
+        if len(manifest_elements) == 1:
+            only = PRIMITIVES[manifest_elements[0]["primitive"]]
+            declared = getattr(only, "EXPECTED_TOPOLOGY", None)
+            if isinstance(declared, dict) and declared:
+                manifest["expected_topology"] = dict(declared)
 
     if return_solids:
         return fused, manifest, solids

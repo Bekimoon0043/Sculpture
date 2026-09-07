@@ -911,6 +911,119 @@ def validate_fabrication_gate(
                     message=f"{name} must meet the {e.get('material_id')} wall floor",
                 )
 
+        # --- free-form wall truth (FF-A2, ADR-066 — v4 owner rulings) ----
+        # Triggered by the PERSISTED wall_measurement block (only
+        # free-form shells emit one; legacy manifests are untouched).
+        # Three separate rows, deliberately:
+        #   geometric_wall_measurement — the calibrated CAD-shell
+        #     measurement; PASS only under the v4 rule, else needs_input.
+        #   fabrication_wall_approval — ALWAYS needs_input: the nominal
+        #     gauge is never engineering approval for the form.
+        #   forming_radius — ALWAYS needs_input (FABRICATOR-INPUT-
+        #     REQUIRED; nothing is invented in its place).
+        wm = e.get("wall_measurement")
+        if isinstance(wm, dict):
+            nominal = float(params.get("wall_mm") or 0.0)
+            floor = float(mat.min_wall_mm) if mat is not None else 3.0
+            tol = max(0.5, 0.05 * nominal)
+            if wm.get("status") == "measured":
+                mn = float(wm.get("min_mm") or 0.0)
+                mx = float(wm.get("max_mm") or 0.0)
+                jx = float(wm.get("junction_max_mm") or 0.0)
+                ok = (mn >= floor and mn >= nominal - tol
+                      and mx <= nominal + tol)
+                if ok:
+                    b.add(
+                        f"{eid}.geometric_wall_measurement",
+                        ok=True, value=round(mn, 3), limit=round(nominal, 3),
+                        units="mm",
+                        basis=(f"{wm.get('method')}: measured min "
+                               f"{mn:.3f} / max {mx:.3f} mm vs nominal "
+                               f"{nominal:g} ± {tol:.2f} mm and the "
+                               f"{floor:g} mm material floor; junction "
+                               f"max {jx:.3f} mm excluded "
+                               f"({wm.get('junction_excluded')} samples: "
+                               f"{wm.get('junction_basis')})"),
+                        message=("the modeled shell agrees with its "
+                                 "nominal gauge — a geometric statement "
+                                 "only, NEVER fabrication approval"),
+                    )
+                else:
+                    b.needs_input(
+                        f"{eid}.geometric_wall_measurement",
+                        missing=("a shell whose measured wall matches its "
+                                 "nominal gauge, or an engineering ruling "
+                                 "on the deviation"),
+                        basis=(f"{wm.get('method')}: measured min "
+                               f"{mn:.3f} / max {mx:.3f} mm vs nominal "
+                               f"{nominal:g} ± {tol:.2f} mm, floor "
+                               f"{floor:g} mm (junction max {jx:.3f} mm "
+                               "excluded)"),
+                        message=("measured wall does not confirm the "
+                                 "nominal gauge — never passed on the "
+                                 "material floor alone (v4 owner rule)"),
+                        units="mm",
+                    )
+            else:
+                b.needs_input(
+                    f"{eid}.geometric_wall_measurement",
+                    missing="a trustworthy calibrated wall measurement",
+                    basis=(f"{wm.get('method')}: "
+                           f"{wm.get('reason', 'measurement unavailable')}"),
+                    message=("min_thickness is NEEDS_INPUT — the "
+                             "measurement method did not produce a "
+                             "trustworthy value; no number is invented"),
+                    units="mm",
+                )
+            # Owner clarification 2 (2026-09-04): the measured
+            # bore-to-cavity distance is AUTHORITATIVE — below
+            # wall − 0.5 mm it FAILS (not needs_input): the window
+            # bore may never approach the sealed cavity.
+            btc = wm.get("bore_to_cavity_mm")
+            if btc is not None:
+                b.add(
+                    f"{eid}.bore_to_cavity_clearance",
+                    ok=float(btc) >= nominal - 0.5,
+                    value=round(float(btc), 3),
+                    limit=round(nominal - 0.5, 3), units="mm",
+                    basis=str(wm.get("bore_basis",
+                                     "measured BRepExtrema clearance")),
+                    message="the window bore must stay clear of the "
+                            "sealed internal cavity",
+                )
+            elif wm.get("status") == "measured":
+                b.needs_input(
+                    f"{eid}.bore_to_cavity_clearance",
+                    missing="a measurable bore-to-cavity clearance",
+                    basis="wall_measurement block carries no "
+                          "bore_to_cavity_mm value",
+                    message="the authoritative bore clearance could "
+                            "not be measured",
+                    units="mm",
+                )
+            b.needs_input(
+                f"{eid}.fabrication_wall_approval",
+                missing=("professional confirmation that the "
+                         f"{nominal:g} mm nominal gauge and welded-sheet "
+                         "process are acceptable for this form"),
+                basis=("the nominal gauge is a prototype value from a "
+                       "dimensioned reference (ADR-064), not engineering "
+                       "approval for this geometry"),
+                message="fabrication wall approval is a professional "
+                        "input — always unresolved until given",
+                units="mm",
+            )
+            b.needs_input(
+                f"{eid}.forming_radius_mm",
+                missing=(f"minimum 316L forming radius for {nominal:g} mm "
+                         "plate (FABRICATOR-INPUT-REQUIRED)"),
+                basis="no forming-radius value exists in the repository "
+                      "and none is invented (ADR-064 owner amendment)",
+                message="sheet forming radius for this form needs the "
+                        "fabricator's datasheet",
+                units="mm",
+            )
+
         # --- segmentation: what the workshop actually makes (ADR-056) -----
         # Since slice C2 the lift and envelope questions are about a MODULE,
         # not an element: a 5 m basin no crane could pick ships as nine

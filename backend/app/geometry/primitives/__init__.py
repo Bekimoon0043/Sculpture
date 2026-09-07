@@ -19,6 +19,7 @@ from app.geometry.primitives import (
     basin_round,
     blade_fin_array,
     cascade,
+    freeform_loop,
     lotus_petal_array,
     plinth,
     sculptural_column,
@@ -33,11 +34,12 @@ PRIMITIVES: dict[str, ModuleType] = {
         cascade, basin_round, plinth, sculptural_column,          # A1
         basin_rect, stepped_monolith, water_wall, torus_ring,     # C1
         blade_fin_array, lotus_petal_array,                       # C1 arrays
+        freeform_loop,                                            # FF-A2
     )
 }
 
 __all__ = [
     "PRIMITIVES", "basin_rect", "basin_round", "blade_fin_array", "cascade",
-    "lotus_petal_array", "plinth", "sculptural_column", "stepped_monolith",
-    "torus_ring", "water_wall",
+    "freeform_loop", "lotus_petal_array", "plinth", "sculptural_column",
+    "stepped_monolith", "torus_ring", "water_wall",
 ]

@@ -1,0 +1,26 @@
+{
+  "_comment": "FF-A2 (ADR-066) acceptance fixture: the approved hollow-lens defaults. max_module_m 5.0 keeps the default lens a single module (the over-envelope behaviour is its own gate section); max_lift_kg present so the fabrication gate reaches the incomplete-mass needs_input branch, never a silent skip.",
+  "seed": 8,
+  "fabrication": {"max_lift_kg": 3000, "max_module_m": 5.0},
+  "elements": [
+    {
+      "element_id": "loop_01",
+      "primitive": "freeform_loop",
+      "parameters": {
+        "height_mm": 4250,
+        "width_mm": 2569,
+        "depth_mm": 900,
+        "wall_mm": 6,
+        "section_twist_deg": 20,
+        "wobble_mm": 150,
+        "plan_skew_ratio": 0.15,
+        "bore_width_mm": 1110,
+        "bore_height_mm": 1290,
+        "bore_center_height_fraction": 0.485,
+        "waist_height_fraction": 0.45,
+        "base_plate_diameter_mm": 600,
+        "material_id": "stainless_316l_sheet"
+      }
+    }
+  ]
+}

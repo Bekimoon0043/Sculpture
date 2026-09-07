@@ -5,11 +5,27 @@ the start of every session (`/lf-orient`) and rewritten at the end of every
 slice (`/lf-close`). If this file and a phase plan disagree, this file is
 stale and must be corrected in the same commit as the work.
 
-Last updated: 2026-09-04 — **FF-A1 CLOSED** (ADR-065, see the queue
+Last updated: 2026-09-07 — **FF-A2 CLOSED** (ADR-066: the
+`freeform_loop` hollow-lens primitive — the platform's FIRST free-form
+capability — exists end-to-end, PRE-FABRICATION only; definitive
+two-worker-state chain on final image `044446e54c0e`: suite **672
+passed in BOTH states**, all 26 roster gates green incl.
+`gate_ffa2_auto` 63/63 zero-skipped and the D-10-six-corrected
+`gate_ffa1_auto` 36/36; operator visual gate signed 2026-09-07 — Q1
+YES with the left/right-opening viewing-orientation ruling, Q1b 3-D
+scoop ACCEPTABLE, the 570-second render timeout preserved as a
+separate operational finding, D-25; the owner's option-(a) ruling
+re-derived the retired `rim_ratio` — whose 110 px/55 px landmark
+measured the reference's 3-D surface scoop, unmeasurable in any
+projection; preserved as history with its honest 1-of-60 FAIL — into
+`projected_side_to_apex_band_ratio` measured exactly from the
+reference image, 122/139 = 0.877698, band [0.7022, 1.0532], geometry
+0.925; the originally approved tube-annulus construction failed
+development and is preserved as ADR-066 evidence). Before
+that: **FF-A1 CLOSED** (ADR-065, see the queue
 entry: incomplete-mass truth + production freeform_integrity_v1, an
 internal foundation with NO user-facing capability; visual gate signed
-2026-09-04 with the unpasted-digest caveat recorded; next is FF-A2 via
-`/lf-next`). Before that: **LF-103A CLOSED 2026-09-02 (e32805f)** and
+2026-09-04 with the unpasted-digest caveat recorded). Before that: **LF-103A CLOSED 2026-09-02 (e32805f)** and
 the **free-form DISCOVERY slice CLOSED 2026-09-03** (ADR-064), closed
 strictly as a DISCOVERY result, NOT completed capability:
 **reference-faithful geometry and user-facing free-form capability
@@ -79,15 +95,19 @@ workflow controls, folded into PR-7B) ruled 2026-08-28.
 | **LF-103A — export boundary enforces the gate verdict** | **CLOSED 2026-09-02** | ADR-063; auto gate + 23-script roster PASS on `9fe4c4328116`, 514 both worker states; visual gate signed 2026-09-02 |
 | **PR-2.5 free-form DISCOVERY (not capability)** | **CLOSED 2026-09-03; visual Step 2 = NO — probe forms not reference-faithful; capability UNBUILT** | ADR-064; 540 both worker states + 24-script roster on `52209e4a6eea`; BREP-first approved with conditions; STEP canonical confirmed |
 | **FF-A1 — incomplete-mass truth + freeform_integrity_v1 (internal foundation, no user-facing capability)** | **CLOSED 2026-09-04; visual signed (digest strings not pasted — caveat recorded)** | ADR-065; 591 both worker states + 25-script roster; in-container gate 35/35 zero skipped ×3 on `704fefba74fa` (one uncaptured 1/35 first-run transient recorded honestly); fifth D-10 instance corrected in the PR-2.5 host gate (218/218) |
+| **FF-A2 — `freeform_loop`, the FIRST free-form primitive (ref-08 hollow lens, PRE-FABRICATION only)** | **CLOSED 2026-09-07; visual signed 2026-09-07 (Q1 YES, Q1b scoop ACCEPTABLE; 570 s render timeout = D-25, verdict by permitted viewport inspection)** | ADR-066; 672 both worker states + 26-script roster on final image `044446e54c0e`; `gate_ffa2_auto` 63/63 zero skipped; corrected `gate_ffa1_auto` 36/36 (sixth D-10 instance — its honest 1/35 FAIL on the operator's real design preserved); failed tube-annulus construction + measured kernel cliff preserved as evidence |
 
 **Suite and roster state:** after PR-2 the pytest suite (475) passed
 with the render worker UP and with it removed — both runs recorded
 verbatim in `PRODUCTION_V1_REPORT.md` on final image `09ff920ccbbb`;
 after LF-103A the suite was 514 on `9fe4c4328116` (ADR-063); after the
-discovery close the suite is **540, passed in BOTH worker states on
-definitive image `52209e4a6eea` (2026-09-03)** — verbatim chain in
-ADR-064. The
-auto-gate roster is 25 scripts (FF-A1 added `gate_ffa1_auto.py`,
+discovery close 540 on `52209e4a6eea` (ADR-064); after FF-A1 591 on
+`4ff126586ec3` (ADR-065); after FF-A2 the suite is **672, passed in
+BOTH worker states on final image `044446e54c0e` (2026-09-07)** —
+verbatim chain in ADR-066. The
+auto-gate roster is 26 scripts (FF-A2 added `gate_ffa2_auto.py`,
+hermetic, in the backend container, carrying the registry's
+exact-eleven assertion — ADR-066; FF-A1 added `gate_ffa1_auto.py`,
 hermetic, in the backend container — ADR-065; PR-2.5 discovery added
 `gate_pr25_discovery_auto.py`, SPLIT-MODE: repo sections run anywhere;
 artifact + operator-local reference sections skip loudly when their
@@ -291,6 +311,50 @@ binding; the slice notes below carry the ones that bite.
       CHANGED acceptance gate (eight conditions in
       `PR2_5_FREEFORM_DISCOVERY.md`), split FF-A1 → FF-A2 (approved
       2026-09-03).**
+- [x] **FF-A2 — the `freeform_loop` primitive (CLOSED 2026-09-07,
+      ADR-066: definitive two-state chain on `044446e54c0e` — 672
+      both worker states, 26-script roster green, `gate_ffa2_auto`
+      63/63 zero skipped — + operator visual gate signed
+      2026-09-07).** The owner-ruled hollow-lens +
+      walled-window-bore construction (the approved tube-annulus
+      failed development — full measured chain in ADR-066): one loft
+      lens, sealed donut cavity, walled window bore, thin 316L
+      interface plate (13.6 kg, never a foundation claim), 316L-only,
+      wall 6–20 with 3 mm embedment + ≥3 mm ligament, truncated
+      formable tips, registry 10→11 with the approved subset
+      conversions, FF-A1's mass/integrity machinery ACTIVE (null
+      total, costing 409, REFUSED on missing/failed/indeterminate
+      rows, PRE-FABRICATION-only). Measured at defaults: topology
+      contract [1,1]/2 components/1 cavity PASS; bore-to-cavity
+      7.978 mm PASS (authoritative, owner clarification 2); wall
+      min 1.666 ⇒ geometric_wall_measurement needs_input (honest);
+      fidelity: after the owner's 2026-09-05 option-(a) ruling the
+      retired `rim_ratio` (110 px/55 px — it measured the reference's
+      3-D surface scoop, unmeasurable in projection; preserved as
+      history with its definitive 1-of-60 gate FAIL) was re-derived as
+      `projected_side_to_apex_band_ratio` exactly from the reference
+      under the recorded instrument: 122/139 = 0.877698, band
+      [0.7022, 1.0532]; the geometry measures 0.9167 — and the 3-D
+      scoop stays a separate mandatory visual-gate comparison.
+      **Closed on the definitive two-state chain (final image
+      `044446e54c0e`, 2026-09-07): suite 672 in BOTH worker states
+      (worker-removed 0:45:46 / worker-up 0:47:08, states pinned);
+      all 26 roster gates green — `gate_ffa2_auto` 63/63 zero skipped
+      (two-process STEP `c4136aec…`, bore clearance 7.978 mm, ratio
+      0.925), corrected `gate_ffa1_auto` 36/36 (sixth D-10 instance:
+      its "every manifest legacy-clean" assertion correctly FAILED
+      1/35 on the operator's first real freeform_loop design
+      `70b12dd3…` — FAIL preserved, design untouched, section ruled
+      into the timeless all-legacy/keys<=>non-legacy form), pr25
+      normal 198 + host-drift 218, 9B, PR-3 static+live, Phase 14
+      both halves, scope audit. Visual gate signed 2026-09-07: Q1 YES
+      (left/right opening difference accepted as viewing-orientation
+      dependent), Q1b 3-D scoop ACCEPTABLE, Q2/Q3 YES; the 570 s
+      render timeout preserved as operational finding D-25. Earlier
+      history preserved: the honest 1-of-60 rim_ratio FAIL on
+      `bd85f7d13fb7`, the failed tube-annulus construction, the
+      measured kernel cliff, and the Docker-engine crash that voided
+      the first stage-1 attempt.**
 - [x] **FF-A1 — Incomplete-mass truth + production free-form
       validation (CLOSED 2026-09-04, ADR-065: full two-worker-state
       roster evidence + operator visual gate signed 2026-09-04 —
@@ -459,7 +523,16 @@ Pick one up when a slice finishes early. Each is one commit.
       discovery close commit `5cb0af3e2445…` by full hash (must
       resolve, else FAIL) and asserts THAT COMMIT changed no
       backend/app, config or schemas paths — a permanent historical
-      truth; the timeless no-JPG-tracked check is unchanged. The tell
+      truth; the timeless no-JPG-tracked check is unchanged. A SIXTH
+      instance fired 2026-09-07: `gate_ffa1_auto.py` §6 asserted
+      "EVERY stored manifest is legacy-clean" — true in the FF-A1 era,
+      correctly FAILED 1-of-35 the moment the operator persisted the
+      first real `freeform_loop` design (`70b12dd3…`, 2026-09-07
+      05:40:29) during the FF-A2 visual walk; FAIL preserved verbatim,
+      design untouched. Corrected by operator ruling to the timeless
+      ADR-065 form: all-legacy manifests legacy-clean; new keys <=>
+      non-legacy primitive both directions (no silent validation
+      bypass); legacy/non-legacy counts printed. The tell
       is a roadmap phrase inside an assertion. Full sweep folded into
       PR-5; re-sweep before slice D ever widens the registry.
 - [ ] **D-11 — Radial segmentation for round vessels.** Needs the
@@ -478,6 +551,14 @@ Pick one up when a slice finishes early. Each is one commit.
       `validation_basis` identity is persisted with every report of one
       run, production classification is structurally barred from CLEAN.
       **LF-102 must not make CLEAN reachable before this closes.**
+- [ ] **D-25 — freeform_loop renders hit a 570-second timeout on this
+      hardware (operator finding, 2026-09-07, FF-A2 visual walk).**
+      The dense free-form tessellation is heavy for CPU Cycles on the
+      i7-8550U; the visual verdict was completed by viewport
+      inspection, which the gate permits, so nothing is invalidated —
+      but renders of free-form designs need either a longer budget, a
+      decimated render mesh, or fewer samples before Phase 10 /PR-9
+      lean on them. Recorded, not resolved.
 - [ ] **D-13 — Critic independence reads the model's self-claimed
       `meta.provider`, not dispatch truth** (`orchestrator.py`; the true
       provider is already persisted two lines away). One-line fix + an

@@ -878,10 +878,45 @@ probes prove operation/kernel feasibility, not reference-faithful
 geometry; the fidelity gap is the implementation slice's burden under
 the changed acceptance gate. What remains missing, honestly:
 
-- **No free-form primitive, spec vocabulary, API surface or Designer
-  control exists.** That is the (yet-unplanned) implementation slice,
-  which starts only after the operator approves the discovery report's
-  acceptance plan at `gate_pr25_discovery_visual.md`.
+- ~~**No free-form primitive, spec vocabulary, API surface or Designer
+  control exists.**~~ **PARTIALLY CLOSED by FF-A2 (2026-09-04,
+  ADR-066): ONE free-form primitive exists** — `freeform_loop`, the
+  ref-08 hollow-lens class, reachable from the Designer with scalar
+  controls, built by the deterministic kernel, integrity-gated and
+  **PRE-FABRICATION only**. What FF-A2 deliberately does NOT deliver:
+  control-point editing (scalar parameters only — recorded unbuilt);
+  any brief/Council claim (the claim is Designer/spec → kernel);
+  ref-11/ref-13/ref-14/ref-15/ref-16 classes (blocked or unstarted per
+  their recorded findings); a verified wall (the modeled shell's
+  measured minimum sits at the truncated tips and
+  `geometric_wall_measurement` reports needs_input; the nominal 6 mm
+  gauge is a prototype value, and `fabrication_wall_approval` +
+  `forming_radius` are permanently unresolved professional inputs
+  until given); per-module CAD export (segmentation is measured
+  ANALYSIS, never a transportable-modules claim). The originally
+  approved tube-annulus construction FAILED development and is
+  preserved as evidence in ADR-066 — it is not capability. The original
+  `rim_ratio` landmark (110 px/55 px = 2.0) was RETIRED as an automatic
+  check by owner ruling 2026-09-05 and preserved as history in
+  `ref08_landmarks.json`: its 55 px apex reading measured the
+  reference's 3-D surface scoop, invisible to any front projection.
+  The replacement `projected_side_to_apex_band_ratio` is derived
+  exactly from the reference under the recorded instrument (122/139 =
+  0.877698, band [0.7022, 1.0532]); the 3-D scoop/rim shaping remains
+  a separate MANDATORY visual-gate comparison that no projection-metric
+  pass claims to satisfy. Additionally,
+  the kernel has a MEASURED robustness cliff on large twisted thin
+  shells (ADR-066 decision 10): some in-range extreme combinations
+  (measured: 5.0 m envelope with twist −90° at bow 600–900 mm; waist
+  fraction 0.25) cannot be hollowed by the installed OCC booleans —
+  they refuse loudly and deterministically at build (HTTP 422 with the
+  real stage numbers), never build corrupt, and the measured cliff
+  combinations are pinned as refusal tests. And rendering a
+  freeform_loop hit a **570-second timeout** on this hardware during
+  the FF-A2 visual walk (D-25): the dense free-form tessellation is
+  heavy for CPU Cycles on the i7; visual gates permit viewport
+  inspection, so nothing was invalidated, but free-form renders need a
+  budget/mesh decision before Phase 10 or PR-9 rely on them.
 - **B-11b — mesh/lattice ground truth — is OPEN and release-blocking**
   for any mesh-capability claim and for Production v1 (owner ruling,
   2026-09-02): none of the 16 supplied references shows an open mesh,
@@ -909,17 +944,15 @@ the changed acceptance gate. What remains missing, honestly:
   re-serialize only** — where trustworthy artist meshes would come from
   is an open trust problem for the implementation ruling.
 - **FF-A1 (2026-09-03, ADR-065) built the incomplete-mass truth model
-  and the production `freeform_integrity_v1` stack — as INTERNAL
-  foundation only.** No user-facing path can create an incomplete-mass
-  design and no registry primitive requires integrity validation yet;
-  both are exercised through fixtures and a shim test primitive, and
-  activate only when FF-A2 ships a real free-form primitive. Until
-  then: every mass-dependent check (centroid, overturning, bearing,
-  lift, crane, rigging ruled-out, costing, BOM, quote) refuses or
-  reports needs_input on incomplete mass BY CONSTRUCTION; there is
-  deliberately no input contract that makes them pass — the complete
-  armature contract (mass + centroid + per-module allocation, or a
-  documented conservative worst case) is FF-A2 design work.
+  and the production `freeform_integrity_v1` stack — ACTIVE since
+  FF-A2 (2026-09-04, ADR-066):** a `freeform_loop` design is the first
+  real incomplete-mass, integrity-gated design. Every mass-dependent
+  check (centroid, overturning, bearing, lift, crane, rigging
+  ruled-out, costing, BOM, quote) refuses or reports needs_input on it
+  BY CONSTRUCTION; there is deliberately no input contract that makes
+  them pass — the complete armature contract (mass + centroid +
+  per-module allocation, or a documented conservative worst case)
+  remains FUTURE design work, owner-gated.
 - **Minimum-thickness sampling is unavailable on the pinned image**:
   `trimesh.proximity.thickness` requires `rtree`, which is not
   installed (a download, so the operator's call — same class as D-7).

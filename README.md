@@ -57,7 +57,18 @@ unmistakable PRE-FABRICATION deliverable — marked download name, marked
 in-archive filenames, a printed NOT-FOR-CONSTRUCTION notice on the
 drawings and an `ENGINEERING_WARRANT.txt` naming every unresolved check
 — and packages sealed before the rule refuse to download until
-deliberately re-sealed.
+deliberately re-sealed. Since 2026-09-07 (FF-A2, ADR-066) the library
+holds its FIRST FREE-FORM primitive: `freeform_loop`, the ref-08-class
+hollow 316L lens with a walled window bore on a thin interface plate —
+built by the deterministic kernel from scalar Designer parameters,
+held to a declared topology contract (one sealed cavity, one window,
+genus [1,1]) and six measured fidelity bands derived from the
+operator's reference photograph, 316L-only by explicit refusal, and
+honest to the bone: its mass is INCOMPLETE (the armature is
+undesigned) so every lift, stability and costing surface says "needs
+input"; its wall is a nominal gauge, never called verified; and its
+exports seal PRE-FABRICATION at best, refused outright without a
+passing persisted `freeform_integrity_v1` verdict.
 
 Rendering and the vision-critique loop (Phase 5), the remaining primitive
 library work (Phase 6), exports beyond STEP/GLB, and DesignDNA/recovery

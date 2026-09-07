@@ -209,17 +209,28 @@ class AssemblyValidationReport(BaseModel):
     #: figure instead of posing a partial sum as a total.
     total_mass_kg: float | None
     volume_crosscheck: VolumeCrossCheck
-    passed: bool
+    #: FF-A2 (ADR-066): the mesh of a SEALED HOLLOW solid is legitimately
+    #: two closed surfaces (outer skin + cavity). The expected count comes
+    #: from the manifest's persisted expected_topology snapshot — never
+    #: the live registry — and stays 1 for every legacy manifest, so this
+    #: is a TIGHTENING for declared-topology designs (exactly N), not a
+    #: loosening anywhere.
+    expected_body_count: int = 1
+    passed: bool = False
 
     def check_rows(self) -> list[dict[str, object]]:
         cc = self.volume_crosscheck
+        body_row: dict[str, object] = {
+            "check": "body_count", "value": self.body_count,
+            "passed": self.body_count == self.expected_body_count}
+        if self.expected_body_count != 1:
+            body_row["expected"] = self.expected_body_count
         return [
             {"check": "watertight", "value": self.watertight,
              "passed": self.watertight is True},
             {"check": "winding_consistent", "value": self.winding_consistent,
              "passed": self.winding_consistent is True},
-            {"check": "body_count", "value": self.body_count,
-             "passed": self.body_count == 1},
+            body_row,
             {"check": "volume_mm3", "value": round(self.volume_mm3, 3),
              "passed": self.volume_mm3 > 0},
             {"check": "surface_area_mm2", "value": round(self.surface_area_mm2, 3),
@@ -281,10 +292,17 @@ def validate_assembly(glb_path: str | Path, manifest: dict) -> AssemblyValidatio
         el["element_id"]: float(el["mass_kg"]) for el in manifest["elements"]
     }
 
+    # FF-A2 (ADR-066): a design whose PERSISTED manifest declares an
+    # expected topology (a sealed hollow shell = outer skin + cavity =
+    # 2 mesh bodies) is held to exactly that count; everything else to
+    # exactly 1, unchanged. Snapshot-driven — never the live registry.
+    expected_body_count = int((manifest.get("expected_topology") or {})
+                              .get("boundary_components", 1))
+
     passed = (
         bool(mesh.is_watertight)
         and bool(mesh.is_winding_consistent)
-        and body_count == 1
+        and body_count == expected_body_count
         and volume_mm3 > 0
         and degenerate == 0
         and crosscheck.within_tolerance
@@ -305,5 +323,6 @@ def validate_assembly(glb_path: str | Path, manifest: dict) -> AssemblyValidatio
         total_mass_kg=(float(manifest["total_mass_kg"])
                        if manifest.get("total_mass_kg") is not None else None),
         volume_crosscheck=crosscheck,
+        expected_body_count=expected_body_count,
         passed=passed,
     )

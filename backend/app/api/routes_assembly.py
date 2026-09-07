@@ -414,7 +414,11 @@ def persist_assembly_design(
     # does in FF-A1.
     integrity_report: dict[str, Any] | None = None
     if FREEFORM_INTEGRITY_GATE in required_validation_gates(manifest):
-        integrity_report = run_freeform_integrity(solid)
+        # FF-A2 (ADR-066): the topology contract comes from the manifest
+        # SNAPSHOT (persisted by assemble for single-primitive designs),
+        # never the live registry — the ADR-065 no-laundering rule.
+        integrity_report = run_freeform_integrity(
+            solid, expected_topology=manifest.get("expected_topology"))
         gate_statuses[FREEFORM_INTEGRITY_GATE] = integrity_report["status"]
 
     overall = worst_status(gate_statuses.values())

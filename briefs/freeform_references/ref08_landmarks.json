@@ -1,0 +1,114 @@
+{
+  "schema": "ref08_landmarks_v1",
+  "recorded": "2026-09-04",
+  "provenance": "image-derived-estimate: landmark pixel reads off the operator-local reference photograph at +/-10 px uncertainty; single-camera perspective slightly below and left of the sculpture; every ratio is an image-derived estimate, NOT physical 3D truth. The +/-20% bands are what absorb the unquantified foreshortening. Approved by the operator with FF-A2 plan v3/v4 (ADR-066).",
+  "source_image": {
+    "file": "08_organic_void_sculpture_water_court.jpg",
+    "sha256": "bfe1662b587807b50e6654e756563fa7b3524415767db3cfb8573a34c3f87a02",
+    "bytes": 250687,
+    "width_px": 1280,
+    "height_px": 959,
+    "coordinate_origin": "top-left pixel, x right, y down",
+    "note": "the image itself is operator-local, gitignored and dockerignored (ADR-064 owner amendment 1); this text record is the only committed artifact"
+  },
+  "pixel_landmarks": {
+    "sculpture_apex": [690, 258],
+    "sculpture_bottom_tip_waterline": [668, 668],
+    "leftmost_silhouette_x": 583,
+    "rightmost_silhouette_x": 832,
+    "void_left_edge_x": 690,
+    "void_right_edge_x": 798,
+    "void_top_edge_y": 405,
+    "void_bottom_edge_y": 530,
+    "widest_rim_lower_left_limb_px": 110,
+    "narrowest_rim_apex_px": 55,
+    "base_contact_width_px": 60
+  },
+  "raw_calculations": {
+    "silhouette_height_px": "668 - 258 = 412",
+    "silhouette_width_px": "832 - 583 = 249",
+    "width_height_ratio": "249 / 412 = 0.6043689...",
+    "void_width_fraction": "(798 - 690) / 249 = 0.4337...",
+    "void_aspect": "108 / 125 = 0.864",
+    "void_centroid_height_from_base": "(668 - 468) / 412 = 0.4854...",
+    "void_horizontal_offset": "(744 - 707.5) / 249 = +0.1466...",
+    "apparent_rim_ratio": "110 / 55 = 2.0",
+    "base_contact_width_fraction": "60 / 249 = 0.241"
+  },
+  "bands": {
+    "band_rule": "measured central value +/- 20% (the 20% width is a judgement value [J] absorbing perspective + the +/-10 px read uncertainty; tighten only by operator ruling)",
+    "hard_runtime_constraints": {
+      "width_height_ratio": {
+        "value": 0.6044,
+        "band": [0.48, 0.72],
+        "enforcement": "freeform_loop.validate() refuses every parameter combination outside this band (v4 s.C)"
+      },
+      "through_opening_preserved": {
+        "value": 1,
+        "enforcement": "freeform_loop.validate() refuses combinations whose estimated void collapses below the 316L clearance floor; the topology contract requires exactly one through-opening"
+      }
+    },
+    "fixture_fidelity_checks": {
+      "note": "asserted by gate_ffa2_auto on the acceptance fixture ONLY (v4 s.C); they are fidelity-to-reference-08 checks, not general primitive constraints",
+      "void_width_fraction": {"value": 0.4337, "band": [0.35, 0.52]},
+      "void_aspect": {"value": 0.864, "band": [0.69, 1.03]},
+      "void_centroid_height_fraction": {"value": 0.4854, "band": [0.39, 0.58]},
+      "void_offset_fraction": {"value": 0.1466, "band": [0.12, 0.18]},
+      "projected_side_to_apex_band_ratio": {
+        "value": 0.877698,
+        "band": [0.7022, 1.0532],
+        "derivation": {
+          "ruling": "owner option (a), 2026-09-05 (ADR-066): band re-derived from the reference image under the SAME deterministic projection instrument; +/-20% around the exact instrument result 122/139 = 0.877698",
+          "formula": "max(rim_left, rim_right at the void-centroid ROW, measured outward from the void bbox) / (occupied run downward from the silhouette top at the void-centroid COLUMN)",
+          "camera_orientation": "single perspective photograph, camera slightly below and left of the sculpture, front-ish view; projection along the view axis",
+          "raster": "native pixel grid 1280x959, 1 px cells, origin top-left, y down (geometry side: 10 mm cells of the tessellation front projection)",
+          "source_image_sha256": "bfe1662b587807b50e6654e756563fa7b3524415767db3cfb8573a34c3f87a02",
+          "segmentation_rule": {
+            "pixel_class": "sculpture := mean(R,G,B) >= 160 AND max channel difference <= 20 (int RGB)",
+            "roi_polygon_image_xy": [[690,248],[760,270],[800,310],[838,420],[842,520],[800,610],[740,660],[690,676],[640,640],[596,560],[577,470],[600,380],[645,300]],
+            "morphology": "binary closing, 3x3 square, 1 iteration (heals thin dark seam-line punctures; no-op on the clean geometry mask)",
+            "silhouette": "largest 4-connected component of the classified pixels",
+            "note": "the polygon excludes the bright white facade rail that merges with the sculpture's upper-right edge in this photograph — a recorded acquisition step for the photo medium only"
+          },
+          "raw_instrument_output": {
+            "silhouette_bbox_image": {"x": [583, 841], "y": [253, 626]},
+            "void_bbox_image": {"x": [707, 772], "y": [400, 532]},
+            "void_centroid_row_image_y": 464,
+            "void_centroid_col_image_x": 735,
+            "rim_left_px": 122,
+            "rim_right_px": 67,
+            "column_top_image_y": 263,
+            "apex_band_px": 139,
+            "exact_ratio": "122/139 = 0.877698"
+          },
+          "scope": "a PROJECTION metric only — passing it claims NOTHING about the reference's 3-D apex scoop and rim shaping, which remain a separate mandatory visual-gate comparison (owner ruling)"
+        }
+      },
+      "rim_ratio_HISTORICAL": {
+        "status": "RETIRED as an automatic check by owner ruling 2026-09-05 — preserved as historical evidence, not erased",
+        "value": 2.0,
+        "band": [1.6, 2.4],
+        "original_pixels": "110 px widest rim / 55 px narrowest rim (apex)",
+        "why_retired": "the 55 px apex reading measured the thin band beside the reference's 3-D concave surface SCOOP — a shading/surface feature invisible in any front projection; no projection instrument reproduces the 110/55 pair (the reference itself scored ~0.64-0.88 under projection instruments), so the band was incompatible with the automatic front-projection metric. It failed gate_ffa2_auto 1-of-60 on 2026-09-05 (definitive transcript, ADR-066) before the ruling; that FAIL is preserved as history. The scoop itself remains a mandatory VISUAL-gate comparison."
+      },
+      "twist_direction": {
+        "value": "+1 (CCW viewed from above)",
+        "confidence": "LOW - direction-only, perspective-sensitive",
+        "enforcement": "sign of section_twist_deg on the acceptance fixture"
+      }
+    },
+    "consistency_guides_not_checks": {
+      "base_contact_width_fraction": {
+        "value": 0.241,
+        "band": [0.19, 0.29],
+        "note": "the photo lands near-tangent; the measurable interface plate is a deliberate engineering deviation ordered by the owner's base-interface amendment (v4 s.A.2) - this figure only guides the default plate diameter"
+      }
+    }
+  },
+  "not_measurable_from_this_photo": [
+    "out-of-plane depth (wobble magnitude)",
+    "twist magnitude in degrees",
+    "any physical dimension in millimetres",
+    "material or process (316L is the SELECTED PROTOTYPE MANUFACTURING HYPOTHESIS, an owner ruling - not an image fact)"
+  ]
+}
