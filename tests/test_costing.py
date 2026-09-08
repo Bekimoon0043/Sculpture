@@ -369,11 +369,23 @@ def _assembly_report(**over):
 
 
 def _segmented_manifest(**over):
+    # The per-element module records mirror what assembly.py actually writes
+    # (SegmentResult.as_dict, trimmed to the keys costing reads). The module
+    # masses SUM to the report's 13,721.181 kg — PR-4's conservation guard
+    # refuses anything else.
     seg = {
         "schema": "assembly_segmentation_v1",
         "module_count": 10,
         "heaviest_module_kg": 2375.044,
         "not_segmentable": [],
+        "elements": {
+            "p1": {"module_count": 1,
+                   "modules": [{"index": 0, "mass_kg": 2375.044}]},
+            "b1": {"module_count": 9,
+                   "modules": [{"index": i, "mass_kg": 1300.0}
+                               for i in range(8)]
+                   + [{"index": 8, "mass_kg": 946.137}]},
+        },
         "seams": {
             "split": {"count": 12, "length_mm": 50112.0, "area_mm2": 3531278.0},
             "joint": {"count": 1, "length_mm": 12566.371, "area_mm2": 1256637.0},
@@ -455,16 +467,138 @@ def test_seams_compute_per_metre_of_run(filled_costing, basalt):
     assert line.drivers_used["seam_length_m"] == pytest.approx(62.678, abs=1e-3)
 
 
-def test_transport_trips_bind_on_weight_or_bed_space(filled_costing, basalt):
-    """13,721 kg at 12,000 kg per trip = 2 trips by weight; 10 modules at
-    4 per trip = 3 trips by bed. The worse one binds."""
+def test_transport_loads_real_trips_first_fit_decreasing(filled_costing,
+                                                         basalt):
+    """PR-4 (ADR-067): trips come from LOADING the trucks, not from the old
+    lower-bound arithmetic. 10 modules (2375.044 + 8x1300 + 946.137 kg) at
+    payload 12,000 kg / 4 per bed, first-fit-decreasing:
+      trip 1: 2375.044 + 1300 x 3 = 6,275.044 kg (bed full)
+      trip 2: 1300 x 4            = 5,200.000 kg (bed full)
+      trip 3: 1300 + 946.137      = 2,246.137 kg (2 slots spare)
+    """
     from app.costing.drivers import drivers_for_assembly
     d = drivers_for_assembly(_assembly_report(), _segmented_manifest())
     bom = build_bom(filled_costing, d, "basalt_slab", basalt)
     line = {ln.line_id: ln for ln in bom.lines}["install_transport"]
     assert line.status == COMPUTED
-    assert line.drivers_used["trips"] == 3
-    assert line.drivers_used["binding"] == "bed space"
+    used = line.drivers_used
+    assert used["trips"] == 3
+    assert "binding" not in used  # the old two-value contract is gone
+    alloc = used["allocation"]
+    assert [t["load_kg"] for t in alloc] == \
+        pytest.approx([6275.044, 5200.0, 2246.137])
+    assert alloc[0]["modules"][0]["id"] == "p1#0"
+    assert alloc[0]["remaining_module_slots"] == 0
+    assert alloc[2]["remaining_module_slots"] == 2
+    assert alloc[2]["remaining_payload_kg"] == pytest.approx(9753.863)
+    # amendment 3 wording, on the line itself
+    assert "deterministic conservative feasible allocation" in line.formula
+    low = line.formula.lower()
+    for banned in ("minimal", "minimum", "optimal", "max(ceil("):
+        assert banned not in low
+    assert line.amount_native == pytest.approx(3 * 8000.0)
+
+
+def test_transport_beats_the_old_lower_bound_when_loads_do_not_pack(
+        filled_costing, basalt):
+    """The disproof case, end to end: four 7 t modules at 12 t payload.
+    Old formula: max(ceil(28000/12000)=3, ceil(4/4)=1) = 3 trips.
+    Reality: no two 7 t modules share a 12 t truck -> 4 trips."""
+    from app.costing.drivers import drivers_for_assembly
+    report = _assembly_report(element_masses_kg={"b1": 28000.0},
+                              total_mass_kg=28000.0)
+    manifest = _segmented_manifest(
+        module_count=4, heaviest_module_kg=7000.0,
+        elements={"b1": {"module_count": 4,
+                         "modules": [{"index": i, "mass_kg": 7000.0}
+                                     for i in range(4)]}})
+    d = drivers_for_assembly(report, manifest)
+    bom = build_bom(filled_costing, d, "basalt_slab", basalt)
+    line = {ln.line_id: ln for ln in bom.lines}["install_transport"]
+    assert line.status == COMPUTED
+    assert line.drivers_used["trips"] == 4          # not the bound's 3
+    assert all(len(t["modules"]) == 1
+               for t in line.drivers_used["allocation"])
+
+
+def test_a_module_over_the_payload_refuses_the_line_naming_it(
+        filled_costing, basalt):
+    """Amendment 3: refuse any module > payload — never a count that
+    pretends. One 13 t module against the 12 t test payload."""
+    from app.costing.drivers import drivers_for_assembly
+    report = _assembly_report(element_masses_kg={"b1": 14000.0},
+                              total_mass_kg=14000.0)
+    manifest = _segmented_manifest(
+        module_count=2, heaviest_module_kg=13000.0,
+        elements={"b1": {"module_count": 2,
+                         "modules": [{"index": 0, "mass_kg": 13000.0},
+                                     {"index": 1, "mass_kg": 1000.0}]}})
+    d = drivers_for_assembly(report, manifest)
+    bom = build_bom(filled_costing, d, "basalt_slab", basalt)
+    line = {ln.line_id: ln for ln in bom.lines}["install_transport"]
+    assert line.status == NOT_COMPUTABLE
+    assert "b1#0" in line.blocker
+    assert "13,000" in line.blocker
+    assert "12,000" in line.blocker
+
+
+def test_module_masses_that_disagree_with_the_report_refuse_the_line(
+        filled_costing, basalt):
+    """PR-4 conservation guard: per-module masses must agree with the
+    validation report's total within 0.1% — a wrong load is never priced."""
+    from app.costing.drivers import drivers_for_assembly
+    manifest = _segmented_manifest(
+        elements={"p1": {"module_count": 1,
+                         "modules": [{"index": 0, "mass_kg": 2375.044}]},
+                  "b1": {"module_count": 9,
+                         "modules": [{"index": i, "mass_kg": 1300.0}
+                                     for i in range(8)]
+                         + [{"index": 8, "mass_kg": 2000.0}]}})  # +1,053.9 kg
+    d = drivers_for_assembly(_assembly_report(), manifest)
+    bom = build_bom(filled_costing, d, "basalt_slab", basalt)
+    line = {ln.line_id: ln for ln in bom.lines}["install_transport"]
+    assert line.status == NOT_COMPUTABLE
+    assert "14,775.044" in line.blocker   # what the modules sum to
+    assert "13,721.181" in line.blocker   # what the report says
+
+
+def test_a_manifest_without_per_module_masses_is_not_allocated(
+        filled_costing, basalt):
+    """A segmentation block that counts modules but never recorded their
+    masses (or lost some) cannot load a truck honestly."""
+    from app.costing.drivers import drivers_for_assembly
+    manifest = _segmented_manifest(elements={})
+    d = drivers_for_assembly(_assembly_report(), manifest)
+    assert d.module_masses_kg is None
+    assert "module_masses_kg" in (d.unavailable or {})
+    bom = build_bom(filled_costing, d, "basalt_slab", basalt)
+    line = {ln.line_id: ln for ln in bom.lines}["install_transport"]
+    assert line.status == NOT_COMPUTABLE
+    assert "10" in line.blocker and "0" in line.blocker
+
+
+def test_assembly_drivers_carry_per_module_masses():
+    from app.costing.drivers import drivers_for_assembly
+    d = drivers_for_assembly(_assembly_report(), _segmented_manifest())
+    assert d.module_masses_kg is not None
+    assert len(d.module_masses_kg) == 10
+    as_map = dict(d.module_masses_kg)
+    assert as_map["p1#0"] == pytest.approx(2375.044)
+    assert as_map["b1#8"] == pytest.approx(946.137)
+
+
+def test_the_rendered_bom_prints_every_trip(filled_costing, basalt):
+    from app.costing.drivers import drivers_for_assembly
+    from app.costing.report import render_bom
+    d = drivers_for_assembly(_assembly_report(), _segmented_manifest())
+    bom = build_bom(filled_costing, d, "basalt_slab", basalt)
+    doc = render_bom(bom)
+    assert "deterministic conservative feasible allocation" in doc
+    assert "trip 1:" in doc and "trip 3:" in doc
+    assert "p1#0" in doc
+    assert "spare" in doc
+    low = doc.lower()
+    assert "minimal" not in low and "optimal" not in low
 
 
 def test_a_single_module_design_has_no_seam_to_bill(filled_costing, basalt):

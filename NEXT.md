@@ -5,7 +5,22 @@ the start of every session (`/lf-orient`) and rewritten at the end of every
 slice (`/lf-close`). If this file and a phase plan disagree, this file is
 stale and must be corrected in the same commit as the work.
 
-Last updated: 2026-09-07 — **FF-A2 CLOSED** (ADR-066: the
+Last updated: 2026-09-08 — **PR-4 CLOSED** (ADR-067: the transport
+line LOADS the trucks — first-fit-decreasing over the measured
+per-module masses, both limits checked unrounded, every trip printed
+with its modules, load and remaining capacity, described only as "a
+deterministic conservative feasible allocation" — instead of the
+retired `max(ceil(mass/payload), ceil(modules/per_trip))` lower bound
+that four 6 t modules at a 10 t payload disprove (4 trips, not 3);
+definitive two-worker-state chain on final image `a8a6f3218ba8`: suite
+**707 passed in BOTH states**, all 27 roster gates green incl.
+`gate_pr4_auto` 9/9 sections and the D-10-seven-corrected
+`gate_ffa1_auto` 36/36 (three exact symbols, never a wildcard — owner
+ruling); operator visual gate signed 2026-09-07 all four steps YES;
+the first chain's FAIL, the operator-approved hash-proven recovery
+protocol and the new D-26 startup-write race are recorded in
+ADR-067 / PRODUCTION_V1_REPORT.md; the rate card's transport entries
+remain null and the operator's). Before that: **FF-A2 CLOSED** (ADR-066: the
 `freeform_loop` hollow-lens primitive — the platform's FIRST free-form
 capability — exists end-to-end, PRE-FABRICATION only; definitive
 two-worker-state chain on final image `044446e54c0e`: suite **672
@@ -90,22 +105,25 @@ workflow controls, folded into PR-7B) ruled 2026-08-28.
 | 13 — recovery + hardening | **Slice A only; B+ queued as PR-7A/B/C** | auto PASS 2026-08-22, ADR-040 |
 | 14 + 14b — Designer Workspace, Blender-style controls | **BUILT, auto-gated** | auto PASS 2026-08-24, ADR-044/046; visual pending |
 | 15 A–E — designer UX, draft preview, projects/variants | **BUILT, auto-gated** | auto PASS 2026-08-24, ADR-047–051; visual pending |
-| **PR program (PR-0 … PR-9) — delivers Milestone B, not Production v1 (ADR-062)** | **APPROVED 2026-08-27; PR-0, PR-3, PR-1, PR-2 CLOSED** | `PRODUCTION_V1_REPORT.md` (historical filename), ADR-057/058/059/061 |
+| **PR program (PR-0 … PR-9) — delivers Milestone B, not Production v1 (ADR-062)** | **APPROVED 2026-08-27; PR-0, PR-3, PR-1, PR-2, PR-4 CLOSED** | `PRODUCTION_V1_REPORT.md` (historical filename), ADR-057/058/059/061/067 |
 | **Master Scope audit vs owner's 30-system scope** | **31.6/100 at `bfa5a77` — approximately one-third complete; only Geometry Integrity ≥4/5 among safety-critical systems** | `SCOPE.md`, `DEVELOPMENT_AUDIT.md`, ADR-062 |
 | **LF-103A — export boundary enforces the gate verdict** | **CLOSED 2026-09-02** | ADR-063; auto gate + 23-script roster PASS on `9fe4c4328116`, 514 both worker states; visual gate signed 2026-09-02 |
 | **PR-2.5 free-form DISCOVERY (not capability)** | **CLOSED 2026-09-03; visual Step 2 = NO — probe forms not reference-faithful; capability UNBUILT** | ADR-064; 540 both worker states + 24-script roster on `52209e4a6eea`; BREP-first approved with conditions; STEP canonical confirmed |
 | **FF-A1 — incomplete-mass truth + freeform_integrity_v1 (internal foundation, no user-facing capability)** | **CLOSED 2026-09-04; visual signed (digest strings not pasted — caveat recorded)** | ADR-065; 591 both worker states + 25-script roster; in-container gate 35/35 zero skipped ×3 on `704fefba74fa` (one uncaptured 1/35 first-run transient recorded honestly); fifth D-10 instance corrected in the PR-2.5 host gate (218/218) |
 | **FF-A2 — `freeform_loop`, the FIRST free-form primitive (ref-08 hollow lens, PRE-FABRICATION only)** | **CLOSED 2026-09-07; visual signed 2026-09-07 (Q1 YES, Q1b scoop ACCEPTABLE; 570 s render timeout = D-25, verdict by permitted viewport inspection)** | ADR-066; 672 both worker states + 26-script roster on final image `044446e54c0e`; `gate_ffa2_auto` 63/63 zero skipped; corrected `gate_ffa1_auto` 36/36 (sixth D-10 instance — its honest 1/35 FAIL on the operator's real design preserved); failed tube-annulus construction + measured kernel cliff preserved as evidence |
+| **PR-4 — honest module transport costing (trips LOADED, never bounded)** | **CLOSED 2026-09-08; visual signed 2026-09-07 (all four steps YES)** | ADR-067; 707 both worker states + 27-script roster on final image `a8a6f3218ba8`; `gate_pr4_auto` PASS (disproof 3-vs-4 pinned; rate card sha-identical); first chain FAILED at `gate_ffa1` §1 = D-10 instance seven (census correctly caught the new consumer; corrected as three exact symbols by owner ruling), recovered under an operator-approved hash-proven protocol (15 production/test/config/build hashes identical); D-26 startup-write race recorded |
 
 **Suite and roster state:** after PR-2 the pytest suite (475) passed
 with the render worker UP and with it removed — both runs recorded
 verbatim in `PRODUCTION_V1_REPORT.md` on final image `09ff920ccbbb`;
 after LF-103A the suite was 514 on `9fe4c4328116` (ADR-063); after the
 discovery close 540 on `52209e4a6eea` (ADR-064); after FF-A1 591 on
-`4ff126586ec3` (ADR-065); after FF-A2 the suite is **672, passed in
-BOTH worker states on final image `044446e54c0e` (2026-09-07)** —
-verbatim chain in ADR-066. The
-auto-gate roster is 26 scripts (FF-A2 added `gate_ffa2_auto.py`,
+`4ff126586ec3` (ADR-065); after FF-A2 672 on `044446e54c0e` (ADR-066);
+after PR-4 the suite is **707, passed in BOTH worker states on final
+image `a8a6f3218ba8` (2026-09-07/08)** — chain evidence in ADR-067 and
+`PRODUCTION_V1_REPORT.md`. The auto-gate roster is 27 scripts (PR-4
+added `gate_pr4_auto.py`, hermetic, in the backend container, rate
+card sha-checked — ADR-067; FF-A2 added `gate_ffa2_auto.py`,
 hermetic, in the backend container, carrying the registry's
 exact-eleven assertion — ADR-066; FF-A1 added `gate_ffa1_auto.py`,
 hermetic, in the backend container — ADR-065; PR-2.5 discovery added
@@ -398,17 +416,44 @@ binding; the slice notes below carry the ones that bite.
       gated, committed and pushed** (ADR-060). B-11b (mesh/lattice)
       and the fabricator inputs stay open; D-11 and D-12 remain
       discovery CANDIDATES only.
-- [ ] **PR-4 — Honest module transport costing.** Per-module masses
-      carried into the drivers; refuse when any module exceeds
-      `truck_payload_kg`; deterministic first-fit-decreasing allocation
-      respecting payload AND `modules_per_trip`. **Amendment 3:** the BOM
+- [x] **PR-4 — Honest module transport costing.** **CLOSED 2026-09-08
+      (ADR-067): built 2026-09-07, `gate_pr4_visual.md` signed by the
+      operator 2026-09-07, definitive two-state chain all green on
+      `a8a6f3218ba8` (707 both states, 27-script roster).** Per-module masses
+      carried into the drivers (`module_masses_kg`, read off the
+      manifest's segmentation elements); refuse when any module exceeds
+      `truck_payload_kg` naming the module and both numbers;
+      deterministic first-fit-decreasing allocation respecting payload
+      AND `modules_per_trip`, compared unrounded; 0.1% [J]
+      module-sum-vs-report conservation guard; independent ID-partition +
+      mass-conservation verification. **Amendment 3 honoured:** the BOM
       calls it "a deterministic conservative feasible allocation", never
       minimal; prints every trip's module IDs, masses, total load and
       remaining capacity; `not_computable` when no valid allocation —
       never the old lower-bound `max(ceil(mass/payload),
-      ceil(modules/per_trip))` presented as a trip count. Adversarial
-      tests: module > payload; lower bound < feasible count; bed binds;
-      weight binds.
+      ceil(modules/per_trip))` presented as a trip count (the disproof —
+      four 6 t modules at 10 t payload: bound 3, reality 4 — is pinned in
+      `gate_pr4_auto.py` §3). Adversarial tests in
+      `tests/test_transport_allocation.py` + `tests/test_costing.py`:
+      module > payload; lower bound < feasible count; bed binds; weight
+      binds. **Operator digest ruling recorded in ADR-067:** re-exports
+      of old designs may get new package digests solely from the sealed
+      BOM's new transport wording; sealed packages never rewritten;
+      geometry/manifest/validation bytes unchanged. Rate card untouched
+      (transport entries still null and the operator's). **Gate
+      history 2026-09-07:** first definitive chain FAILED at
+      `gate_ffa1_auto` §1 (D-10 instance seven, above) after suite 707
+      passed worker-removed + 21 gates green; operator-approved
+      hash-proven recovery protocol (15 production/test/config/build
+      hashes identical before and after the census correction; only
+      `gate_ffa1_auto.py` changed) — stage A on final image
+      `a8a6f3218ba8…`: corrected FF-A1 36/36, all 25 in-container
+      roster gates exit 0 incl. FF-A2, PR-4, PR-3 static; the 707
+      worker-removed suite RETAINED; a solo FF-A1 run 3 s after the
+      rebuild tripped §8's DB fingerprint on the backend's own startup
+      writes (D-26, recorded, PASS on the identical image 25 min
+      later). Stage B (worker-UP suite + 9B + host gates) evidence in
+      PRODUCTION_V1_REPORT.md.
 - [ ] **PR-5 — AI contract and document repair.** "per element" →
       "per module after segmentation" in the GEOMETRIST prompt
       (`prompts.py:284-285`, `:332`) with the pinning test rewritten; the
@@ -532,7 +577,18 @@ Pick one up when a slice finishes early. Each is one commit.
       design untouched. Corrected by operator ruling to the timeless
       ADR-065 form: all-legacy manifests legacy-clean; new keys <=>
       non-legacy primitive both directions (no silent validation
-      bypass); legacy/non-legacy counts printed. The tell
+      bypass); legacy/non-legacy counts printed. A SEVENTH instance
+      fired 2026-09-07 in PR-4's definitive chain: `gate_ffa1_auto.py`
+      §1's ADR-065 mass-consumer census correctly FAILED 1-of-36 on the
+      new `app.costing.transport` module (`NoFeasibleAllocation` reads
+      `mass_kg`; `TripAllocation` and `allocate_trips` read
+      `total_mass_kg`; 31 consumers vs 29 allowlisted) — this one is
+      the guard doing exactly its job on a genuinely new consumer, not
+      an expired example. Audited: the allocator opens no manifest,
+      report or DB and incomplete mass is refused UPSTREAM by
+      `IncompleteMassError`. Corrected by operator ruling as THREE
+      EXACT symbol entries, not a module wildcard; FAIL preserved
+      verbatim in ADR-067 (D-10 instance seven). The tell
       is a roadmap phrase inside an assertion. Full sweep folded into
       PR-5; re-sweep before slice D ever widens the registry.
 - [ ] **D-11 — Radial segmentation for round vessels.** Needs the
@@ -559,6 +615,22 @@ Pick one up when a slice finishes early. Each is one commit.
       but renders of free-form designs need either a longer budget, a
       decimated render mesh, or fewer samples before Phase 10 /PR-9
       lean on them. Recorded, not resolved.
+- [ ] **D-26 — `gate_ffa1_auto.py` §8 "real DB byte-identical" races
+      the backend's own startup writes (found 2026-09-07, PR-4 recovery
+      stage A).** The check fingerprints `data/luxuryform.db` at gate
+      start and end to prove the GATE touched nothing; but `main.py`'s
+      startup handler writes to that same file (`init_db()` sets
+      `PRAGMA journal_mode=WAL` and creates tables, then PR-2's
+      `recover_stale_spend_holds` / `reconcile_spend_books`). Run the
+      gate within seconds of a container recreation and those writes
+      land between the two fingerprints: measured FAIL at 3 s after
+      `up --build` (`c27774d8dfaf` mid-write), PASS on the identical
+      image and identical gate 25 minutes later (36/36, same
+      `c27774d8dfaf` both ends). Not a PR-4 defect and not a gate
+      defect in intent; an ordering hazard. Until fixed (wait for
+      `/api/health` + a quiesced WAL before fingerprinting, or exclude
+      the startup transaction), chain scripts must not run gate_ffa1
+      first after a rebuild. Recorded, not resolved.
 - [ ] **D-13 — Critic independence reads the model's self-claimed
       `meta.provider`, not dispatch truth** (`orchestrator.py`; the true
       provider is already persisted two lines away). One-line fix + an

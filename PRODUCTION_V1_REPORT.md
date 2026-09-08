@@ -24,6 +24,102 @@ verbatim gate evidence — the same contract as the phase reports.
 
 ---
 
+## PR-4 — transport trips are LOADED, never bounded (CLOSED 2026-09-08, ADR-067: auto gate PASS + operator visual gate PASS 2026-09-07)
+
+`scripts/gate_pr4_auto.py` — 9 sections, exit 0, $0, offline, no AI call,
+no database, and `config/costing.yaml` proven sha256-identical before and
+after every run. Operator visual gate `gate_pr4_visual.md` SIGNED
+2026-09-07 (all four steps YES, recorded verbatim in that file).
+
+### What it makes true
+
+The transport line no longer prints
+`max(ceil(mass/payload), ceil(modules/per_trip))` — a LOWER BOUND — as
+if it were a trip count. It loads the trucks: first-fit-decreasing over
+the measured per-module masses, heaviest first, ties by module id, each
+module on the first trip with room under BOTH the payload and the bed
+count, every comparison unrounded. Amendment 3's wording is enforced at
+the source and re-checked by the gate: **"a deterministic conservative
+feasible allocation"**, never minimal or optimal.
+
+### The disproof that retired the old formula
+
+Four modules of 6,000 kg at a 10,000 kg payload, 4 per bed:
+
+```
+  4 modules x 6,000 kg, payload 10,000 kg, 4 per bed
+  retired lower-bound arithmetic : 3 trips
+  loaded trucks (this slice)     : 4 trips
+  ok   the loaded count beats the bound -- 4 vs 3
+```
+
+Three trucks cannot legally carry four 6 t modules at 10 t each. The
+bound understated the count, and an understated truck count understates
+the quote and puts an illegal load on the road.
+
+### The FAIL this slice produced, and the approved recovery
+
+The first definitive chain (2026-09-07T10:55:10Z) FAILED at
+`gate_ffa1_auto.py`, stage 1, gate 22 of 25 — the ADR-065 mass-consumer
+census refusing PR-4's new `app.costing.transport` module. **D-10
+instance seven**, preserved verbatim in DECISIONS.md with the audit:
+the allocator is pure arithmetic over `(id, mass)` pairs, opens no
+manifest/report/database, and **incomplete mass is refused UPSTREAM of
+allocation** by `drivers_for_assembly`'s `IncompleteMassError` (proven
+by `gate_pr4_auto` §7e and `gate_ffa1_auto` §2), so an incomplete figure
+can never reach it. The operator ruled the correction as THREE EXACT
+SYMBOLS rather than a module wildcard, and approved a hash-proven
+recovery protocol instead of repeating the full two-hour chain.
+
+### Evidence: what was REUSED and what was RE-RUN
+
+Reported separately and honestly, as the operator required.
+
+**REUSED from the first chain (production and test bytes proven
+unchanged by the correction):**
+
+| Evidence | Value |
+|---|---|
+| Full suite, render-worker REMOVED | **707 passed, 3 warnings in 3158.46s (0:52:38)**, exit 0 |
+| Worker state during that run | pinned absent (`rm -sf`), verified at start |
+| Rebuild + image pin (first chain) | `c654d8d4090c…`; `gate_pr4_auto.py` host==container `5902ff083c19` |
+
+The reuse is justified by a hash proof recorded before and after the
+correction: `backend/app` (all .py) `5954d543c23d…`, `frontend/src`
+`2a4fe1223798…`, `tests` `2eda2350122c…`, `config` `8208c6205e21…`,
+`schemas` `32cc259779ae…`, plus `pyproject.toml`, `docker-compose.yml`,
+all five Dockerfiles, `.dockerignore`, `package.json` and
+`package-lock.json` — **all 15 distinct entries identical**. The ONLY
+changed file is `scripts/gate_ffa1_auto.py`
+(`f56afbc40817…` → `7aff70d6d53e…`), which the suite does not execute.
+
+**RE-RUN on the final corrected image (new evidence)** — final image
+`a8a6f3218ba849e0…`, identical at stage A start (2026-09-07T12:11:51Z)
+and at chain end (2026-09-08T07:19:58Z); corrected `gate_ffa1_auto.py`
+host==container `7aff70d6d53e`:
+
+| Evidence | Value |
+|---|---|
+| Corrected FF-A1 gate (roster position 22, DB quiesced) | **PASS 36/36**, census `31 consumer symbols found, all listed (allowlist entries: 32)`, §6 `79 all-legacy, 1 non-legacy`, §8 DB `c27774d8dfaf` both ends |
+| Stage A in-container roster, worker REMOVED (verified absent at start and end) | all 25 exit 0: phase2/3/4/5/6a1/6a2/6b/6c/6c2, costing, 8/8b/9a/11/13a/14/15, pr1, pr2, lf103a, pr25_discovery, ffa1, **ffa2**, **pr4**, **pr3 static (stdin)** |
+| Full suite, render-worker **UP** (pinned `Up 1 second` at start → `Up 56 minutes` at end) | **707 passed, 3 warnings in 3317.11s (0:55:17)**, exit 0 |
+| `gate_phase9b_auto` (worker up) | exit 0 |
+| Host gates | `gate_pr3_auto --live` 0 · `gate_scope_audit_auto` 0 · `gate_phase14_auto --frontend-only` 0 · `gate_pr25_discovery_auto --host-drift` 0 |
+
+One honest wrinkle, recorded as debt **D-26**: the corrected FF-A1
+gate's SOLO run in stage A — started 3 seconds after `up --build`
+recreated the backend — FAILED 1/36 on §8 `real DB byte-identical`
+(`c27774d8dfaf` mid-write), because the backend's own startup handler
+writes the production DB (`init_db()` WAL pragma + table creation,
+then PR-2's spend-hold recovery and reconciliation). The identical
+gate on the identical image passed 36/36 twenty-five minutes later in
+the roster with the DB quiesced. Not a PR-4 defect, not a census
+defect; an ordering hazard in chain scripts, preserved verbatim rather
+than re-run away. $0 throughout; no providers; no downloads; no
+reference JPG or generated artifact enters the commit.
+
+---
+
 ## PR-2 — spend caps enforce by atomic reservation (CLOSED 2026-09-01, ADR-061: auto gate PASS + operator visual gate PASS)
 
 **Scope (approved 2026-08-28 with eleven mandatory technical amendments

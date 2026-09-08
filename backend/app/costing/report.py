@@ -85,6 +85,21 @@ def render_bom(bom: Bom, budget: BudgetCheck | None = None) -> str:
                     else "USD n/a (no FX)"
                 a(f"    amount  : {ln.amount_native:,.2f} {ln.currency}"
                   f"   =  {usd}")
+                # PR-4 (ADR-067): a transport line prints EVERY trip — the
+                # modules aboard, their masses, the load, and what capacity
+                # was left on both limits. Amendment 3, verbatim.
+                trips = (ln.drivers_used or {}).get("allocation")
+                if trips:
+                    a(f"    loading : "
+                      f"{(ln.drivers_used or {}).get('allocation_method')}")
+                    for t in trips:
+                        mods = " + ".join(
+                            f"{m['id']} ({m['mass_kg']:,.3f} kg)"
+                            for m in t["modules"])
+                        a(f"      trip {t['trip']}: {mods}")
+                        a(f"        load {t['load_kg']:,.3f} kg; spare "
+                          f"{t['remaining_payload_kg']:,.3f} kg payload, "
+                          f"{t['remaining_module_slots']} module slot(s)")
             elif ln.status == NOT_APPLICABLE:
                 a(f"  {ln.label}: not applicable — {ln.blocker}")
             else:

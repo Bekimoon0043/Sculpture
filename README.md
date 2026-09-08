@@ -68,7 +68,15 @@ honest to the bone: its mass is INCOMPLETE (the armature is
 undesigned) so every lift, stability and costing surface says "needs
 input"; its wall is a nominal gauge, never called verified; and its
 exports seal PRE-FABRICATION at best, refused outright without a
-passing persisted `freeform_integrity_v1` verdict.
+passing persisted `freeform_integrity_v1` verdict. Since 2026-09-08
+(PR-4, ADR-067) the BOM's transport line LOADS the trucks instead of
+printing a lower bound: the measured module masses are packed
+heaviest-first under both the payload and the bed count, every trip is
+printed with its modules, load and spare capacity, a module no truck
+can carry refuses the line by name, and the count calls itself only
+"a deterministic conservative feasible allocation" — never minimal —
+because the old arithmetic said three trucks where four 6-tonne
+modules at a 10-tonne payload plainly need four.
 
 Rendering and the vision-critique loop (Phase 5), the remaining primitive
 library work (Phase 6), exports beyond STEP/GLB, and DesignDNA/recovery

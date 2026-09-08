@@ -69,6 +69,20 @@ CENSUS_ALLOWLIST = {
     ("app.geometry.freeform_validation", "run_freeform_integrity"),
     ("app.costing.drivers", "*"),
     ("app.costing.bom", "*"),
+    # PR-4 (ADR-067), D-10 instance seven. The trip allocator is pure
+    # arithmetic over (module id, mass) pairs handed to it by
+    # bom.transport(): it opens no manifest, no validation report and no
+    # database, and it never decides whether a mass is complete. Every
+    # path that reaches it runs drivers_for_assembly FIRST, which raises
+    # IncompleteMassError on an incomplete mass before a single module
+    # mass is read (proven behaviourally by gate_pr4_auto section 7e),
+    # so an INCOMPLETE mass can never reach these symbols at all.
+    # Listed as three EXACT symbols by operator ruling 2026-09-07 — not a
+    # module wildcard — so a future symbol in this module must be audited
+    # on its own merits rather than inheriting the exemption.
+    ("app.costing.transport", "NoFeasibleAllocation"),
+    ("app.costing.transport", "TripAllocation"),
+    ("app.costing.transport", "allocate_trips"),
     ("app.dna.store", "derive_tags"),
     ("app.dna.store", "precedent_block"),
     ("app.council.critique", "objective_score"),

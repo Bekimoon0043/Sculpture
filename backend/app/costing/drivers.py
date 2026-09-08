@@ -68,6 +68,12 @@ class CostDrivers:
     #: segmentation cuts. Counted in seam_length_m; broken out so the BOM
     #: can say where the seam came from.
     joint_seam_length_m: float | None = None
+    #: PR-4 (ADR-067): (module id, measured mass) for every module the
+    #: assembler cut, id = "<element>#<index>", read STRAIGHT off the
+    #: manifest's segmentation elements — never re-measured. None when the
+    #: manifest never recorded them, with the reason in ``unavailable``;
+    #: the transport line refuses to load a trip without them.
+    module_masses_kg: tuple[tuple[str, float], ...] | None = None
 
     #: Why each None driver is None, keyed by driver name. Printed verbatim
     #: on any BOM line that needed it, so the report explains itself.
@@ -88,6 +94,11 @@ class CostDrivers:
             "seam_length_m": self.seam_length_m,
             "seam_area_m2": self.seam_area_m2,
             "joint_seam_length_m": self.joint_seam_length_m,
+            # rounded for the record only — allocation uses the unrounded
+            # tuple on the dataclass, never this dict
+            "module_masses_kg": (
+                {mid: round(m, 6) for mid, m in self.module_masses_kg}
+                if self.module_masses_kg is not None else None),
         }
 
 
@@ -212,9 +223,9 @@ def drivers_for_assembly(report: AssemblyValidationReport,
             surface_area_m2=surface_area_m2,
             crane_pick_kg=pick, monolithic=monolithic,
             module_count=None, seam_length_m=None, seam_area_m2=None,
-            joint_seam_length_m=None,
+            joint_seam_length_m=None, module_masses_kg=None,
             unavailable={"module_count": reason, "seam_length_m": reason,
-                         "seam_area_m2": reason},
+                         "seam_area_m2": reason, "module_masses_kg": reason},
         )
 
     seg = (manifest or {}).get("segmentation")
@@ -248,6 +259,26 @@ def drivers_for_assembly(report: AssemblyValidationReport,
     if module_count <= 0:
         return _unavailable(NEEDS_REBUILD, mass_kg, monolithic=False)
 
+    # PR-4 (ADR-067): the per-module masses, exactly as the assembler
+    # recorded them. If the record disagrees with the module count, NO
+    # masses are reported — a trip loaded from a partial list would be a
+    # wrong load presented as a real one.
+    module_masses: list[tuple[str, float]] = []
+    for eid, entry in (seg.get("elements") or {}).items():
+        for m in (entry or {}).get("modules") or []:
+            module_masses.append(
+                (f"{eid}#{m.get('index')}", float(m.get("mass_kg", 0.0))))
+    if len(module_masses) == module_count:
+        masses: tuple[tuple[str, float], ...] | None = tuple(module_masses)
+        unavailable = None
+    else:
+        masses = None
+        unavailable = {"module_masses_kg": (
+            f"the manifest counts {module_count} modules but records "
+            f"{len(module_masses)} per-module masses, so no honest trip "
+            f"can be loaded. Rebuild the design once and the assembler "
+            f"records every module's measured mass")}
+
     return CostDrivers(
         mass_kg=mass_kg,
         volume_m3=volume_m3,
@@ -261,5 +292,6 @@ def drivers_for_assembly(report: AssemblyValidationReport,
         seam_area_m2=(float(split.get("area_mm2") or 0.0)
                       + float(joint.get("area_mm2") or 0.0)) / _MM2_PER_M2,
         joint_seam_length_m=float(joint.get("length_mm") or 0.0) / 1000.0,
-        unavailable=None,
+        module_masses_kg=masses,
+        unavailable=unavailable,
     )

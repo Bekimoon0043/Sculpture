@@ -28,6 +28,13 @@ from datetime import datetime, timezone
 
 from app.core.config import CostingConfig, Material
 from app.costing.drivers import NEEDS_SEGMENTATION, CostDrivers
+from app.costing.transport import (
+    MODULE_MASS_AGREEMENT_PCT,
+    AllocationInputError,
+    NoFeasibleAllocation,
+    allocate_trips,
+    validate_modules,
+)
 from app.costing.rates import (
     MONEY_DP,
     FxConversion,
@@ -392,23 +399,74 @@ class _Builder:
         self.transport()
 
     def transport(self) -> None:
-        """Trips — real since slice C2 (ADR-056).
+        """Trips — LOADED, not bounded, since PR-4 (ADR-067).
 
-        A load runs out of weight or it runs out of bed, whichever comes
-        first, so the trip count is the worse of the two. Both capacities
-        are the operator's numbers and neither is defaulted: without them
-        this is a MISSING_RATE (his to supply), not a NOT_COMPUTABLE
-        (ours to build). That transition is the whole point of the slice.
+        Slice C2 (ADR-056) made trips real; PR-4 makes them honest. The
+        C2 line printed a lower bound as a trip count, and four 6 t
+        modules at a 10 t payload disprove it (four trucks, not three) —
+        the old formula and its failure case are preserved in ADR-067 and
+        never return here. Now the measured module masses are loaded
+        first-fit-decreasing under BOTH limits, compared unrounded, and
+        every trip prints its modules, load and remaining capacity. The
+        count is a deterministic conservative feasible allocation — the
+        BOM never calls it the lowest achievable. Both capacities remain
+        the operator's numbers and neither is defaulted: without them this
+        is a MISSING_RATE (his to supply), not a NOT_COMPUTABLE (ours to
+        build).
         """
         inst = self.c.install
+        line_head = ("install_transport", "Install — transport", "install")
         if self.d.module_count is None:
             self._blocked(
-                "install_transport", "Install — transport", "install",
-                NOT_COMPUTABLE,
-                formula="max(ceil(mass / payload), ceil(modules / per trip)) "
-                        "x rate",
+                *line_head, NOT_COMPUTABLE,
+                formula="<trip allocation> x rate — the modules do not "
+                        "exist yet",
                 blocker=(self.d.unavailable or {}).get(
                     "module_count", NEEDS_SEGMENTATION),
+                rate_path="install.transport")
+            return
+
+        base_formula = (f"{self.d.module_count} modules, "
+                        f"{self.d.mass_kg:,.1f} kg -> <trip allocation> "
+                        f"x rate")
+        if self.d.module_masses_kg is None:
+            self._blocked(
+                *line_head, NOT_COMPUTABLE, formula=base_formula,
+                blocker=(self.d.unavailable or {}).get(
+                    "module_masses_kg",
+                    "per-module masses were never recorded for this design "
+                    "— rebuild it once and the assembler records every "
+                    "module's measured mass"),
+                rate_path="install.transport")
+            return
+
+        modules = [(mid, float(m)) for mid, m in self.d.module_masses_kg]
+        try:
+            validate_modules(modules)
+        except AllocationInputError as exc:
+            self._blocked(
+                *line_head, NOT_COMPUTABLE, formula=base_formula,
+                blocker=f"the stored per-module masses are unusable: {exc}",
+                rate_path="install.transport")
+            return
+
+        # Independent conservation guard: the modules must agree with the
+        # validation report the operator signed off before any trip is
+        # loaded from them. MODULE_MASS_AGREEMENT_PCT is a judgement value
+        # [J], recorded in transport.py.
+        module_total = math.fsum(m for _, m in modules)
+        tolerance_kg = abs(self.d.mass_kg) * MODULE_MASS_AGREEMENT_PCT / 100.0
+        if abs(module_total - self.d.mass_kg) > tolerance_kg:
+            self._blocked(
+                *line_head, NOT_COMPUTABLE, formula=base_formula,
+                blocker=(
+                    f"the per-module masses sum to {module_total:,.3f} kg "
+                    f"but the validation report says "
+                    f"{self.d.mass_kg:,.3f} kg — "
+                    f"{abs(module_total - self.d.mass_kg):,.3f} kg apart, "
+                    f"over the {MODULE_MASS_AGREEMENT_PCT:g}% agreement "
+                    f"bound. No trip is loaded from numbers that disagree; "
+                    f"rebuild the design"),
                 rate_path="install.transport")
             return
 
@@ -419,29 +477,59 @@ class _Builder:
         for capacity in (payload, per_trip):
             if isinstance(capacity, MissingRate):
                 self._blocked(
-                    "install_transport", "Install — transport", "install",
-                    MISSING_RATE,
-                    formula=(f"{self.d.module_count} modules, "
-                             f"{self.d.mass_kg:,.1f} kg -> <trips> x rate"),
+                    *line_head, MISSING_RATE, formula=base_formula,
                     blocker=f"costing.yaml {capacity.path} is null — "
                             "supply a number",
                     rate_path=capacity.path)
                 return
 
-        by_weight = math.ceil(self.d.mass_kg / payload.value)
-        by_bulk = math.ceil(self.d.module_count / per_trip.value)
-        trips = max(by_weight, by_bulk)
-        binding = "weight" if by_weight >= by_bulk else "bed space"
+        try:
+            allocation = allocate_trips(modules, float(payload.value),
+                                        per_trip.value)
+        except NoFeasibleAllocation as exc:
+            self._blocked(
+                *line_head, NOT_COMPUTABLE,
+                formula=(f"{self.d.module_count} modules, "
+                         f"{self.d.mass_kg:,.1f} kg -> <no feasible trip> "
+                         f"x rate"),
+                blocker=str(exc), rate_path="install.transport")
+            return
+        except AllocationInputError as exc:
+            # a supplied capacity with a nonsense VALUE (not null) — the
+            # operator corrects the rate card, so this is his side
+            self._blocked(
+                *line_head, MISSING_RATE, formula=base_formula,
+                blocker=(f"costing.yaml install.truck_payload_kg / "
+                         f"install.modules_per_trip cannot load a trip: "
+                         f"{exc} — correct the rate card"),
+                rate_path="install.truck_payload_kg")
+            return
+
+        trips = allocation.trip_count
+        qty_text = (
+            f"{self.d.module_count} modules, {self.d.mass_kg:,.1f} kg "
+            f"loaded onto {trips} trip(s) — {allocation.method_label}; "
+            f"payload {float(payload.value):,.0f} kg, "
+            f"{allocation.modules_per_trip} modules per bed, every "
+            f"capacity compared unrounded")
         self._money(
-            "install_transport", "Install — transport", "install", trips,
-            (f"max(ceil({self.d.mass_kg:,.1f} kg / {payload.value:g} kg) = "
-             f"{by_weight}, ceil({self.d.module_count} modules / "
-             f"{per_trip.value:g}) = {by_bulk}) = {trips} trip(s), "
-             f"bound by {binding}"),
+            *line_head, trips, qty_text,
             resolve("install.transport", inst.transport),
             {"module_count": self.d.module_count,
              "mass_kg": round(self.d.mass_kg, 1),
-             "trips": trips, "binding": binding})
+             "trips": trips,
+             "payload_kg": float(payload.value),
+             "modules_per_trip": allocation.modules_per_trip,
+             "allocation_method": allocation.method_label,
+             "allocation": [
+                 {"trip": t.index,
+                  "modules": [{"id": mid, "mass_kg": round(m, 3)}
+                              for mid, m in zip(t.module_ids,
+                                                t.module_masses_kg)],
+                  "load_kg": round(t.load_kg, 3),
+                  "remaining_payload_kg": round(t.remaining_payload_kg, 3),
+                  "remaining_module_slots": t.remaining_module_slots}
+                 for t in allocation.trips]})
 
     def seams(self) -> None:
         """Joining the modules — real since slice C2 (ADR-056).

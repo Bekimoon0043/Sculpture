@@ -4680,3 +4680,173 @@ reference_manifest.json, REFERENCE_ANALYSIS.md, ref08_landmarks.json
 one commit on main. Next: /lf-next picks the queue (PR-4 is next in
 the approved order now that the free-form capability exists,
 ADR-060); FF-A2 does not start it.
+
+
+## ADR-067 - PR-4: transport trips are loaded, never bounded (2026-09-07)
+
+**Decision.** Replace the transport line's trip count — until now
+`max(ceil(mass/payload), ceil(modules/per_trip))`, a LOWER BOUND
+presented as a trip count — with a real loading of the trucks:
+first-fit-decreasing over the measured per-module masses (heaviest
+module first, ties broken by module id ascending, each module on the
+first trip with room under BOTH the payload and the bed count, every
+comparison unrounded via `math.fsum`). The BOM line describes the result
+only as **"a deterministic conservative feasible allocation"** (operator
+amendment 3, binding) — never as minimal or optimal, because
+first-fit-decreasing can use more trips than the cleverest packing and
+the platform does not claim what it did not prove. Every trip prints its
+module IDs, masses, load and remaining capacity on both limits; a module
+over the payload refuses the line naming the module and both numbers;
+no valid allocation → `not_computable`, never a count.
+
+**The failure case that killed the old formula, preserved verbatim:**
+four modules of 6,000 kg at a 10,000 kg payload and 4 per bed. Old line:
+`max(ceil(24000/10000)=3, ceil(4/4)=1) = 3 trip(s)`. Reality: no two 6 t
+modules share a 10 t truck — four trips. The bound understated the
+count, and a BOM that understates trucks understates the quote and puts
+an illegal load on the road. `gate_pr4_auto.py` section 3 prints both
+numbers side by side forever.
+
+**What it buys.** The first cost line whose quantity is a proven
+feasible plan rather than arithmetic; per-trip evidence the operator can
+check by hand; refusals that name the module (the crane analogue of
+ADR-056's heaviest-module pick).
+
+**What it gives up / new machinery.**
+* `CostDrivers` gains `module_masses_kg` — (id, mass) per module, id =
+  `<element>#<index>`, read STRAIGHT off the manifest's segmentation
+  elements block (one measurement path, ADR-056 discipline). A manifest
+  whose module count disagrees with its per-module records reports the
+  masses unavailable and the line refuses — no partial load is priced.
+* Conservation guard: the module masses must agree with the validation
+  report's total within **0.1 % [J]** (`MODULE_MASS_AGREEMENT_PCT`,
+  judgement value, deliberately tighter than segmentation's own
+  volume-conservation band so a bookkeeping defect cannot hide inside a
+  legitimate measurement band) — else `not_computable` with both sums.
+* Independent invariant gate (`verify_allocation`, also run by
+  `gate_pr4_auto.py` on the printed result): every module id on exactly
+  one trip; loads fsum exactly to the input masses; every load ≤ payload
+  and every bed count respected. A wrong allocation fails LOUDLY.
+* Input safeguards (operator ruling, verbatim): empty/duplicate module
+  ids, non-finite or non-positive masses, invalid payloads and
+  non-positive/non-integral bed counts are rejected
+  (`AllocationInputError`); rounding is display-only.
+* The `binding: weight|bed space` key and the old formula text are gone
+  from the line contract; `tests/test_costing.py`'s transport tests were
+  updated to the NEW contract (spec-driven, listed in the PR-4 build
+  evidence) and `_segmented_manifest` now carries the per-element module
+  records real manifests have carried since slice C2.
+* Rotation is still not modelled (LIMITATIONS §10 note stands), and the
+  fleet is uniform: ONE payload, ONE bed count for the whole job.
+
+**Digest ruling (operator, 2026-09-07, explicit).** The LUXEXCHANGE
+package seals `costing/bom.json` (`luxexchange.py`), so **re-exporting an
+old design may produce a new package digest solely because the BOM
+transport representation and wording changed. Existing sealed packages
+are never rewritten; geometry, manifest and validation bytes remain
+unchanged.** Approved as a legitimately-new-bytes case in the ADR-057
+precedent class; it narrows ADR-065's "re-exports of all-legacy designs
+byte-identical" claim to the non-BOM package members from this slice on.
+The Phase 2 canonical STEP hash `e1a59fa6…` is unaffected — PR-4
+contains zero geometry.
+
+**Evidence.** `tests/test_transport_allocation.py` (red first — the
+suite failed on the missing module before `transport.py` existed) +
+updated `tests/test_costing.py`; `scripts/gate_pr4_auto.py` (roster 27),
+9 sections, $0, offline, real rate card sha256-identical before/after;
+`gate_pr4_visual.md` for the operator's eye. The real
+`config/costing.yaml` transport entries remain null and the operator's.
+
+### D-10 instance seven — the FF-A1 census guard caught PR-4 (2026-09-07)
+
+The definitive PR-4 /lf-gate chain FAILED at `gate_ffa1_auto.py`, stage 1,
+gate 22 of 25. Preserved verbatim, never erased:
+
+```
+[1 AST consumer census (ADR-065 allowlist)]
+  FAIL [1] every mass consumer is on the ADR-065 allowlist --
+       app.costing.transport::NoFeasibleAllocation reads ['mass_kg'];
+       app.costing.transport::TripAllocation reads ['total_mass_kg'];
+       app.costing.transport::allocate_trips reads ['total_mass_kg']
+      consumers found: 31 (allowlist entries: 29)
+...
+FAIL -- 1 of 36 checks failed.
+```
+
+**This is the guard working, not a defect.** ADR-065 section 1 statically
+scans all of `backend/app` for code reading mass-named keys and refuses
+anything not on the audited allowlist. PR-4's new `app.costing.transport`
+is a genuinely new mass consumer — `NoFeasibleAllocation.mass_kg`,
+`TripAllocation.total_mass_kg`, and `allocate_trips`' fsum of the module
+masses — and the allowlist, written before PR-4 existed, had never
+audited it. The seventh time a correct guard has met legitimate new code
+(D-10); the first time the FF-A1 census specifically has.
+
+**The audit, and why the exemption is honest.** The allocator is pure
+arithmetic over `(module id, mass)` pairs handed to it by
+`bom.transport()`. It opens no manifest, no validation report and no
+database, and it never judges whether a mass is COMPLETE. Every path
+that reaches it runs `drivers_for_assembly` first, which raises
+`IncompleteMassError` before a single per-module mass is read —
+**incomplete mass is refused UPSTREAM of allocation**, proven
+behaviourally by `gate_pr4_auto.py` section 7e (`incomplete mass raises
+before allocation`) and by `gate_ffa1_auto.py` section 2, not asserted
+here. The allocator therefore cannot be the place an incomplete figure
+leaks into a price.
+
+**Operator ruling 2026-09-07:** admit the module as THREE EXACT SYMBOLS —
+`("app.costing.transport", "NoFeasibleAllocation")`,
+`("app.costing.transport", "TripAllocation")`,
+`("app.costing.transport", "allocate_trips")` — deliberately NOT the
+`("app.costing.transport", "*")` wildcard this session proposed, so any
+future symbol added to that module must be audited on its own merits
+rather than inheriting the exemption. Allowlist entries 29 -> 32;
+consumers found 31. Nothing else in the gate changed; the check itself
+is no weaker (a 32nd unaudited consumer still fails it), and design
+70b12dd3 and every other section were left untouched.
+
+**Recovery protocol (operator-approved, 2026-09-07)** — used instead of
+repeating the full two-hour chain, because the correction touches only a
+gate script and evidence documents: hash `backend/app`, `frontend/src`,
+`tests`, `config`, `schemas`, the dependency files and every Dockerfile
+BEFORE the correction; change only the census gate and the evidence
+docs; rebuild; rerun the corrected FF-A1 gate; rerun the whole roster on
+the final image; RETAIN the already-completed worker-removed suite
+result (707 passed) because the production and test bytes are proven
+unchanged; then one full suite with the render worker restored, Phase 9B
+and all host gates. Any differing production/test/config/build hash
+abandons the protocol and restarts the complete chain. The reused and
+the new evidence are reported separately in PHASE_6_REPORT.md.
+
+### Close (2026-09-08)
+
+Preconditions met: `gate_pr4_auto.py` PASS (9 sections, rate card
+sha256-identical `4eb861d0…` before and after) and the operator signed
+`gate_pr4_visual.md` on 2026-09-07 — all four steps YES, recorded
+verbatim in that file (auto gate PASS; the 3-versus-4 disproof and
+per-trip loading confirmed by hand; a real design's transport line
+`[RATE MISSING]` naming `install.truck_payload_kg` with no invented
+trip count; all three costing entries still null, hashes identical).
+
+Definitive two-worker-state evidence, ONE final image `a8a6f3218ba8`
+(created 2026-09-07T12:13:41Z by the recovery rebuild, identical at
+chain end 2026-09-08T07:19:58Z; PR-4 source and both gate scripts
+verified host==container by sha256; backend source is not
+bind-mounted): the first chain's worker-REMOVED suite **707 passed
+(3158.46s)** RETAINED under the operator-approved hash-proven recovery
+protocol (15 production/test/config/schema/build hashes identical
+before and after the census correction; only `gate_ffa1_auto.py`
+changed, `f56afbc40817` → `7aff70d6d53e`); corrected `gate_ffa1_auto`
+**36/36** (31 consumer symbols found, all listed; allowlist 32; 79
+all-legacy + 1 non-legacy manifests); all 25 in-container roster gates
+exit 0 incl. `gate_ffa2` 63/63, `gate_pr4`, `gate_pr3 --static`;
+worker-UP suite **707 passed (3317.11s)** with the worker pinned `Up 1
+second` → `Up 56 minutes`; `gate_phase9b` PASS; host gates `gate_pr3
+--live`, `gate_scope_audit`, `gate_phase14 --frontend-only`,
+`gate_pr25 --host-drift` 218/218 all PASS. A live HTTP smoke build of
+`freeform_loop` on the running image (HTTP 200, 577,884-byte glTF)
+confirmed the platform was left testable. $0 throughout; no providers;
+no downloads; nothing generated or private enters the commit. Closed as
+one commit on main. Next per the approved order: PR-5 via /lf-next;
+PR-7A's parallel branch (`parallel/pr7a`, operator-authorized) may now
+rebase onto this commit — PR-4 does not start either.

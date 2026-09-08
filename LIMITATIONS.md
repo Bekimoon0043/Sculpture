@@ -367,6 +367,23 @@ What Phase 6 still deliberately does NOT do:
     lie on its side to fit the truck may be refused. Loud, never silent,
     and the safe direction; a rotation-aware packing check would be its
     own slice.
+  - **Trip allocation is FEASIBLE, not the fewest possible (PR-4,
+    ADR-067).** Since 2026-09-07 the transport line LOADS the trucks
+    (first-fit-decreasing over the measured module masses, both limits
+    checked unrounded, every trip printed with its modules, load and
+    remaining capacity) instead of printing the old
+    `max(ceil(mass/payload), ceil(modules/per_trip))` lower bound —
+    which four 6 t modules at a 10 t payload disprove (4 real trips vs
+    the bound's 3). What it still cannot do: the count is conservative,
+    never proven lowest (a cleverer packing may save a truck — the BOM
+    says "a deterministic conservative feasible allocation" and nothing
+    more); the fleet is uniform (ONE `truck_payload_kg`, ONE
+    `modules_per_trip` for the whole job — no mixed trucks, no partial
+    hires); module DIMENSIONS are not packed (bed space is a slot
+    count, not an area/length fit — the per-axis size limit above is
+    what keeps a module truck-shaped); and designs whose manifests
+    predate per-module mass records refuse the line with a rebuild
+    instruction rather than allocating a partial load.
   - **Designs whose spec-declared `{x,y,z}` was collapsed to one number
     (built before 2026-08-28 through the fabrication loop) are flagged,
     never re-judged.** Their manifest read carries a live
