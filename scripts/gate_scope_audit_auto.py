@@ -166,9 +166,19 @@ def main() -> int:
     for name in ("Free-form Sculpture Demonstrator",
                  "Internal Fabrication-Geometry Beta", "LF-103A"):
         check("5", name in next_md, f"NEXT.md carries: {name}")
-    i_103a, i_25 = next_md.find("LF-103A"), next_md.find("PR-2.5")
-    check("5", 0 <= i_103a < i_25 if i_25 >= 0 else False,
-          f"NEXT.md orders LF-103A (at {i_103a}) before PR-2.5 (at {i_25})")
+    # PR-5 (2026-09-08, D-10 sweep — this was D-10 instance four): the
+    # order is read from the WORK QUEUE section's entry lines only, never
+    # from the first occurrence anywhere in the file, which any status
+    # paragraph mentioning PR-2.5 before LF-103A used to trip.
+    queue_start = next_md.find("## 2. THE WORK QUEUE")
+    queue_end = next_md.find("\n## 3", queue_start + 1)
+    queue = next_md[queue_start:queue_end if queue_end > 0 else None]
+    entries = [ln for ln in queue.splitlines() if ln.lstrip().startswith("- [")]
+    pos_103a = next((i for i, ln in enumerate(entries) if "LF-103A" in ln), -1)
+    pos_25 = next((i for i, ln in enumerate(entries) if "PR-2.5" in ln), -1)
+    check("5", queue_start >= 0 and 0 <= pos_103a < pos_25,
+          f"NEXT.md work queue orders LF-103A (entry {pos_103a}) before "
+          f"PR-2.5 (entry {pos_25}) — {len(entries)} queue entries scanned")
     check("5", "not Production v1" in next_md or "NOT Production v1" in next_md,
           "NEXT.md states PR-0..PR-9 delivers Milestone B, not Production v1")
 

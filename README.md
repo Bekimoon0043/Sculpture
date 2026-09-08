@@ -76,7 +76,15 @@ printed with its modules, load and spare capacity, a module no truck
 can carry refuses the line by name, and the count calls itself only
 "a deterministic conservative feasible allocation" — never minimal —
 because the old arithmetic said three trucks where four 6-tonne
-modules at a 10-tonne payload plainly need four.
+modules at a 10-tonne payload plainly need four. Since 2026-09-08
+(PR-5, ADR-068) every surface that describes lifting tells the same
+story the gate measures — the instruction sheet the AI reads, the
+gate's own explanation lines, the vision-critique scorer and the
+operator documents all say the crane picks the heaviest module after
+segmentation and the truck envelope binds per axis — and the critique
+scorer now scores a design's pick weight with a stated basis or refuses
+to score it at all, instead of grading the whole mass against a lift
+limit it used to invent.
 
 Rendering and the vision-critique loop (Phase 5), the remaining primitive
 library work (Phase 6), exports beyond STEP/GLB, and DesignDNA/recovery

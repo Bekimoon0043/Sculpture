@@ -5,7 +5,21 @@ the start of every session (`/lf-orient`) and rewritten at the end of every
 slice (`/lf-close`). If this file and a phase plan disagree, this file is
 stale and must be corrected in the same commit as the work.
 
-Last updated: 2026-09-08 — **PR-4 CLOSED** (ADR-067: the transport
+Last updated: 2026-09-08 — **PR-5 CLOSED** (ADR-068: every surface that
+describes lifting now says what the fabrication gate measures — the
+GEOMETRIST contract, the two gate bases, the critique scorer and the
+operator documents all say heaviest MODULE after segmentation and
+per-axis envelope; the scorer scores the pick weight with an explicit
+basis or returns None, and its silent 1,000 kg lift default is gone;
+four documents corrected with dated notes beside preserved originals;
+the D-10 sweep is now roster check `gate_pr5_auto` §5 — 8 growth
+literals each carrying a real reason, 3 checks converted to timeless
+forms; definitive risk-based chain on image `753490ced0af`: suite **720
+passed** worker-removed (PR-4's 707 two-state run retained as the
+unchanged baseline), all 28 roster gates green in their required
+states, visual gate signed 2026-09-08 all six steps YES with the real
+design `621d7497…` showing the heaviest of 9 modules, 1,472.19 kg vs
+11,346.1 kg). Before that: **PR-4 CLOSED** (ADR-067: the transport
 line LOADS the trucks — first-fit-decreasing over the measured
 per-module masses, both limits checked unrounded, every trip printed
 with its modules, load and remaining capacity, described only as "a
@@ -20,7 +34,7 @@ ruling); operator visual gate signed 2026-09-07 all four steps YES;
 the first chain's FAIL, the operator-approved hash-proven recovery
 protocol and the new D-26 startup-write race are recorded in
 ADR-067 / PRODUCTION_V1_REPORT.md; the rate card's transport entries
-remain null and the operator's). Before that: **FF-A2 CLOSED** (ADR-066: the
+remain null and remain the operator's to supply). Before that: **FF-A2 CLOSED** (ADR-066: the
 `freeform_loop` hollow-lens primitive — the platform's FIRST free-form
 capability — exists end-to-end, PRE-FABRICATION only; definitive
 two-worker-state chain on final image `044446e54c0e`: suite **672
@@ -105,13 +119,14 @@ workflow controls, folded into PR-7B) ruled 2026-08-28.
 | 13 — recovery + hardening | **Slice A only; B+ queued as PR-7A/B/C** | auto PASS 2026-08-22, ADR-040 |
 | 14 + 14b — Designer Workspace, Blender-style controls | **BUILT, auto-gated** | auto PASS 2026-08-24, ADR-044/046; visual pending |
 | 15 A–E — designer UX, draft preview, projects/variants | **BUILT, auto-gated** | auto PASS 2026-08-24, ADR-047–051; visual pending |
-| **PR program (PR-0 … PR-9) — delivers Milestone B, not Production v1 (ADR-062)** | **APPROVED 2026-08-27; PR-0, PR-3, PR-1, PR-2, PR-4 CLOSED** | `PRODUCTION_V1_REPORT.md` (historical filename), ADR-057/058/059/061/067 |
+| **PR program (PR-0 … PR-9) — delivers Milestone B, not Production v1 (ADR-062)** | **APPROVED 2026-08-27; PR-0, PR-3, PR-1, PR-2, PR-4, PR-5 CLOSED** | `PRODUCTION_V1_REPORT.md` (historical filename), ADR-057/058/059/061/067/068 |
 | **Master Scope audit vs owner's 30-system scope** | **31.6/100 at `bfa5a77` — approximately one-third complete; only Geometry Integrity ≥4/5 among safety-critical systems** | `SCOPE.md`, `DEVELOPMENT_AUDIT.md`, ADR-062 |
 | **LF-103A — export boundary enforces the gate verdict** | **CLOSED 2026-09-02** | ADR-063; auto gate + 23-script roster PASS on `9fe4c4328116`, 514 both worker states; visual gate signed 2026-09-02 |
 | **PR-2.5 free-form DISCOVERY (not capability)** | **CLOSED 2026-09-03; visual Step 2 = NO — probe forms not reference-faithful; capability UNBUILT** | ADR-064; 540 both worker states + 24-script roster on `52209e4a6eea`; BREP-first approved with conditions; STEP canonical confirmed |
 | **FF-A1 — incomplete-mass truth + freeform_integrity_v1 (internal foundation, no user-facing capability)** | **CLOSED 2026-09-04; visual signed (digest strings not pasted — caveat recorded)** | ADR-065; 591 both worker states + 25-script roster; in-container gate 35/35 zero skipped ×3 on `704fefba74fa` (one uncaptured 1/35 first-run transient recorded honestly); fifth D-10 instance corrected in the PR-2.5 host gate (218/218) |
 | **FF-A2 — `freeform_loop`, the FIRST free-form primitive (ref-08 hollow lens, PRE-FABRICATION only)** | **CLOSED 2026-09-07; visual signed 2026-09-07 (Q1 YES, Q1b scoop ACCEPTABLE; 570 s render timeout = D-25, verdict by permitted viewport inspection)** | ADR-066; 672 both worker states + 26-script roster on final image `044446e54c0e`; `gate_ffa2_auto` 63/63 zero skipped; corrected `gate_ffa1_auto` 36/36 (sixth D-10 instance — its honest 1/35 FAIL on the operator's real design preserved); failed tube-annulus construction + measured kernel cliff preserved as evidence |
 | **PR-4 — honest module transport costing (trips LOADED, never bounded)** | **CLOSED 2026-09-08; visual signed 2026-09-07 (all four steps YES)** | ADR-067; 707 both worker states + 27-script roster on final image `a8a6f3218ba8`; `gate_pr4_auto` PASS (disproof 3-vs-4 pinned; rate card sha-identical); first chain FAILED at `gate_ffa1` §1 = D-10 instance seven (census correctly caught the new consumer; corrected as three exact symbols by owner ruling), recovered under an operator-approved hash-proven protocol (15 production/test/config/build hashes identical); D-26 startup-write race recorded |
+| **PR-5 — AI contract and document repair (one story about lifting)** | **CLOSED 2026-09-08; visual signed 2026-09-08 (all six steps YES; real design `621d7497…` reads heaviest of 9 modules, 1,472.19 kg vs 11,346.1 kg)** | ADR-068; risk-based definitive chain on `753490ced0af`: 26 files host==container, 132 focused + `gate_pr5_auto` 49/49, suite **720 passed** worker-removed (PR-4's 707 two-state evidence retained as the unchanged baseline), all 28 roster gates green (25 hermetic worker-removed, 9B worker-up, PR-3 static+live, 4 host gates); scorer's silent 1,000 kg default removed; D-10 sweep is now a roster check |
 
 **Suite and roster state:** after PR-2 the pytest suite (475) passed
 with the render worker UP and with it removed — both runs recorded
@@ -119,11 +134,16 @@ verbatim in `PRODUCTION_V1_REPORT.md` on final image `09ff920ccbbb`;
 after LF-103A the suite was 514 on `9fe4c4328116` (ADR-063); after the
 discovery close 540 on `52209e4a6eea` (ADR-064); after FF-A1 591 on
 `4ff126586ec3` (ADR-065); after FF-A2 672 on `044446e54c0e` (ADR-066);
-after PR-4 the suite is **707, passed in BOTH worker states on final
-image `a8a6f3218ba8` (2026-09-07/08)** — chain evidence in ADR-067 and
-`PRODUCTION_V1_REPORT.md`. The auto-gate roster is 27 scripts (PR-4
-added `gate_pr4_auto.py`, hermetic, in the backend container, rate
-card sha-checked — ADR-067; FF-A2 added `gate_ffa2_auto.py`,
+after PR-4 707 in BOTH worker states on `a8a6f3218ba8` (ADR-067);
+after PR-5 the suite is **720, passed worker-removed on final image
+`753490ced0af` (2026-09-08)** under the operator's risk-based protocol
+— PR-5 changed no worker-sensitive rendering or packaging code, so
+PR-4's 707 two-state run is retained as the unchanged baseline; chain
+evidence in ADR-068 and `PRODUCTION_V1_REPORT.md`. The auto-gate
+roster is 28 scripts (PR-5 added `gate_pr5_auto.py`, hermetic, in the
+backend container, D-26-safe DB fingerprinting, carrying the D-10
+sweep — ADR-068; PR-4 added `gate_pr4_auto.py`, hermetic, in the
+backend container, rate card sha-checked — ADR-067; FF-A2 added `gate_ffa2_auto.py`,
 hermetic, in the backend container, carrying the registry's
 exact-eleven assertion — ADR-066; FF-A1 added `gate_ffa1_auto.py`,
 hermetic, in the backend container — ADR-065; PR-2.5 discovery added
@@ -454,18 +474,35 @@ binding; the slice notes below carry the ones that bite.
       writes (D-26, recorded, PASS on the identical image 25 min
       later). Stage B (worker-UP suite + 9B + host gates) evidence in
       PRODUCTION_V1_REPORT.md.
-- [ ] **PR-5 — AI contract and document repair.** "per element" →
-      "per module after segmentation" in the GEOMETRIST prompt
-      (`prompts.py:284-285`, `:332`) with the pinning test rewritten; the
-      two stale `needs_input` gate bases (`gates.py:876/897`); the
-      critique scorer's total-mass-vs-lift basis (`critique.py:459-461`);
-      operator doc 07; stale not-built claims (LIMITATIONS §12
-      "segmentation is slice C", §11 "four primitives" mapper note,
-      `PHASE_11_12_13A_REPORT.md` "9B untouched", `PHASE_6_REPORT.md`
-      self-contradiction); the D-10 sweep across ALL gates for roadmap
-      phrases inside assertions, frozen sets and rotating unknown-name
-      examples. The 2,685.7 kg array figure is settled (gate transcript;
-      2,988 was a transposed ratio, already corrected at its four sites).
+- [x] **PR-5 — AI contract and document repair.** **CLOSED 2026-09-08
+      (ADR-068): built, `gate_pr5_visual.md` signed by the operator
+      2026-09-08 (six steps YES), definitive risk-based chain all green
+      on `753490ced0af` (720 passed worker-removed, 28-script roster in
+      required states).** Cited by SYMBOL now (every line number
+      the old entry carried had drifted — itself D-10 in a document):
+      the GEOMETRIST contract's three "per element" sentences
+      (`prompts.registry_surface`) → heaviest MODULE after segmentation
+      + per-axis envelope, pin rewritten with the retired tokens
+      asserted absent; the two `needs_input` bases in
+      `gates.validate_fabrication_gate` → module kg + per-axis; the
+      critique scorer (`critique.objective_score`/`objective_score_detail`
+      /`facts_from_manifest`/`score_delta`) scores the PICK weight with
+      an explicit basis (measured heaviest module / single complete
+      element / unavailable), None — never 0.0 — when unavailable, and
+      the live script's silent `max_lift_kg = 1000.0` default is GONE
+      (`run_vision_critique.py` read a key no manifest has); operator doc
+      07; four documents corrected with dated notes beside the preserved
+      originals (LIMITATIONS §11 mapper covers TEN not four — the gap is
+      `freeform_loop`, FF-A3's; §12 segmentation is built; PHASE_11_12_13A
+      "9B untouched"; PHASE_6_REPORT "GATE: PASS" while its live gate is
+      pending); the D-10 sweep is now a roster check (`gate_pr5_auto` §5:
+      growth-collection equalities must carry a real `D-10-frozen:`
+      reason; 6a2's literal unknown name, the scope audit's
+      first-occurrence order and 6c2's `== 39` converted to timeless
+      forms; the ADR-065 census caught the two new scorer symbols and
+      they are listed exactly, no wildcard). The 2,685.7 kg array figure
+      is settled (2,988 was a transposed ratio, corrected at its sites).
+      Gate evidence in PRODUCTION_V1_REPORT.md.
 - [ ] **PR-6 — Costing tie-off machinery.** **Amendment 4 first:** one
       trusted measurement path per material for volume/mass, exposed
       finishing area (never proportional allocation of total surface),
@@ -589,8 +626,14 @@ Pick one up when a slice finishes early. Each is one commit.
       `IncompleteMassError`. Corrected by operator ruling as THREE
       EXACT symbol entries, not a module wildcard; FAIL preserved
       verbatim in ADR-067 (D-10 instance seven). The tell
-      is a roadmap phrase inside an assertion. Full sweep folded into
-      PR-5; re-sweep before slice D ever widens the registry.
+      is a roadmap phrase inside an assertion. **The sweep is now a
+      permanent roster check (PR-5, ADR-068, `gate_pr5_auto` §5):**
+      every growth-collection equality in every gate must carry a
+      `D-10-frozen:` reason ≥ 8 words citing an ADR/record; 8 hits all
+      justified, 25 structural equalities listed as reviewed; 6a2's
+      literal unknown name, the scope audit's first-occurrence order
+      and 6c2's `== 39` converted to timeless forms. Re-runs on every
+      chain; slice D will trip `gate_ffa2`'s exact-eleven by design.
 - [ ] **D-11 — Radial segmentation for round vessels.** Needs the
       operator's `gate_phase6c2_visual.md` §2 ruling first. PR-2.5
       discovery CANDIDATE (ADR-060) — promote only when a reference

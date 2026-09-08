@@ -1048,8 +1048,10 @@ def validate_fabrication_gate(
             b.needs_input(
                 f"{eid}.mass_kg",
                 missing="Design Spec fabrication.max_lift_kg",
-                basis="per-element mass vs the declared workshop lift limit",
-                message="element lift mass cannot be gated without a lift limit",
+                basis=(f"heaviest module mass ({heaviest:.1f} kg of "
+                       f"{module_count} module(s)) vs the declared workshop "
+                       f"lift limit (ADR-056)"),
+                message="module lift mass cannot be gated without a lift limit",
                 units="kg",
             )
         elif not el_truth.mass_complete:
@@ -1086,8 +1088,9 @@ def validate_fabrication_gate(
             b.needs_input(
                 f"{eid}.module_bbox_mm",
                 missing="Design Spec fabrication.max_module_m",
-                basis="per-element bounding box vs the declared module envelope",
-                message="element module size cannot be gated without a module limit",
+                basis=("module bounding box vs the declared {x, y, z} envelope, "
+                       "each axis on its own limit (ADR-059)"),
+                message="module size cannot be gated without a module limit",
                 units="mm",
             )
         elif limit_m is None:

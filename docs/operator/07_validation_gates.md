@@ -144,17 +144,39 @@ LuxuryCon builds in its own city. Change `site_altitude_m` per project site.
 
 ## A design that breaches a workshop limit still gets built
 
-If an element comes out heavier than `max_lift_kg`, the platform now
+If a piece comes out heavier than `max_lift_kg`, the platform
 **builds the geometry anyway** and fails the fabrication gate with the real
-number:
+number. Since segmentation (2026-08-27) the number is the **heaviest
+module**, because that is what a crane actually picks — an element over
+`max_module_m` is CUT into modules by the kernel, and the lift check
+binds on the heaviest of them, never on the whole assembled fountain:
 
 ```
-basin_01.mass_kg    1550.02 kg    limit 50 kg    FAIL
+basin_01.mass_kg    1472.31 kg    limit 2000 kg    PASS
+  basis: Design Spec fabrication.max_lift_kg;
+         pick weight is the heaviest of 9 modules (element total 11346.1 kg)
 ```
+
+The module envelope binds **per axis**: `max_module_m` is an `{x, y, z}`
+object and each dimension is checked against its own limit (a Designer
+scalar means a cubic envelope; the row names the binding axis).
 
 You can look at the piece in the viewport and see the number that
 disqualifies it. Previously this returned an error page with nothing to look
 at.
+
+## Two rows that say NEEDS INPUT by design
+
+- **Incomplete mass.** A free-form design whose armature is not yet
+  designed has an INCOMPLETE mass: every mass-dependent row (lift,
+  stability, bearing, overturning) reports NEEDS INPUT naming the missing
+  inputs, with the known-geometry figure shown for reference. A partial
+  mass never passes a pick or stability decision.
+- **Free-form wall.** A free-form shell carries three wall rows:
+  `geometric_wall_measurement` (a CAD measurement — PASS only if the
+  modeled shell confirms its nominal gauge), `fabrication_wall_approval`
+  and `forming_radius` (ALWAYS NEEDS INPUT until your fabricator supplies
+  them). A nominal gauge is never engineering approval.
 
 The AI fabrication loop is unaffected — generated code still gets a hard
 refusal, because a program that produces an unbuildable part must be

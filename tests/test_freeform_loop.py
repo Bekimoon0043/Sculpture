@@ -49,8 +49,11 @@ def default_solid():
 
 class TestRegistryAndDeclarations:
     def test_registered_as_the_eleventh(self):
+        # The exact-set assertion lives ONLY in gate_ffa2_auto.py (ADR-066
+        # ruling); a duplicate here would expire the day slice D widens the
+        # registry (D-10, PR-5 sweep). Here: present, and at least eleven.
         assert "freeform_loop" in PRIMITIVES
-        assert len(PRIMITIVES) == 11
+        assert len(PRIMITIVES) >= 11
 
     def test_not_in_the_frozen_legacy_ten(self):
         from app.geometry.mass_model import LEGACY_COMPLETE_MASS_PRIMITIVES

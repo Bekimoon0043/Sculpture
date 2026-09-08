@@ -48,7 +48,12 @@ sys.path.insert(0, str(REPO_ROOT / "backend"))
 from app.ai.providers import build_providers
 from app.core.budget import BudgetEnforcer, BudgetHalt
 from app.core.config import get_settings, load_config_bundle
-from app.council.critique import CritiqueLoop, compute_consensus, objective_score
+from app.council.critique import (
+    CritiqueLoop,
+    compute_consensus,
+    facts_from_manifest,
+    objective_score_detail,
+)
 from app.council.critique_live import LiveCritiqueDispatcher
 from app.db.database import Database
 from app.geometry.assembly import assemble
@@ -271,7 +276,15 @@ def main() -> int:
             return 1
         print(f"  rendered 4 views + contact sheet in {time.time() - t0:.0f}s")
 
-        score_before = objective_score(_facts(manifest))
+        # PR-5 (ADR-068): the facts come from the manifest fields the
+        # fabrication gate reads, the basis is stated, and an unavailable
+        # score is None — printed as such, never compared.
+        facts_before = facts_from_manifest(manifest)
+        detail_before = objective_score_detail(facts_before)
+        score_before = detail_before.score
+        print(f"  objective score: {score_before}  "
+              f"[handling basis: {detail_before.handling.kind} — "
+              f"{detail_before.handling.reason}]")
 
         dispatcher = LiveCritiqueDispatcher(provider_map, sheet_dir=round_dir)
         loop = CritiqueLoop(db=db, dispatcher=dispatcher,
@@ -330,6 +343,11 @@ def main() -> int:
             "params_before": before,
             "params_after": flat_params(plan),
             "objective_score_before": score_before,
+            "objective_score_basis": {
+                "kind": detail_before.handling.kind,
+                "pick_mass_kg": detail_before.handling.pick_mass_kg,
+                "max_lift_kg": detail_before.handling.max_lift_kg,
+                "reason": detail_before.handling.reason},
             "agreed_deltas": [
                 {"parameter_path": d.parameter_path, "direction": d.direction,
                  "magnitude": d.magnitude, "unit": d.unit, "reason": d.reason}
@@ -363,10 +381,13 @@ def main() -> int:
     try:
         manifest, views, sheet = build_and_render(
             plan, final_dir, args.resolution, args.samples)
-        final_score = objective_score(_facts(manifest))
+        final_detail = objective_score_detail(facts_from_manifest(manifest))
+        final_score = final_detail.score
+        final_basis = final_detail.handling.reason
     except Exception as exc:
         print(f"final rebuild failed: {exc}")
         final_score = None
+        final_basis = f"final rebuild failed: {exc}"
 
     summary = {
         "run_id": run_id,
@@ -379,6 +400,7 @@ def main() -> int:
             [dict(e, parameters=dict(e["parameters"])) for e in DEFAULT_PLAN]),
         "final_params": flat_params(plan),
         "final_objective_score": final_score,
+        "final_objective_score_basis": final_basis,
         "validated_ranges": {k: list(v) for k, v in ranges.items()},
         "rounds": rounds_record,
     }
@@ -400,14 +422,6 @@ def main() -> int:
     print(f"renders:  {out_dir}/round_*/  and  {final_dir}")
     print("=" * 72)
     return 0
-
-
-def _facts(manifest: dict) -> dict:
-    """The geometry facts objective_score reads. Never model self-scoring."""
-    return {
-        "total_mass_kg": manifest.get("total_mass_kg", 0.0),
-        "max_lift_kg": manifest.get("max_lift_kg", 1000.0),
-    }
 
 
 if __name__ == "__main__":

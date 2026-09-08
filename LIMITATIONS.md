@@ -421,10 +421,18 @@ What Phase 6 still deliberately does NOT do:
   config-validated but nothing consumes them yet** — the parameters they
   floor (rim profile radii, blade/petal thicknesses) arrive with slices B
   and C. Recorded now because the operator signed them now (ADR-032).
-- **The mapper speaks the slice A1 vocabulary.** Its alias table covers
+- ~~**The mapper speaks the slice A1 vocabulary.** Its alias table covers
   the four primitives; a Council spec using parameter names outside it
   fails loudly at fabrication (a repair digest naming the keys), and
-  widening the table is a $0 edit. Slices B–D grow it with each primitive.
+  widening the table is a $0 edit. Slices B–D grow it with each primitive.~~
+  **CORRECTED 2026-09-08 (PR-5, ADR-068):** `spec_mapper._ALIASES` covers
+  TEN primitives (basin_round, plinth, sculptural_column, basin_rect,
+  stepped_monolith, water_wall, torus_ring, blade_fin_array,
+  lotus_petal_array, tiered_cascade — slices A1, B, C1). The one it does
+  NOT cover is `freeform_loop`: a Council spec cannot request the
+  free-form primitive at all — no vocabulary, no alias, no mapping. That
+  gap is FF-A3's, not a mapper defect; unknown parameter names still fail
+  loudly at fabrication naming the keys.
 - **Mixed-material assemblies validate but cannot be costed correctly
   yet:** costing keys on a single material_id (`build_bom`). Per-element
   masses ARE now persisted with every design record; the costing
@@ -498,10 +506,16 @@ NOT do:
   exceed the manual handling limit and reports `needs_input` for their lift
   points. Geometry cannot invent where a rigger should attach.
 
-- **Split-line feasibility is a count, not a plan.** An oversized element
+- ~~**Split-line feasibility is a count, not a plan.** An oversized element
   reports how many modules it would need and how many joints it carries. It
   does not compute where the split planes go — segmentation is Phase 6
-  slice C.
+  slice C.~~ **RETIRED 2026-09-08 (PR-5, ADR-068; the capability landed
+  2026-08-27, slice C2, ADR-056):** the kernel CUTS an oversized element
+  into numbered modules on an axis-aligned planar grid, measures every
+  module's volume, mass and bbox, counts seams once per interface, and the
+  lift and envelope checks bind on the MODULES (per axis since PR-1,
+  ADR-059). What is still not modelled is in §10 (radial segmentation
+  D-11, rotation for transport, trip packing by dimension).
 
 ## 13. Phase 9A export package scope limits (2026-08-21)
 

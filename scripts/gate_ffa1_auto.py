@@ -86,6 +86,15 @@ CENSUS_ALLOWLIST = {
     ("app.dna.store", "derive_tags"),
     ("app.dna.store", "precedent_block"),
     ("app.council.critique", "objective_score"),
+    # PR-5 (ADR-068). facts_from_manifest reads total_mass_kg ONLY after
+    # assembly_mass_truth() has proven the mass model complete, and states
+    # the basis it selected (measured heaviest module / single complete
+    # element / unavailable) so nothing downstream can score a figure it
+    # cannot justify; objective_score_detail mentions total_mass_kg solely
+    # to REFUSE a bare total with no stated basis (it returns None, never a
+    # score). Exact symbols, per the operator's PR-4 ruling — no wildcard.
+    ("app.council.critique", "facts_from_manifest"),
+    ("app.council.critique", "objective_score_detail"),
     ("app.council.prompts", "*"),
     ("app.api.routes_assembly", "persist_assembly_design"),
     ("app.api.routes_assembly", "list_designs"),
@@ -322,9 +331,22 @@ def behavioral() -> None:
                        None)
     ok("2", "DNA tags: null total + mass_complete flag",
        tags["total_mass_kg"] is None and tags["mass_complete"] is False)
-    ok("2", "critique mass component contributes nothing on incomplete mass",
-       objective_score({"total_mass_kg": None, "max_lift_kg": 1000.0})
-       < objective_score({"total_mass_kg": 100.0, "max_lift_kg": 1000.0}))
+    # PR-5 (ADR-068, operator clarification 1): an incomplete mass makes the
+    # handling component GENUINELY unavailable — the composite is None with
+    # the missing basis recorded — and an unavailable score is never
+    # compared as better or worse than a real one (this check used to).
+    from app.council.critique import objective_score_detail
+    _unavail = objective_score_detail(
+        {"pick_mass_kg": None, "max_lift_kg": 1000.0,
+         "mass_basis": "unavailable",
+         "mass_basis_reason": "mass model incomplete: armature mass"})
+    _real = objective_score({"pick_mass_kg": 100.0, "max_lift_kg": 1000.0,
+                             "mass_basis": "measured_heaviest_module"})
+    ok("2", "critique score is None (not 0.0) on incomplete mass, basis named",
+       _unavail.score is None and _unavail.handling.kind == "unavailable"
+       and "armature mass" in _unavail.handling.reason
+       and _real is not None,
+       "unavailable=%r real=%r" % (_unavail.score, _real))
     total_row = next(r for r in report.check_rows()
                      if r["check"] == "total_mass_kg")
     ok("2", "mesh-report row labels known-geometry figure, no bare total",

@@ -24,6 +24,101 @@ verbatim gate evidence — the same contract as the phase reports.
 
 ---
 
+## PR-5 — one story about lifting: AI contract, gate bases, scorer and documents (CLOSED 2026-09-08, ADR-068: auto gate PASS + operator visual gate PASS 2026-09-08)
+
+`scripts/gate_pr5_auto.py` — 6 sections, 49 checks, exit 0, $0, offline,
+no AI call; the real DB+WAL fingerprinted only after the live backend
+answered `/api/health` ok and two consecutive identical reads (D-26-safe:
+the first run after `up --build` waited 56 polls — ~14 s — for health and
+settled on the first fingerprint poll; never an arbitrary sleep).
+Operator visual gate `gate_pr5_visual.md` SIGNED 2026-09-08, verbatim:
+"Steps 1–6 are all YES. The real design 621d7497… shows the basin pick
+weight as the heaviest of 9 modules, 1,472.19 kg versus 11,346.1 kg
+element total."
+
+### Definitive chain — operator's risk-based protocol (2026-09-08T12:39:05Z → 14:17:30Z)
+
+| Step | Evidence |
+|---|---|
+| 1. Rebuild from the signed tree (HEAD `74fc522`, 26 entries) | backend image **`753490ced0af38db…`**, identical at start, stage 1 and end |
+| 2. Host/container identity | **26 of 26 PR-5 files byte-identical** (production, tests, gates, documents, `gate_pr5_visual.md`) |
+| 3. Focused tests + slice gate | **132 passed** (117.89 s); `gate_pr5_auto` PASS 49/49, DB/WAL `25228669ef28`/`e3b0c44298fc` identical |
+| 4. Full suite ONCE, render-worker REMOVED (`rm -sf`, verified absent at start and end of stage 1) | **720 passed, 3 warnings in 3246.54s (0:54:06)** — PR-4's 707 plus PR-5's 13; PR-4's 707 two-state run retained as the unchanged worker-sensitivity baseline (no rendering/packaging code changed) |
+| 5. Roster, enumerated from the glob (28) and run in required states | 25 hermetic gates worker-removed all exit 0 (incl. `gate_ffa1` 36/36 — census 32 consumers / 34 entries, 83 legacy manifests clean; `gate_ffa2` 63/63; `gate_pr25` 198; `gate_pr4`; `gate_pr5`; `gate_phase14` container half; `gate_pr3 --static --stdin`); `gate_phase9b` PASS worker-UP (pinned "Up 1 second" → "Up 2 minutes"); host: `gate_pr3 --live` PASS, `gate_scope_audit` PASS ("LF-103A (entry 5) before PR-2.5 (entry 6) — 44 queue entries scanned"), `gate_phase14 --frontend-only` PASS, `gate_pr25 --host-drift` 218/218 |
+| 6. Boundaries | compose state and image hash printed at every boundary; no drift |
+| 7. Failures | none; no code or gate touched during the chain |
+
+$0; no providers; no downloads. Closed as one commit on main.
+
+### What it makes true
+
+The GEOMETRIST contract, the fabrication gate's `needs_input` bases, the
+vision-critique scorer and the operator documents now all say what the
+gate has measured since slice C2: the crane picks the **heaviest module
+after segmentation**, and `max_module_m` binds **per axis**. The scorer
+no longer grades handling by whole mass and no longer invents a lift
+limit: the live script's silent `max_lift_kg = 1000.0` default is gone.
+
+### The scorer's five bases, verbatim from the gate (temporary manifests)
+
+```
+  9-module basin (complete, segmented)
+    score=0.705538  basis=measured_heaviest_module  pick=1472.31  lift=2000.0
+    reason: segmentation recorded the heaviest of 9 module(s) at 1472.310 kg (ADR-056)
+  single complete element, unsegmented
+    score=0.83  basis=single_complete_element  pick=850.0  lift=2000.0
+    reason: one complete element, never segmented: its total 850.000 kg is the pick weight
+  two elements, unsegmented
+    score=None  basis=unavailable  pick=None  lift=2000.0
+    reason: handling unavailable: 2 elements with no segmentation record: the assembly total is not what a crane picks
+  segmented, NO lift limit declared
+    score=None  basis=unavailable  pick=1472.31  lift=None
+    reason: handling unavailable: no fabrication max_lift_kg was declared — nothing is defaulted in its place
+  free-form, INCOMPLETE mass, segmented
+    score=None  basis=unavailable  pick=None  lift=2000.0
+    reason: handling unavailable: mass model incomplete: armature mass (FABRICATOR-INPUT-REQUIRED)
+```
+
+`None` is `None` — never 0.0, never compared (`score_delta` of an
+unavailable score is `None`). The 9-module basin scores on 1,472.31 kg
+(handling 0.263845 = 1 − 1472.31/2000), not on its 11,346 kg total.
+
+### The D-10 sweep, now a roster check
+
+`gate_pr5_auto` §5 on all 28 roster gates: **8 growth-collection
+equalities, every one carrying a real `D-10-frozen:` reason** (ADR-066
+exact-eleven; ADR-065 frozen legacy ten; ADR-066's three declared
+inputs; ADR-030 import ceiling; the fixed B-11 reference record ×4);
+**25 structural equalities listed as reviewed, not hidden**. Three
+checks converted to timeless forms and verified in their new form: 6a2's
+derived unknown name (`not_a_primitive_d395047c`, proven outside the
+live registry), the scope audit's queue-position order (`LF-103A (entry
+5) before PR-2.5 (entry 6) — 44 queue entries scanned`, PASS on the
+host), and 6c2's six C2 rate-card paths by name.
+
+### The fact FF-A3 starts from (measured, not assumed)
+
+`PRIMITIVE INDEX offers 11 of 11 registered: … freeform_loop …` — the
+fabrication-time contract ALREADY lists `freeform_loop`'s parameters to
+the GEOMETRIST, while no brief, Council prompt or `spec_mapper` alias can
+request it (LIMITATIONS §11 correction).
+
+### Evidence — build run on image `f1b2d5ece31c`, definitive on `0d1be7cea13b`
+
+| Evidence | Value |
+|---|---|
+| Focused tests (`test_pr5_contract` 10 new + `test_critique`, `test_mass_consumers`, `test_cascade`, `test_freeform_loop`, `test_costing`) | **132 passed** in 127.37 s |
+| Mutation probe (container copy only): loosen "single complete element" to "any element" | exactly `test_multi_element_unsegmented_design_is_unavailable` FAILS (1 failed, 9 passed); restored 10/10 — clarification 2 is enforced by the test that names it |
+| `gate_pr5_auto` | **PASS**, 49 checks, DB+WAL `25228669ef28`/`e3b0c44298fc` identical before/after |
+| Edited roster gates, each rerun on the PR-5 image | `gate_ffa1` **36/36** (census lists the two new scorer symbols exactly), `gate_phase5` PASS (bare total now refused), `gate_phase6a2` PASS, `gate_phase6c2` PASS, `gate_ffa2` 63/63, `gate_pr25_discovery` 198/198, `gate_costing` PASS, `gate_pr4` PASS, `gate_scope_audit` PASS (host) |
+| Host==container sha256 | `gate_pr5_auto.py` `6e31ab857350`, `gate_pr25_discovery_auto.py` `c09b418380af`, `critique.py` `fc596722293e` |
+| The gate's OWN first run | FAIL 5/54 — all five my defects (a needle split by a line-wrap, one unmarked B-11 literal, a `len == len` false positive in the sweep rule, a check matching its own comment, a provider scan matching its own token list); fixed, rerun PASS. Recorded because a gate that never failed its author proves less. |
+
+$0 throughout; no providers; no downloads; no schema/config/registry/
+geometry change; Phase 2 hash `e1a59fa6…` unaffected.
+
+---
+
 ## PR-4 — transport trips are LOADED, never bounded (CLOSED 2026-09-08, ADR-067: auto gate PASS + operator visual gate PASS 2026-09-07)
 
 `scripts/gate_pr4_auto.py` — 9 sections, exit 0, $0, offline, no AI call,

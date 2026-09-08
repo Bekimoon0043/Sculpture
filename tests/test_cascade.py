@@ -434,7 +434,14 @@ def test_registry_surface_teaches_phase6_slice_a1_assemblies():
     assert "concentric_insert" in surface
     assert "exactly ONE root element" in surface
     assert "body_count 1" in surface
-    assert "max_lift_kg and max_module_m are checked per element" in surface
+    # PR-5 (ADR-068): the contract says what the gate measures — the crane
+    # picks the heaviest MODULE after segmentation (ADR-056) and the
+    # envelope binds per axis (ADR-059). The retired wording is asserted
+    # ABSENT, assembled at runtime so this file never carries it.
+    assert "heaviest MODULE after" in surface
+    assert "binds per axis" in surface
+    assert ("checked per" + " element") not in surface
+    assert ("bind per" + " element") not in surface
 
 
 def test_fabrication_prompt_contract_allows_assembly_return():

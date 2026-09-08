@@ -180,13 +180,22 @@ class TestDnaAndCritique:
         assert tags["mass_complete"] is True
 
     def test_critique_marks_mass_component_unavailable(self):
-        with_mass = objective_score({"total_mass_kg": 100.0,
-                                     "max_lift_kg": 1000.0})
-        without = objective_score({"total_mass_kg": None,
-                                   "max_lift_kg": 1000.0})
-        # the incomplete-mass score must never beat the same design with a
-        # real light mass — the handling component contributes nothing
-        assert without < with_mass
+        """PR-5 (ADR-068, operator clarification 1): an incomplete mass
+        makes the handling component GENUINELY unavailable — the composite
+        is None, with the missing basis recorded — never a numeric 0.0
+        that could be compared against a real score."""
+        from app.council.critique import objective_score_detail
+        with_mass = objective_score({"pick_mass_kg": 100.0,
+                                     "max_lift_kg": 1000.0,
+                                     "mass_basis": "measured_heaviest_module"})
+        without = objective_score_detail({"pick_mass_kg": None,
+                                          "max_lift_kg": 1000.0,
+                                          "mass_basis": "unavailable",
+                                          "mass_basis_reason": "armature mass"})
+        assert with_mass is not None
+        assert without.score is None
+        assert without.handling.kind == "unavailable"
+        assert "armature mass" in without.handling.reason
 
 
 class TestClassifierRefusesOnRequiredGate:

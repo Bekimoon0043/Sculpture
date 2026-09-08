@@ -137,6 +137,9 @@ def main() -> int:
     from app.geometry.ast_gate import ALLOWED_IMPORT_ROOTS, check_program
 
     print(f"AST whitelist: {sorted(ALLOWED_IMPORT_ROOTS)}")
+    # D-10-frozen: ADR-030 policy — the sandbox import whitelist IS the
+    # capability ceiling for AI-written code; widening it is an architectural
+    # decision, so this gate must fail on any change until an ADR moves it.
     if ALLOWED_IMPORT_ROOTS != frozenset({"registry", "math"}):
         failures.append(f"AST whitelist is {sorted(ALLOWED_IMPORT_ROOTS)}")
         print("FAIL — whitelist must be exactly {registry, math}")

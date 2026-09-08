@@ -445,30 +445,136 @@ class CritiqueLoop:
         return new_params, applied, rejected
 
 
-def objective_score(params: dict[str, Any],
-                    silhouette_areas: dict[str, float] | None = None) -> float:
-    """Compute a falsifiable objective improvement score.
+#: The three ways the handling component can know what a crane picks
+#: (PR-5, ADR-068 — operator clarifications 2 and 3). Anything else is
+#: "unavailable", and an unavailable component makes the WHOLE score None.
+MASS_BASIS_MEASURED = "measured_heaviest_module"
+MASS_BASIS_SINGLE = "single_complete_element"
+MASS_BASIS_UNAVAILABLE = "unavailable"
+_SCORABLE_BASES = (MASS_BASIS_MEASURED, MASS_BASIS_SINGLE)
+
+
+@dataclass(frozen=True)
+class HandlingBasis:
+    """What the handling component scored, stated explicitly."""
+
+    kind: str                     # one of the MASS_BASIS_* values
+    pick_mass_kg: float | None    # the mass scored, None when unavailable
+    max_lift_kg: float | None     # the limit scored against, None when absent
+    reason: str                   # why this basis — or why none
+
+
+@dataclass(frozen=True)
+class ScoreDetail:
+    """The composite and every component, so a report can prove what was
+    scored. ``score`` is None whenever any component is unavailable."""
+
+    score: float | None
+    margin: float
+    handling: HandlingBasis
+    handling_score: float | None
+    stability: float
+
+
+def facts_from_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    """The geometry facts the scorer reads, from the SAME fields the
+    fabrication gate reads — never a top-level key no manifest carries
+    (which is how the pre-PR-5 script silently scored every design against
+    an invented 1,000 kg lift limit).
+
+    The mass basis is selected explicitly (operator clarification 2):
+      * ``measured_heaviest_module`` — the mass model is COMPLETE and the
+        segmentation block recorded a heaviest module;
+      * ``single_complete_element`` — complete mass, no segmentation, and
+        exactly ONE element, so the element total IS the pick weight;
+      * ``unavailable`` — anything else: incomplete mass, or a
+        multi-element design that was never segmented (its total is not
+        what any crane picks), or no element record at all.
+    """
+    from app.geometry.mass_model import assembly_mass_truth
+
+    limits = manifest.get("fabrication_limits") or {}
+    raw_lift = limits.get("max_lift_kg")
+    max_lift = float(raw_lift) if raw_lift is not None else None
+    total = manifest.get("total_mass_kg")
+    elements = list(manifest.get("elements") or [])
+    truth = assembly_mass_truth(manifest) if elements else None
+    complete = bool(truth.mass_complete) if truth is not None else False
+
+    seg = manifest.get("segmentation") or {}
+    heaviest = seg.get("heaviest_module_kg")
+    if not complete:
+        missing = (list(truth.missing_mass_inputs) if truth is not None
+                   else ["a complete per-element mass record"])
+        basis, pick = MASS_BASIS_UNAVAILABLE, None
+        reason = "mass model incomplete: " + "; ".join(missing)
+    elif heaviest is not None and float(heaviest) > 0:
+        basis, pick = MASS_BASIS_MEASURED, float(heaviest)
+        reason = (f"segmentation recorded the heaviest of "
+                  f"{int(seg.get('module_count') or 0)} module(s) at "
+                  f"{pick:.3f} kg (ADR-056)")
+    elif len(elements) == 1 and total is not None:
+        basis, pick = MASS_BASIS_SINGLE, float(total)
+        reason = (f"one complete element, never segmented: its total "
+                  f"{pick:.3f} kg is the pick weight")
+    else:
+        basis, pick = MASS_BASIS_UNAVAILABLE, None
+        reason = (f"{len(elements)} elements with no segmentation record: "
+                  f"the assembly total is not what a crane picks")
+    return {
+        "total_mass_kg": total,
+        "max_lift_kg": max_lift,
+        "pick_mass_kg": pick,
+        "mass_basis": basis,
+        "mass_basis_reason": reason,
+    }
+
+
+def objective_score_detail(params: dict[str, Any],
+                           silhouette_areas: dict[str, float] | None = None,
+                           ) -> ScoreDetail:
+    """The objective score with every component and its basis exposed.
 
     Components (all normalised so higher is better):
       - constraint margin: distance from hard min/max boundaries
-      - mass vs handling: how far total mass is below max_lift_kg
+      - mass vs handling: how far the PICK weight (heaviest module after
+        segmentation, or a single complete element) is below max_lift_kg
       - silhouette stability: inverse of variance in projected outline area
         across ortho views
+
+    PR-5 (ADR-068, operator clarification 1): a missing lift limit, an
+    incomplete mass, or a total with no stated basis makes the handling
+    component GENUINELY unavailable — not a numeric 0.0 — and because the
+    composite requires every component, ``score`` is then None with the
+    missing basis recorded. (D-14 still records that this scorer is not a
+    steering objective.)
     """
     silhouette_areas = silhouette_areas or {}
-    # FF-A1 (ADR-065): an INCOMPLETE mass (total_mass_kg None) must not
-    # feed a mass-derived score as if it were real. The handling component
-    # is marked unavailable by contributing a neutral 0.0 — the score can
-    # only get better once the real mass exists, never look good on a
-    # partial one. (D-14 records that this scorer is not yet a steering
-    # objective at all.)
-    raw_mass = params.get("total_mass_kg", 0.0)
-    if raw_mass is None:
-        handling_score = 0.0
+    basis = str(params.get("mass_basis") or MASS_BASIS_UNAVAILABLE)
+    pick = params.get("pick_mass_kg")
+    raw_lift = params.get("max_lift_kg")
+    max_lift = float(raw_lift) if raw_lift is not None else None
+    stated = str(params.get("mass_basis_reason") or "")
+
+    if basis not in _SCORABLE_BASES or pick is None:
+        if "total_mass_kg" in params and "mass_basis" not in params:
+            why = ("a bare total_mass_kg has no stated pick basis — it is "
+                   "the assembled total, not what a crane lifts")
+        else:
+            why = stated or "no pick mass with a stated basis"
+        handling = HandlingBasis(MASS_BASIS_UNAVAILABLE, None, max_lift,
+                                 "handling unavailable: " + why)
+        handling_score = None
+    elif max_lift is None or max_lift <= 0:
+        handling = HandlingBasis(
+            MASS_BASIS_UNAVAILABLE, float(pick), None,
+            "handling unavailable: no fabrication max_lift_kg was declared "
+            "— nothing is defaulted in its place")
+        handling_score = None
     else:
-        mass = float(raw_mass or 0.0)
-        max_lift = float(params.get("max_lift_kg", 1000.0) or 1000.0)
-        handling_score = max(0.0, 1.0 - mass / max_lift)
+        handling = HandlingBasis(basis, float(pick), max_lift,
+                                 stated or basis)
+        handling_score = max(0.0, 1.0 - float(pick) / max_lift)
 
     # Constraint margin: arbitrary normalised distance from a 5% envelope.
     # Real ranges come from validate_params; this is the minimal honest version.
@@ -482,4 +588,24 @@ def objective_score(params: dict[str, Any],
         variance = sum((a - mean) ** 2 for a in areas) / len(areas)
         stability = max(0.0, 1.0 - variance / (mean ** 2 + 1e-9))
 
-    return round(margin * 0.3 + handling_score * 0.4 + stability * 0.3, 6)
+    score = (None if handling_score is None else
+             round(margin * 0.3 + handling_score * 0.4 + stability * 0.3, 6))
+    return ScoreDetail(score=score, margin=margin, handling=handling,
+                       handling_score=handling_score, stability=stability)
+
+
+def objective_score(params: dict[str, Any],
+                    silhouette_areas: dict[str, float] | None = None,
+                    ) -> float | None:
+    """The composite objective score, or None when any component is
+    unavailable. See ``objective_score_detail`` for the basis."""
+    return objective_score_detail(params, silhouette_areas).score
+
+
+def score_delta(before: float | None, after: float | None) -> float | None:
+    """after - before, or None if either score is unavailable. An
+    unavailable score is never read as an improvement or a deterioration
+    (operator clarification 1)."""
+    if before is None or after is None:
+        return None
+    return round(after - before, 6)

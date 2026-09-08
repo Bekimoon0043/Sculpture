@@ -132,10 +132,43 @@ def test_agreed_delta_clamped_to_annealing_limit():
     assert abs(result.agreed_deltas[0].magnitude) <= 0.10 + 1e-9
 
 
-def test_objective_score_improves_when_mass_drops():
-    heavy = objective_score({"total_mass_kg": 900, "max_lift_kg": 1000})
-    light = objective_score({"total_mass_kg": 100, "max_lift_kg": 1000})
+def test_objective_score_improves_when_pick_mass_drops():
+    """PR-5 (ADR-068): the handling component scores the PICK weight — the
+    heaviest module after segmentation — against the declared lift limit,
+    and only with a stated basis."""
+    heavy = objective_score({"pick_mass_kg": 900.0, "max_lift_kg": 1000.0,
+                             "mass_basis": "measured_heaviest_module"})
+    light = objective_score({"pick_mass_kg": 100.0, "max_lift_kg": 1000.0,
+                             "mass_basis": "measured_heaviest_module"})
+    assert light is not None and heavy is not None
     assert light > heavy
+
+
+def test_objective_score_is_unavailable_without_a_lift_limit():
+    """The 1,000 kg default is gone: no limit means no handling score, and
+    the composite is None — never a number that compares."""
+    from app.council.critique import objective_score_detail
+    detail = objective_score_detail({"pick_mass_kg": 100.0,
+                                     "max_lift_kg": None,
+                                     "mass_basis": "measured_heaviest_module"})
+    assert detail.score is None
+    assert detail.handling.kind == "unavailable"
+    assert "max_lift_kg" in detail.handling.reason
+    assert objective_score({"pick_mass_kg": 100.0,
+                            "mass_basis": "measured_heaviest_module"}) is None
+
+
+def test_objective_score_refuses_a_total_mass_with_no_basis():
+    """A bare total_mass_kg (the pre-PR-5 call shape) says nothing about
+    what a crane would pick, so it cannot be scored."""
+    assert objective_score({"total_mass_kg": 100.0, "max_lift_kg": 1000.0}) is None
+
+
+def test_unavailable_scores_are_never_compared():
+    from app.council.critique import score_delta
+    assert score_delta(None, 0.8) is None
+    assert score_delta(0.8, None) is None
+    assert score_delta(0.5, 0.8) == 0.3
 
 
 def test_loop_runs_one_round_offline(db):

@@ -236,5 +236,13 @@ all-or-nothing.
 only remaining piece needing a download, and the vision critique loop is
 blocked behind it.
 
+> **Correction 2026-09-08 (PR-5, ADR-068) — the sentence above was true
+> on 2026-08-22 and is preserved as written; it stopped being true two
+> days later.** Phase 9B was BUILT and auto-gated on 2026-08-24 (ADR-043:
+> headless Blender 4.5.12 LTS, Cycles CPU, four canonical views) and the
+> Phase 5 critique loop RAN LIVE the same day (ADR-045, 3 rounds,
+> $0.042916). Phase 10 (the vision-driven revision loop) remains planned
+> and deliberately outside the Milestone B program (NEXT.md §0).
+
 Full scope limits: `LIMITATIONS.md` §14 (DesignDNA), §15 (intake), §16
 (operations), §17 (UI).

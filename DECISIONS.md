@@ -4850,3 +4850,135 @@ no downloads; nothing generated or private enters the commit. Closed as
 one commit on main. Next per the approved order: PR-5 via /lf-next;
 PR-7A's parallel branch (`parallel/pr7a`, operator-authorized) may now
 rebase onto this commit — PR-4 does not start either.
+
+
+## ADR-068 - PR-5: one story about lifting — AI contract, gate bases, scorer and documents repaired (2026-09-08)
+
+**Decision.** Every surface that describes lifting and module limits says
+what the fabrication gate has MEASURED since slice C2 (ADR-056) and PR-1
+(ADR-059): the crane picks the **heaviest module after segmentation** and
+`max_module_m` binds **per axis**. Three sentences of the GEOMETRIST
+contract (`prompts.py`: "bind per element", "per-element … fabrication
+limit evidence", "Assembly F … checked per element") now say so, and the
+test that pinned the retired wording (`tests/test_cascade.py`) pins the
+new wording and asserts the retired tokens ABSENT (assembled at runtime).
+The two `needs_input` bases in `validate_fabrication_gate` that still read
+"per-element mass" / "per-element bounding box" now name the heaviest
+module with its real kg and the per-axis envelope. Line-number citations
+in NEXT.md had all drifted (284/332 → 287/296/336; 876/897 → 1051/1089):
+the loop cites by SYMBOL from here on.
+
+**The scorer (operator clarifications 1–3, binding).**
+`objective_score()` no longer grades a design's "handling" by its WHOLE
+mass, and no longer invents a lift limit: the pre-PR-5
+`run_vision_critique.py` read a top-level `max_lift_kg` that no manifest
+has and silently scored EVERY design against `1000.0` kg — a live-money
+code path, preserved here as the defect it was. Now
+`facts_from_manifest()` reads the same fields the gate reads
+(`fabrication_limits.max_lift_kg`, `segmentation.heaviest_module_kg`)
+and states its basis explicitly: `measured_heaviest_module` only when
+`assembly_mass_truth` proves the mass model COMPLETE; a legacy
+unsegmented total is a pick weight only for a SINGLE complete element
+(`single_complete_element`); a multi-element unsegmented design, an
+incomplete mass, a missing lift limit, or a bare total with no basis is
+`unavailable`. Unavailable is GENUINE: the handling component is None,
+the composite `objective_score()` is None with the reason recorded
+(`objective_score_detail()` exposes every component), and
+`score_delta()` returns None rather than reading an unavailable score as
+improvement or deterioration. Two gates that used the old dict shape
+were updated because clarification 1 forbids what they did:
+`gate_ffa1_auto` §2 compared an incomplete-mass score `<` a real one;
+`gate_phase5_auto` §5 scored a bare total. D-14 (the scorer does not
+STEER the loop) stays open and separate.
+
+**Documents (clarification 4).** Historical statements are preserved
+verbatim with a prominent dated correction placed beside them, never
+rewritten: `PHASE_6_REPORT.md`'s heading "PHASE 6 GATE: PASS" (the
+slices' AUTO gates passed; the phase's own closing condition — the live
+operator gate — is still pending, so the phase is NOT closed);
+`PHASE_11_12_13A_REPORT.md` "Phase 9B and Phase 10 are untouched" (true
+on 2026-08-22, false from 2026-08-24). `LIMITATIONS.md` §11 "mapper
+covers the four primitives" struck (it covers ten; the one it does not is
+`freeform_loop` — FF-A3's starting fact) and §12 "segmentation is Phase 6
+slice C" struck (C2 built it). Operator doc 07 shows the heaviest-module
+row, the per-axis envelope and the two by-design NEEDS INPUT rows.
+
+**The D-10 sweep (clarification 5).** `gate_pr5_auto.py` §5 AST-scans
+every roster gate for equalities against a set/frozenset literal or
+`len(...) == int` whose operand names a GROWTH collection (registry,
+legacy mass set, declared inputs, import whitelist, rate-card entries,
+reference manifest); each hit must carry a `D-10-frozen:` marker whose
+reason is ≥ 8 words, cites an ADR/record/ruling, and is not a generic
+"intentional" — no module-wide exemption exists; structural equalities
+(a sha256 is 64 chars, determinism needs two processes) are LISTED as
+reviewed, never hidden. Three checks were converted to timeless forms
+(each a gate edit under this approval): `gate_phase6a2`'s "unknown
+primitive" example was the literal `basin_spline` (expiring the day
+slice D builds it) → a name derived at run time and proven absent from
+the live registry; `gate_scope_audit` §5's order check by FIRST
+OCCURRENCE anywhere in NEXT.md (D-10 instance four) → by entry position
+inside the work-queue section; `gate_phase6c2` §8's `missing_entries()
+== 39` (expiring the moment the operator fills one rate) → the six C2
+paths exist by name, count printed. `tests/test_freeform_loop.py`'s
+duplicate `len(PRIMITIVES) == 11` became a subset check — the exact set
+lives only in `gate_ffa2` (ADR-066). Ten growth literals now carry real
+reasons (ADR-066 exact-eleven; ADR-065 frozen legacy ten; ADR-066's
+three declared inputs; ADR-030 import ceiling; the fixed B-11 reference
+record, five sites).
+
+**What it gives up.** The GEOMETRIST prompt changed by three sentences
+without a live run to watch the model read them ($0 by ruling; the pin
+is offline) — recorded, not hidden. The critique scorer's contract
+changed shape: callers that pass a bare `total_mass_kg` now get None.
+The ADR-065 census correctly flagged the two new scorer symbols
+(`facts_from_manifest`, `objective_score_detail` — both mention
+`total_mass_kg`), listed as exact symbols with their audit, per the PR-4
+ruling; a wildcard was not used.
+
+**D-26 (clarification 6).** `gate_pr5_auto.py` fingerprints the real
+DB+WAL only after the live backend answers `/api/health` ok AND two
+consecutive identical fingerprints — a condition, bounded at 60 s and
+failing loudly, never an arbitrary sleep; every manifest it scores is
+temporary in-memory data.
+
+**Evidence (build, 2026-09-08).** Focused suite 132 passed on image
+`f1b2d5ece31c`; definitive `gate_pr5_auto.py` PASS (49 checks) on
+`0d1be7cea13b` with host==container sha256 for the gate and
+`critique.py`; a mutation probe loosening the single-complete-element
+rule failed exactly the clarification-2 test and nothing else; every
+edited roster gate rerun green (ffa1 36/36 with the two new census
+symbols, phase5, 6a2, 6c2, ffa2 63/63, pr25 198/198, costing, pr4,
+scope audit on the host: "LF-103A (entry 5) before PR-2.5 (entry 6) —
+44 queue entries scanned"). The gate's own first run FAILED 5 of 54 on
+the author's defects (recorded in PRODUCTION_V1_REPORT.md), then PASSED.
+Verbatim scorer transcript and the sweep tally (8 growth literals all
+justified, 25 structural reviewed) in PRODUCTION_V1_REPORT.md. Visual
+gate `gate_pr5_visual.md` pending; not closed.
+
+### Close (2026-09-08)
+
+Preconditions met: `gate_pr5_auto.py` PASS (49 checks) and the operator
+signed `gate_pr5_visual.md` on 2026-09-08 — all six steps YES, recorded
+verbatim in that file, with the real design `621d7497…` reading the
+basin pick weight as the heaviest of 9 modules, 1,472.19 kg versus an
+11,346.1 kg element total.
+
+Definitive chain under the operator's risk-based protocol, ONE image
+`753490ced0af` (identical at start, stage 1 and end, 12:39–14:17Z):
+26 of 26 PR-5 files host==container by sha256; 132 focused tests +
+`gate_pr5_auto` 49/49; the full suite ONCE with the render worker
+REMOVED — **720 passed (3246.54s)** — with PR-4's 707 two-state run
+retained as the unchanged baseline because PR-5 touched no rendering or
+packaging code; all 28 roster gates in their required states (25
+hermetic worker-removed, `gate_phase9b` worker-up pinned, `gate_pr3`
+static via stdin + live on the host, `gate_scope_audit`,
+`gate_phase14 --frontend-only`, `gate_pr25 --host-drift` 218/218);
+compose state and image pinned at every boundary; nothing failed, so no
+code or gate was touched. $0 throughout; no providers; no downloads.
+Closed as one commit on main. Next per the operator's stated priority:
+**FF-A3 — a typed brief / Council request selecting and parameterizing
+`freeform_loop` honestly** — via /lf-next (its measured starting fact:
+the fabrication-time PRIMITIVE INDEX already offers `freeform_loop`
+while no brief, Council prompt or `spec_mapper` alias can request it);
+PR-7A's parallel branch (ADR-069 reserved) rebases onto this commit.
+PR-5 starts neither.

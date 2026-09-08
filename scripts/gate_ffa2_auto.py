@@ -107,11 +107,20 @@ def registry_and_parameters() -> None:
         "blade_fin_array", "lotus_petal_array", "freeform_loop",
     }
     print("  registered: %s" % ", ".join(sorted(PRIMITIVES)))
+    # D-10-frozen: ADR-066 ruling — the registry's exact set lives in exactly
+    # ONE roster gate, so widening the library fails exactly one check by
+    # design; the slice that adds a primitive moves this set with its ADR.
     ok("1", "registry is exactly the eleven (exact set lives HERE)",
        set(PRIMITIVES) == expected_eleven)
+    # D-10-frozen: ADR-065 byte-compat seam — the legacy complete-mass set
+    # names the primitives whose manifests predate the mass model; it is
+    # frozen forever and can never grow, so its count is a permanent truth.
     ok("1", "freeform_loop NOT in the frozen legacy ten",
        "freeform_loop" not in LEGACY_COMPLETE_MASS_PRIMITIVES
        and len(LEGACY_COMPLETE_MASS_PRIMITIVES) == 10)
+    # D-10-frozen: ADR-066 declaration pin — the three armature inputs are
+    # this primitive's own fabricator contract; a fourth missing input would
+    # be a new professional dependency needing its own owner ruling.
     ok("1", "FF-A1 declarations armed",
        fl.REQUIRES_FREEFORM_INTEGRITY is True
        and len(fl.INCOMPLETE_MASS_INPUTS) == 3)

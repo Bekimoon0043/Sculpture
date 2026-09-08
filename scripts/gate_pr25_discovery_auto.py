@@ -77,15 +77,24 @@ def repo_manifest():
         return None
     man = json.loads(path.read_text(encoding="utf-8-sig"))
     images = man.get("images", [])
+    # D-10-frozen: the B-11 reference manifest is the owner's fixed record of
+    # the 16 references delivered 2026-09-02 and the roles assigned to them
+    # in the PR-2.5 discovery (ADR-064) — historical evidence, not a growing
+    # set. B-11b (mesh/lattice) is a NEW reference class that must arrive as
+    # its own manifest entry with its own ruling, and this gate failing on
+    # that day is the intended signal.
     ok("1", "16 entries", len(images) == 16, "found %d" % len(images))
     roles = {}
     for e in images:
         roles.setdefault(e.get("role"), set()).add(e.get("file", "??")[:2])
         ok("1", "%s sha256 well-formed" % e.get("file"),
            bool(re.fullmatch(r"[0-9a-f]{64}", e.get("sha256", ""))))
+    # D-10-frozen: same fixed B-11 record as above — the primary/secondary/
+    # engineering-context role assignment is the discovery's recorded ruling.
     ok("1", "primary role covers exactly 08/11/13/14/16",
        roles.get("primary") == {"08", "11", "13", "14", "16"},
        str(sorted(roles.get("primary") or [])))
+    # D-10-frozen: same fixed B-11 record — see the marker on "16 entries".
     ok("1", "roles cover engineering-context 01-07 and secondary 09/10/12/15",
        roles.get("engineering-context") == {"01", "02", "03", "04", "05",
                                             "06", "07"}
@@ -284,6 +293,10 @@ def local_reference_images(man):
         ok("10", "manifest available", False)
         return
     by_name = {e["file"]: e["sha256"] for e in man["images"]}
+    # D-10-frozen: the same fixed B-11 record as section 1 — the operator's
+    # 16 local reference JPGs are the delivered set of 2026-09-02 (ADR-064),
+    # matched by sha256 to the committed manifest; a 17th file is a new
+    # reference class (B-11b) that arrives with its own manifest ruling.
     ok("10", "16 local images", len(jpgs) == 16, "found %d" % len(jpgs))
     for jpg in jpgs:
         expected = by_name.get(jpg.name)

@@ -149,12 +149,21 @@ def main() -> int:
         )
     print("[2] PASS two-provider critique + consensus")
 
-    # 5. Objective score is computed from facts.
-    score_before = objective_score({"total_mass_kg": 900, "max_lift_kg": 1000})
-    score_after = objective_score({"total_mass_kg": 100, "max_lift_kg": 1000})
+    # 5. Objective score is computed from facts — PR-5 (ADR-068): the
+    # handling component scores the PICK weight with a stated basis, and a
+    # bare total with no basis is refused (None), never scored.
+    score_before = objective_score({"pick_mass_kg": 900, "max_lift_kg": 1000,
+                                    "mass_basis": "measured_heaviest_module"})
+    score_after = objective_score({"pick_mass_kg": 100, "max_lift_kg": 1000,
+                                   "mass_basis": "measured_heaviest_module"})
+    if score_before is None or score_after is None:
+        return _fail(7, "objective score unavailable on a stated basis")
     if score_after <= score_before:
         return _fail(7, "objective score did not improve for lighter design")
-    print(f"[3] PASS objective score before={score_before} after={score_after}")
+    if objective_score({"total_mass_kg": 100, "max_lift_kg": 1000}) is not None:
+        return _fail(7, "a bare total_mass_kg with no pick basis was scored")
+    print(f"[3] PASS objective score before={score_before} after={score_after}"
+          f"; bare total refused (None)")
 
     # 6. Delta application.
     params = {"tier_height_m": 0.25}

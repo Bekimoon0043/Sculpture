@@ -284,7 +284,9 @@ def registry_surface(used_primitives=None) -> str:
         "  Pass fabrication={\"max_lift_kg\": spec[\"fabrication\"]"
         "[\"max_lift_kg\"], \"max_module_m\": spec[\"fabrication\"]"
         "[\"max_module_m\"]} when those keys exist so crane/module limits",
-        "    bind per element with real numbers. max_module_m is the",
+        "    bind with real numbers on the MODULES the kernel cuts: the",
+        "    crane picks the heaviest module after segmentation, and",
+        "    max_module_m binds per axis. max_module_m is the",
         "    spec's {x, y, z} object and registry.assemble takes it",
         "    verbatim — never reduce it to one number.",
         "",
@@ -293,7 +295,8 @@ def registry_surface(used_primitives=None) -> str:
         "  registry.assemble(elements, seed=seed, fabrication=fabrication).",
         "  Return solid, manifest, seed. The runner carries the manifest as",
         "  params, so validation/costing can see the real",
-        "  material_id, per-element mass and fabrication limit evidence.",
+        "  material_id, per-element mass, and the per-module lift and",
+        "  per-axis envelope evidence from segmentation.",
         "",
         "PARAMETERS (all keys optional except as constrained; omit to use "
         "the default; detailed below for the primitives THIS spec uses — "
@@ -333,7 +336,9 @@ def registry_surface(used_primitives=None) -> str:
         "  Assembly D. non-joined elements must not intersect or touch",
         "  Assembly E. fused result must have body_count 1 and pass volume",
         "     conservation against declared joint intersections",
-        "  Assembly F. max_lift_kg and max_module_m are checked per element",
+        "  Assembly F. max_lift_kg binds on the heaviest MODULE after",
+        "     segmentation and max_module_m binds per axis — an element",
+        "     over the envelope is CUT into modules, never refused outright",
         "  Assembly G. stack_on children must land on a REAL SEAT: the",
         "     radial bearing at the joint plane >= the material joint floor",
         "     (a lip narrower than the tolerance stack can vanish in",

@@ -9,6 +9,17 @@ and exportable — passes live at slice A2.
 
 ## PHASE 6 GATE: PASS - slices A1 (2026-08-20), A2/B/C1 (2026-08-26), C2 (2026-08-27); D not built
 
+> **Correction 2026-09-08 (PR-5, ADR-068) — read before the heading
+> above.** The heading is preserved as written, but "PHASE 6 GATE: PASS"
+> overstates it: what passed are the slices' AUTO gates. This report's own
+> opening paragraph says the phase closes when the OPERATOR's gate — a
+> brief needing three primitives producing one watertight assembly,
+> viewable and exportable — passes LIVE (`gate_phase6_visual.md`, ~$1),
+> and that live gate has NOT been run (NEXT.md §0: "pending: live gate
+> `gate_phase6_visual.md`, eye gates 6b + 6c + 6c2"). Phase 6 is therefore
+> NOT closed. Slice D (free-form) has since become release-blocking
+> (ADR-060) and its first primitive shipped as FF-A2 (ADR-066).
+
 ## Slice C2 — segmentation (BUILT, auto gate PASS 2026-08-27, $0)
 
 `scripts/gate_phase6c2_auto.py` — 12 sections, exit 0, no network, no AI

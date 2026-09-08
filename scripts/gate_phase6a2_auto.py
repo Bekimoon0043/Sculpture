@@ -31,6 +31,7 @@ transcript; exits 0 only on PASS.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -350,16 +351,21 @@ def main() -> int:
         return {"massing": {"elements": elements}}
 
     # The example unknown must be a name the registry does NOT have. It was
-    # `water_wall` until slice C1 made that real (2026-08-26) — the gate
-    # then failed because the platform correctly ACCEPTED it. `basin_spline`
-    # is a slice-D primitive: not built, so it is a true unknown today. When
-    # slice D lands, this example moves again — that is the check working,
-    # not rotting: the gate must always name something outside the registry.
+    # `water_wall` until slice C1 made that real (2026-08-26), then the
+    # literal `basin_spline` until PR-5 (2026-09-08, D-10 sweep): a literal
+    # expires the day its primitive is built. Now the name is DERIVED at
+    # run time and PROVEN absent from the live registry before use, so the
+    # check can never rot into asserting the refusal of something real.
+    from app.geometry.primitives import PRIMITIVES as _live
+    unknown = "not_a_primitive_" + hashlib.sha256(
+        ",".join(sorted(_live)).encode()).hexdigest()[:8]
+    _check(failures, "the derived unknown name is outside the live registry",
+           unknown not in _live, unknown)
     _expect(
         "unknown primitive refused, naming the live registry",
-        _spec([{"element_id": "x1", "primitive": "basin_spline",
+        _spec([{"element_id": "x1", "primitive": unknown,
                 "material_id": "basalt_slab", "parameters": {}}]),
-        "basin_spline", "live registry",
+        unknown, "live registry",
     )
     _expect(
         "duplicate element_id refused",

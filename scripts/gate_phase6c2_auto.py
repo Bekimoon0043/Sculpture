@@ -436,10 +436,26 @@ def main() -> int:  # noqa: C901 — a gate is a transcript, not a design
         print(f"  {lid}: {flines[lid].formula}")
         _check(failures, f"{lid} computes against a filled card",
                flines[lid].status == COMPUTED)
-    _check(failures, "the rate card names the six new nulls",
-           len(bundle.costing.missing_entries()) == 39,
-           f"{len(bundle.costing.missing_entries())} entries "
-           f"(33 before slice C2)")
+    # PR-5 (2026-09-08, D-10 sweep): this asserted missing_entries() == 39,
+    # which expires the moment the operator fills ONE rate (B-3 is his to
+    # fill). The timeless truth is that the six C2 paths EXIST on the rate
+    # card — null or filled — so they are checked by path, count printed.
+    c2_paths = [f"materials.{mid}.seam" for mid in sorted(raw["materials"])] + [
+        "install.truck_payload_kg", "install.modules_per_trip"]
+
+    def _has_path(dotted: str) -> bool:
+        node = bundle.costing.model_dump()
+        for key in dotted.split("."):
+            if not isinstance(node, dict) or key not in node:
+                return False
+            node = node[key]
+        return True
+
+    missing_paths = [p for p in c2_paths if not _has_path(p)]
+    _check(failures, "the rate card carries the six slice-C2 paths",
+           len(c2_paths) == 6 and not missing_paths,
+           f"{len(c2_paths)} paths, missing {missing_paths}; "
+           f"{len(bundle.costing.missing_entries())} entries still null")
     del yaml  # imported for parity with the other gates; not needed here
 
     # ------------------------------------------------------------------
