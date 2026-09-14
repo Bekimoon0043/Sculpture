@@ -24,6 +24,479 @@ verbatim gate evidence — the same contract as the phase reports.
 
 ---
 
+## FF-A3 — a typed brief can ask for the ref-08 loop (BUILT 2026-09-09, ADR-069: auto gate PASS; visual gate PENDING; NOT closed)
+
+**Claim, exactly.** A brief typed into the Brief tab and confirmed can
+reach `freeform_loop`: the Designer index now prints every primitive's
+parameter vocabulary and honesty lines generated from the registry; the
+trusted mapper covers the lens's 13 registry keys (12 scalars +
+`material_id`); the Designer boundary runs the mapper and each
+primitive's own `validate()` before a spec is persisted; a dry design may
+carry an empty hydraulic network; a ratio is a plain number. **Synthetic
+hand-authored Council alternatives prove replay and pipeline
+compatibility only — not that an AI selected the primitive from prose.**
+The claim "typed brief → Council selection → sculpture" is not made
+until the visual gate's Step 6 live demonstration is separately
+cost-approved, run and recorded. One ref-08 family, 316L only, scalar
+controls, incomplete mass, unresolved fabrication inputs, integrity-
+gated, PRE-FABRICATION at best — all preserved; registry unchanged at
+eleven; `e1a59fa6…` untouched. $0 throughout; no provider; no download.
+
+### Build story, honestly
+
+- **Red-first collapsed into same-window authoring** (as in PR-4/PR-5):
+  the new test module and the code were written in the same pass. The
+  first run of the new tests found three of the author's own defects,
+  each fixed in the TEST or the GENERATOR, never in the checked code:
+  the boundary re-ask needle assumed the embedment sentence ("wall_mm
+  >= 6") but the registry's own text is the range floor
+  (`wall_mm=4.0: Input should be greater than or equal to 6`, which
+  fires first); the fixture generator set the altitude as the int 2355
+  while the API round-trips the intake through its wire format and
+  prints `2355.0 m` — the generator now round-trips the same way; the
+  transcript API key is `specs`, not `design_specs`.
+- **A real finding in the suite's canonical spec:** with the Designer
+  boundary running the mapper, `valid_example_spec()` was refused —
+  its nozzle node targeted `column_01`, which the slice-B rule
+  (ADR-054) has refused since 2026-08-26. Every scripted Council test
+  had been persisting a spec that fabrication would refuse. The node
+  now targets `basin_01`; the check was not loosened.
+- **The kernel cliff bit the fixture, loudly:** three of the six
+  hand-authored alternatives passed the primitive's `validate()` and
+  were REFUSED at build — the exact mirror of the acceptance lens
+  (twist −20°, skew −0.15): "inner lens produced 1 solids, volume
+  −326316588654.8 mm³ — expected one positive solid"; 4800×2700×1000,
+  wall 8, twist −25°: "cavity collapsed or split: clearance corridor
+  left 1 solids, volume −27648.4 mm³"; 3600×2200×800, twist −35°:
+  "clearance corridor left 2 solids". Every refused set had a
+  negative twist; six replacement candidates with positive twist all
+  built (95.0 / 57.4 / 22.4 / 60.2 / 55.4 / 66.5 s) and three were
+  taken. All six fixture alternatives then built through the kernel
+  (85.4 / 38.5 / 22.0 / 34.1 / 53.4 / 38.8 s, one module each).
+  Recorded in ADR-069 decision 6; `validate()` accepting what the
+  kernel refuses remains the FF-A2 limitation.
+- **Owner corrections 1–9** applied as written; PR-7A relayed and
+  held at `1292e6c`; ADR-069 taken on main.
+
+### Focused suite (development image, 2026-09-09)
+
+`tests/test_ffa3_council_freeform.py` (17 tests) plus every module
+touching prompts, mapper, schema, orchestrator, replay, intake,
+fabrication and cascade:
+
+```
+155 passed, 2 warnings in 302.75s (0:05:02)
+```
+
+Host gates on the same tree: `gate_scope_audit_auto.py` PASS;
+`gate_pr25_discovery_auto.py --host-drift` PASS 218/218, zero skipped.
+
+### Development gate run (first run, container with the copied files)
+
+`scripts/gate_ffa3_auto.py` — 9 sections, **55 checks, exit 0**, first
+run, no gate edited to pass. Highlights, verbatim:
+
+```
+[5 fixture replay + registry validity + explicit parameters]
+    synthetic: True
+  [5] fixture == live prompt builders + schema + registry today    PASS  (245013 bytes)
+    replayed f5a3e1c8: 15 calls, 6 specs, recomputed $0.20223 (never spent)
+  [5] every spec names freeform_loop and passes mapper + validate() PASS  (6/6)
+  [5] rank 1 states all 12 scalars + material_id explicitly (13/13) PASS  (13/13)
+[6 trusted build of the rank-1 spec (mapper -> assemble -> persist)]
+    design 6e40e2c4 built in 276.4 s; STEP f3ccb95345d8534b
+  [6] hydraulics: water_designed basis 'has_water = false' from the intake PASS
+    this process  pid 151  STEP f3ccb95345d8534ba30aa98e6817d6f0b341a80cf9c8ca36c860f5f54dca4d14
+    other process pid 201  STEP f3ccb95345d8534ba30aa98e6817d6f0b341a80cf9c8ca36c860f5f54dca4d14
+  [6] STEP sha256 == FF-A2 fixture STEP built in a second process  PASS
+[7 export truth]
+  [7] two package downloads byte-identical                         PASS  (2401702 bytes sha 53f4267adbe9)
+[8 negatives]
+  [8] two lenses (no joint possible) refused by the assembler      PASS  (an assembly needs exactly ONE root element (no joint); found 2: ['loop_01', 'loop_02'])
+  [8] a lens stacked on a lens refused (cannot parent)             PASS  (loop_02: cannot stack_on loop_01 — primitive 'freeform_loop' exposes no stackable top face)
+PASS -- all 55 checks passed at $0, offline, with no AI call and no production data touched.
+```
+
+The rank-1 Council spec's STEP digest `f3ccb953…` is the FF-A2
+acceptance lens's digest, produced by two different processes.
+
+### Definitive run on the rebuilt image (2026-09-09T09:46:18Z → 09:53:44Z)
+
+Image `sha256:0d4180d2b8d79de7581b8360d8a131bbd569e2692cd82fb725aab9aee8371867`
+(built 09:42:58Z); render worker UP, pinned at start; 12 of 12 FF-A3
+files host == container by sha256 (`spec_mapper.py 2635b47e3781`,
+`prompts.py 2fb3106344b8`, `orchestrator.py 3681540ed1ae`,
+`routes_council.py 6419f93b84b1`, `design_spec_v1.json b96b783e4584`,
+`gate_ffa3_auto.py 302ef55de5f0`, `make_ffa3_fixture.py 607b91f80a9c`,
+`gate_pr5_auto.py 21fd408df6bf`, `council_session_ffa3_v1.json
+d82404f37e3a`, `intake_ffa3_v1.json f4b8674d363a`,
+`test_ffa3_council_freeform.py 97aa2b2cb875`, `test_design_spec_schema.py
+bd2b667f9cfb`). `scripts/gate_ffa3_auto.py` **exit 0, 55/55**, verbatim
+verdict lines:
+
+```
+[9 hermeticity before (health + settled fingerprint, D-26-safe)]
+  [9] backend healthy before any production fingerprint            PASS  (HTTP 200 status='ok' after 0 poll(s))
+  [9] DB/WAL fingerprint settled (two identical reads)             PASS  (db=a0e7225c322a wal=e3b0c44298fc after 1 poll(s))
+[1 vocabulary truth: what the DESIGNER is told (registry-driven)]
+  [1] 12 scalar keys + material_id = 13 registry keys              PASS  (12 + 1)
+  [1] every scalar key printed with its [min..max]                 PASS  (12 keys)
+  [1] ratio keys marked PLAIN number                               PASS  (plan_skew_ratio, bore_center_height_fraction, waist_height_fraction)
+  [1] 316L-only line derived from SUPPORTED_MATERIAL               PASS
+  [1] incomplete-mass inputs derived from INCOMPLETE_MASS_INPUTS   PASS  (3 inputs)
+  [1] PRE-FABRICATION line derived from REQUIRES_FREEFORM_INTEGRITY PASS
+  [1] every registered primitive gets a vocabulary line            PASS  (11 of 11)
+  [1] schema primitive description names no phantom primitive      PASS  (no ids named; live index cited)
+  [1] schema states {value, unit} for dimensions, PLAIN scalars for ratios/counts/enums PASS
+[2 mapper truth: spec names -> registry keys, ratios plain]
+  [2] no alias dangles (every target is a registry key)            PASS  (20 aliases)
+  [2] every scalar key has at least one spec-level name            PASS  (all 12)
+  [2] rank-1 Council spec maps to EXACTLY the FF-A2 acceptance parameters PASS
+  [2] every ratio x every unit refused verbatim                    PASS  (18/18)
+  [2] unknown parameter name refused naming the keys               PASS  (loop_01: freeform_loop: parameter 'petal_count' is not supported by th)
+  [2] parameters.material_id contradiction refused                 PASS  (loop_01: freeform_loop: parameters.material_id='basalt_slab' contradic)
+[3 Designer boundary: registry refusal -> re-ask, never persisted]
+  [3] session completed with corrected=1                           PASS  (status=completed corrected=1)
+  [3] exactly one re-ask carrying the registry's own text          PASS  (1 re-ask(s))
+  [3] the refused spec was never persisted; 6 valid specs stand    PASS  (6 specs)
+[4 typed intake -> composed Council brief (real API)]
+  [4] intake created from operator-typed fields                    PASS  (HTTP 201)
+  [4] no parsed/default field — operator or unknown only           PASS  (operator, unknown)
+  [4] intake confirmed (tiers 1-2 answered)                        PASS  (HTTP 200 status=confirmed)
+  [4] composed brief == fixture brief_text (one id substituted)    PASS  (1668 chars)
+  [4] dry design: has_water false is operator-sourced              PASS
+[5 fixture replay + registry validity + explicit parameters]
+  [5] fixture is marked synthetic and states what it proves        PASS
+  [5] fixture == live prompt builders + schema + registry today    PASS  (245013 bytes)
+    replayed f5a3e1c8: 15 calls, 6 specs, recomputed $0.20223 (never spent)
+  [5] 6 specs replayed, cost recomputed > 0                        PASS
+  [5] every spec names freeform_loop and passes mapper + validate() PASS  (6/6)
+  [5] rank 1 states all 12 scalars + material_id explicitly (13/13) PASS  (13/13)
+[6 trusted build of the rank-1 spec (mapper -> assemble -> persist)]
+    design e2d94385 built in 226.3 s; STEP f3ccb95345d8534b
+  [6] one element, primitive freeform_loop                         PASS
+  [6] total_mass_kg is null (never zero)                           PASS
+  [6] required_validation_gates == what the registry declares      PASS  (freeform_integrity_v1)
+  [6] design row carries the Council spec id (lineage)             PASS
+  [6] freeform_integrity_v1 row PASS against the persisted topology PASS  (pass)
+  [6] hydraulics: water_designed basis 'has_water = false' from the intake PASS  (hydraulics: water_context_v1.has_water = false)
+  [6] fabrication lift row NEEDS INPUT naming the armature         PASS  (needs_input)
+  [6] structural total_mass_kg NEEDS INPUT                         PASS  (needs_input)
+    this process  pid 167  STEP f3ccb95345d8534ba30aa98e6817d6f0b341a80cf9c8ca36c860f5f54dca4d14
+    other process pid 185  STEP f3ccb95345d8534ba30aa98e6817d6f0b341a80cf9c8ca36c860f5f54dca4d14
+  [6] STEP sha256 == FF-A2 fixture STEP built in a second process  PASS
+[7 export truth: PRE-FABRICATION, unresolved-only warrant, reproducible]
+  [7] export seals PRE-FABRICATION                                 PASS  (HTTP 200 pre_fabrication)
+  [7] two package downloads byte-identical                         PASS  (2401711 bytes sha 3ec3d9492368)
+  [7] warrant names the unresolved professional inputs             PASS
+  [7] warrant carries no passing statuses                          PASS
+[8 negatives: single-element claim, wrong material, ratio unit]
+  [8] two lenses (no joint possible) refused by the assembler      PASS  (an assembly needs exactly ONE root element (no joint); found 2: ['loop_01', 'loop_02'])
+  [8] a lens stacked on a lens refused (cannot parent)             PASS  (loop_02: cannot stack_on loop_01 — primitive 'freeform_loop' exposes no stackable top face)
+  [8] wrong material refused at the Designer boundary by name      PASS  (registry refusal: material_id='basalt_slab' is not supported by freeform_loop: only 'stain)
+  [8] ratio with a unit refused at the Designer boundary           PASS  (registry refusal: loop_01: freeform_loop.skew: plan_skew_ratio is a dimensionless ratio an)
+[9 hermeticity after + $0 static scan]
+  [9] real DB byte-identical                                       PASS  (a0e7225c322a -> a0e7225c322a)
+  [9] real WAL byte-identical                                      PASS  (e3b0c44298fc -> e3b0c44298fc)
+  [9] spec_mapper.py provider-free                                 PASS
+  [9] prompts.py provider-free                                     PASS
+  [9] orchestrator.py provider-free                                PASS
+  [9] make_ffa3_fixture.py provider-free                           PASS
+  [9] gate_ffa3_auto.py provider-free                              PASS
+  [9] no reference JPG in this tree (operator-local only)          PASS  (0 found)
+PASS -- all 55 checks passed at $0, offline, with no AI call and no production data touched.
+```
+
+Note on the package digest: the two downloads within one run are
+byte-identical (the check); across the two runs the package digest
+differs (`53f4267adbe9` vs `3ec3d9492368`, 2,401,702 vs 2,401,711
+bytes) because each run persists a new design id and intake id into a
+fresh throwaway DB and the package records that identity. The STEP
+digest, which records geometry only, is identical across both runs and
+both processes: `f3ccb953…`.
+
+### Definitive FF-A3 /lf-gate — risk-based protocol (2026-09-14)
+
+Authorized by the operator under the PR-5 precedent. **Risk basis,
+stated explicitly as the protocol requires: FF-A3 changes no rendering,
+no packaging and no render-worker code** — its diff touches the Council
+prompt/orchestrator, the trusted spec mapper, the Design Spec schema,
+the demo-fixture loader, two fixtures, one test module, one new gate and
+the documents. PR-4's two-state suite baseline is therefore RETAINED and
+the suite was run ONCE, in the worker-REMOVED state.
+
+Backend image **`sha256:772e352a34ea7b3bb6d1fcddab711f2b0348dd5ec4968604e0438ae8fb9013c3`**,
+built from the final working tree at 09:02:08Z and **identical at the
+start and the end of the chain**. (The image `0d4180d2b8d7` cited in the
+build-stage evidence above no longer exists: the operator's own Step 1
+rebuild replaced it with `f48d70fa` at 06:37Z, and this chain then built
+`772e352a34ea` from the final tree. No code differs between them; the
+documents edited after 06:37Z are in this image, which is why the
+rebuild mattered.)
+
+| # | stage | result |
+|---|---|---|
+| 1 | rebuild from the final tree, pin the image | `772e352a34ea`, containers recreated 09:02:08Z |
+| 2 | host vs image byte identity, all 20 changed/new files | **20 SAME, 0 DIFF, 0 missing** |
+| 3 | render worker removed with `compose rm -sf` | absent: `no such object`, 0 containers named render-worker |
+| 4 | full pytest suite, worker REMOVED | **737 passed, exit 0, 5919.57s (1:38:39)** |
+| 5 | in-container roster, worker REMOVED | **25 of 25 exit 0** (list below) |
+| 6 | `gate_pr3_auto.py --static --stdin`, in-container | PASS, `sections run: static` |
+| 7 | worker restored and pinned 11:37:02Z, `gate_phase9b_auto.py` | **FAILED. Rerun once under authorization: FAILED AGAIN at a later section. Both transcripts preserved below. NOT passing in this chain; accepted as unrelated measured infrastructure debt (D-29) under the risk-based exception.** |
+| 8 | host and split-mode gates | scope audit PASS; `gate_phase14 --frontend-only` PASS (`sections run: frontend`); `gate_pr25_discovery --host-drift` **218/218**; `gate_pr3 --live` PASS (`live-lan, live-loopback`) |
+| 9 | backend image at the end | **identical to the start** |
+
+Stage 5, in order, every one exit 0:
+`gate_phase2` · `gate_phase3` (VERDICT: PASS) · `gate_phase4` (VERDICT:
+PASS) · `gate_phase5` (5 sections; "objective score before=0.64
+after=0.96; bare total refused (None)") · `gate_phase6a1` ·
+`gate_phase6a2` · `gate_phase6b` · `gate_phase6c` · `gate_phase6c2` ·
+`gate_phase8` · `gate_phase8b` · `gate_phase9a` (worker removed: the
+four Blender-only formats report `unavailable`, ADR-045) ·
+`gate_phase11` · `gate_phase13a` · `gate_phase14` (`sections run:
+geometry`) · `gate_phase15` · `gate_costing` ("no total, every gap
+named, no number invented") · `gate_lf103a` · `gate_pr1` · `gate_pr2` ·
+`gate_pr4` · `gate_pr5` · `gate_ffa2` (**63/63**) · **`gate_ffa3`
+(55/55)** · `gate_ffa1` (**36/36**, "consumers found: 32 (allowlist
+entries: 34)" — FF-A3 added no mass consumer). `gate_ffa1` was run LAST
+by design (D-26). No gate was edited at any point in this chain.
+
+#### Stage 7 — Phase 9B FAILED TWICE; both preserved verbatim
+
+**This chain does NOT contain a passing Phase 9B.** Both invocations are
+recorded below in full. Neither is described as a pass anywhere.
+
+**INVOCATION 1 — FAILURE, verbatim and complete:**
+
+```
+Fontconfig error: Cannot load default config file
+==============================================================
+Phase 9B auto gate - Blender render worker (offline, $0)
+==============================================================
+[0] render scratch: /render_scratch
+[1] PASS built test mesh (48808 bytes, 3 parts)
+[2] queued job 4b56658db2f547ab; waiting for the render worker ...
+FAIL [2] render-worker produced no result within 300s — is the render-worker container running? (docker compose ps render-worker)
+      Is the render worker running? Start it with:
+        docker compose --profile render up -d render-worker
+```
+`gate_phase9b_auto.py exit=1`. Worker status at that moment, before and
+after the gate: `running started=2026-09-14T11:37:02.607157748Z` — the
+worker was up the whole time.
+
+**The render itself SUCCEEDED, 15 seconds after the gate gave up.**
+`data/render_scratch/4b56658db2f547ab/result.json`, verbatim:
+
+```json
+{"bbox": {"max": [1.100000023841858, 1.099658489227295, 1.640000343322754], "min": [-1.100000023841858, -1.0996582508087158, -1.4774880696677428e-07], "size": [2.200000047683716, 2.1993167400360107, 1.6400004625320435]}, "error": null, "ok": true, "total_s": 37.487, "views": [{"bytes": 54547, "elapsed_s": 11.549, "name": "front", "path": "front.png"}, {"bytes": 54572, "elapsed_s": 7.821, "name": "side", "path": "side.png"}, {"bytes": 60958, "elapsed_s": 8.738, "name": "top", "path": "top.png"}, {"bytes": 61013, "elapsed_s": 6.649, "name": "three_quarter", "path": "three_quarter.png"}]}
+```
+
+Four PNGs on disk: `front.png` 54,547 B · `side.png` 54,572 B ·
+`three_quarter.png` 61,013 B · `top.png` 60,958 B. **`total_s = 37.487`.**
+
+**Timeline (UTC; the host clock is UTC−4, so a raw `ls` reads four hours
+earlier — that is why the files first appeared to be from 07:39):**
+
+| time | event |
+|---|---|
+| 11:37:02 | render worker recreated and started (restarts=0) |
+| 11:39:17 | gate wrote `job.json` + `input.glb`, began its fixed 300 s wait |
+| 11:43:54 | worker CLAIMED the job — 4 min 37 s after it was queued |
+| 11:44:17 | the gate's 300 s deadline expired → FAIL |
+| 11:44:32 | worker wrote `result.json`, `ok: true` |
+
+**Cause.** On startup the worker drains every unfinished job in the
+shared scratch mount. `data/render_scratch` holds **1,902 job
+directories**, and the recreated worker processed **50 stale conversion
+jobs** before it reached the gate's job. The gate's wait is a fixed 300
+seconds, so it lost a race against a cold worker with a backlog. Nothing
+about the render was slow: it took 37.5 s.
+
+**Not caused by FF-A3** — the same risk basis stated above: this slice
+changes no rendering, packaging or worker code, and every other piece of
+evidence in this chain had already passed.
+
+**Pre-rerun state recorded at 2026-09-14T12:05:23Z, before touching
+anything:** backend image `sha256:772e352a34ea…`; worker
+`running started=2026-09-14T11:37:02.607157748Z restarts=0`; scratch
+directories **1,902**; stale jobs still lacking a `result.json`: **4**;
+conversion jobs drained by the recreated worker: **50**; the four PNGs
+at the sizes above.
+
+**INVOCATION 2 — the one authorized recovery rerun. ALSO FAILED,**
+verbatim and complete (no rebuild, restart, cleanup, deletion or
+code/gate modification; warm worker, same image):
+
+```
+=== AUTHORIZED RECOVERY RERUN of gate_phase9b_auto.py ===
+start 2026-09-14T12:09:57Z
+worker BEFORE: running started=2026-09-14T11:37:02.607157748Z restarts=0
+image BEFORE:  sha256:772e352a34ea7b3bb6d1fcddab711f2b0348dd5ec4968604e0438ae8fb9013c3
+Fontconfig error: Cannot load default config file
+==============================================================
+Phase 9B auto gate - Blender render worker (offline, $0)
+==============================================================
+[0] render scratch: /render_scratch
+[1] PASS built test mesh (48808 bytes, 3 parts)
+[2] queued job e1d5d3be7f2c43bd; waiting for the render worker ...
+[2] PASS render worker returned 4 views in 58.1s
+[2b] PASS geometry arrived upright, Z up (size [2.2, 2.199, 1.64] m)
+    front          stddev= 46.56  mean=  87.2  subject= 29.1%  54547 bytes
+    side           stddev= 47.68  mean=  87.4  subject= 29.1%  54572 bytes
+    three_quarter  stddev= 58.85  mean=  92.4  subject= 61.7%  61013 bytes
+    top            stddev= 31.26  mean= 163.2  subject= 63.2%  60958 bytes
+[3] PASS all four views carry real tonal detail
+[4] PASS all six view pairs are distinct
+FAIL [5] USD reported unavailable: the render worker did not pick up the conversion job within 20s; start it with 'docker compose --profile render up -d render-worker'
+EXIT=1
+end 2026-09-14T12:16:24Z
+worker AFTER: running started=2026-09-14T11:37:02.607157748Z restarts=0
+image AFTER:  sha256:772e352a34ea7b3bb6d1fcddab711f2b0348dd5ec4968604e0438ae8fb9013c3
+```
+
+It reached further (sections 1, 2, 2b, 3, 4 passed — the render itself
+returned four views in 58.1 s, upright, with real tonal detail and six
+distinct pairs) and then failed at section 5's **fixed 20-second**
+conversion wait. The worker log shows that conversion job,
+`conv515aca28338d`, completing at **12:16:28Z — four seconds after the
+gate exited at 12:16:24Z**.
+
+**Measured mechanism (timed inside the worker container, read-only):**
+
+| measurement | value |
+|---|---|
+| directories in `/scratch` | **1,904** |
+| `iterdir` + sort | 0.04 s |
+| **one full pending-job scan** | **8.89 s** |
+| pending jobs found | 0 |
+
+The worker rescans the entire scratch mount on every poll, statting
+roughly four paths per directory across a Docker bind mount to NTFS. At
+1,904 directories one scan costs 8.89 s, so a 20-second budget allows
+about two scan cycles and a newly queued job can miss both. **Pickup
+latency scales with the backlog** — which is why raising the timeout is
+explicitly NOT the accepted fix (owner ruling).
+
+#### Acceptance of this chain under the risk-based exception (owner, 2026-09-14)
+
+The operator accepted the definitive FF-A3 chain on this precise basis,
+recorded verbatim:
+
+1. **FF-A3 changed no rendering, conversion, packaging or worker code.**
+2. **The previous closed Phase 9B PASS remains the regression baseline
+   for those unchanged bytes.**
+3. **The current render and conversion both completed successfully, but
+   after their fixed gate deadlines** (render `ok: true`,
+   `total_s: 37.487`, four views; conversion `conv515aca28338d -> ok` at
+   12:16:28Z).
+4. **The measured cause is the 1,904-directory scratch scan taking
+   8.89 s per poll, producing queue-pickup latency.**
+5. **FF-A3's own gate passed 55/55; the worker-removed suite passed 737;
+   all 25 in-container gates, PR-3 static and all host gates passed.**
+
+**This chain is NOT "all gates green" and must never be described that
+way.** Phase 9B's current-chain result is **FAIL**, accepted as
+unrelated measured infrastructure debt (**D-29**, linked to D-1) under
+the risk-based protocol. No scratch artifact was deleted, moved or
+modified; Phase 9B was not run a third time.
+
+Full record in `gate_ffa3_visual.md`. Steps 1–5 confirmed by the
+operator on the unchanged image `0d4180d2b8d7`, with one recorded
+deviation: at the operator's explicit request the Step 3 intake fields
+were entered by the session through the same `/api/intake` calls the
+Brief tab makes rather than typed in the browser, and the 30 m/s design
+wind is a TEST value entered at the operator's instruction, never a
+site measurement.
+
+**Step 6 — the one authorized live demonstration ran and halted after
+one successful call.** It is recorded here because a truthful failure
+report is the deliverable, not a successful-looking demo.
+
+| # | role / side | provider | status | actual |
+|---|---|---|---|---|
+| 1 | researcher / primary | openai gpt-4o | ok, 490 in / 650 out | $0.007725 |
+| 2 | researcher / parallel | kimi kimi-k3 | **ERROR "Connection error."** | $0 billed, reservation UNCERTAIN at $3.268608 |
+| 3 | ADR-023 retry of 2 | kimi kimi-k3 | **reservation REFUSED** | — |
+
+```
+budget halt: run spend cap would be breached: scope
+2a7d3e5b-2b78-42f6-9479-637f0e1feaa6 spent $3.276333 + reserved bound
+$3.268608 > run cap $5.000000 — halting, state persisted (halt_and_report)
+```
+
+Session `2a7d3e5b-2b78-42f6-9479-637f0e1feaa6` = `halted_budget`,
+**0 design specs, 0 arbiter decisions**. The Council never reached the
+Designer stage, so it neither selected nor declined `freeform_loop`:
+the demonstration did not reach the question. Nothing was rerun and no
+prompt was touched. The fabrication attempt was NOT run — the
+authorization said stop immediately if a provider call failed, and one
+did. **The claim "typed brief → Council selection → sculpture" remains
+UNMADE.**
+
+Money: **$0.007725 actually billed**; $3.284036 counted against the
+$25.00 UTC-day cap; no safety lock engaged. Reservation
+`9077e77a-95ec-4633-b4be-c5a07ad4f74f` is preserved UNCERTAIN at its
+full bound by operator instruction — not reconciled.
+
+The cause is arithmetic, not a defect: ADR-061's cap-safe bound is
+context window × input rate, and kimi-k3's 1,048,576-token window prices
+every one of its three seats at $3.268608 against a $5.00 run cap.
+Recorded as **D-28**; the fail-closed rule is not to be weakened.
+
+**Owner ruling, 2026-09-14 (binding).** No second Step 6 attempt now. No
+`council.yaml` change, no removal of kimi, no weakening of fail-closed
+accounting, no increase to the permanent $5 / $25 caps. **Step 6 remains
+NOT ACHIEVED and is never marked PASS**; the halted session is preserved
+and **real Council selection of `freeform_loop` remains UNPROVEN**.
+FF-A3 may pass its formal gates and close **only** as *"typed-brief/
+Council contract implemented and fixture-gated; live end-to-end
+selection blocked by D-28 and not claimed."* D-28 becomes the next
+separate, rollbackable slice, planned via `/lf-next` and not begun until
+FF-A3 closes and its plan is approved. Reservation `9077e77a…` stays
+UNRECONCILED until the operator reports the Moonshot/Kimi console for
+2026-09-14 08:22–08:23 UTC.
+
+### Affected roster gates, same image, same chain (09:53:44Z → 10:22:39Z)
+
+Run sequentially after `gate_ffa3` (never `gate_ffa1` first after a
+rebuild — D-26), render worker UP throughout:
+
+| gate | exit | verdict line |
+|---|---|---|
+| `gate_phase3_auto.py` (fixture replay + scripted sessions) | 0 | `VERDICT: PASS` |
+| `gate_phase4_auto.py` (scripted fabrication loop) | 0 | `VERDICT: PASS` |
+| `gate_phase6a2_auto.py` (mapper refusals) | 0 | `PASS — Phase 6 slice A2 auto gate: all sections passed` |
+| `gate_phase6b_auto.py` (hydraulic wiring) | 0 | `PASS — Phase 6 slice B auto gate: all sections passed` |
+| `gate_pr1_auto.py` (per-axis limits from spec) | 0 | `PASS — PR-1 auto gate: all sections passed` |
+| `gate_phase13a_auto.py` (intake/jobs) | 0 | `PASS — Phase 13a auto gate: all sections passed` |
+| `gate_ffa2_auto.py` (the lens, exact-eleven registry) | 0 | `PASS -- all 63 checks in every section that ran passed` |
+| `gate_pr5_auto.py` (contract + D-10 sweep) | 0 | `growth-collection equalities: 8; structural equalities reviewed (listed, not exempt): 31` → PASS (the new gate's two exact counts carry `D-10-frozen:` reasons and are listed as reviewed) |
+| `gate_ffa1_auto.py` (ADR-065 census, 36 checks) | 0 | `consumers found: 32 (allowlist entries: 34)` → PASS — FF-A3 added no mass consumer |
+
+Host: `gate_scope_audit_auto.py` PASS; `gate_pr25_discovery_auto.py
+--host-drift` 218/218. Not rerun in this build stage (unaffected by
+FF-A3, left to the definitive `/lf-gate` chain): the remaining
+in-container gates, `gate_phase9b` (worker up), `gate_pr3` static+live,
+`gate_phase14 --frontend-only`.
+
+### Full suite, same image, same chain (10:22:39Z → 12:06:15Z)
+
+`docker compose exec backend python -m pytest -q`, render worker
+**running** at the start of the chain and re-verified running at the
+end, image `0d4180d2b8d7` identical at both ends:
+
+```
+737 passed, 3 warnings in 6202.65s (1:43:22)
+```
+
+720 (PR-5) + 17 new FF-A3 tests = 737; zero failures, zero skips
+reported by the summary. Run ONCE with the worker up; the worker-removed
+state is left to the definitive `/lf-gate` chain (FF-A3 touched no
+rendering or packaging code, so PR-4's 707 two-state run remains the
+unchanged baseline for the worker-sensitive tests).
+
+---
+
 ## PR-5 — one story about lifting: AI contract, gate bases, scorer and documents (CLOSED 2026-09-08, ADR-068: auto gate PASS + operator visual gate PASS 2026-09-08)
 
 `scripts/gate_pr5_auto.py` — 6 sections, 49 checks, exit 0, $0, offline,

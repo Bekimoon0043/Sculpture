@@ -2,8 +2,38 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://luxuryform.internal/schemas/design_spec/v1.json",
   "title": "LuxuryForm Design Spec v1",
-  "description": "Machine-readable contract between the AI Council and the Geometry Engine. Amended per operator Amendments 1, 3 and 4: meta.spec_hash (unit of record), required hydraulic_network, and currency-aware budget replacing budget_etb_max.",
+  "description": "Machine-readable contract between the AI Council and the Geometry Engine. Amended per operator Amendments 1, 3 and 4: meta.spec_hash (unit of record), required hydraulic_network, and currency-aware budget replacing budget_etb_max. FF-A3 (ADR-069, 2026-09-09): a DRY design (water.has_water = false) may carry an empty hydraulic_network; a wet design (has_water = true, or has_water absent) keeps the Amendment 3 minimums of 2 nodes and 1 edge.",
   "type": "object",
+  "if": {
+    "required": ["water"],
+    "properties": {
+      "water": {
+        "type": "object",
+        "required": ["has_water"],
+        "properties": { "has_water": { "const": false } }
+      }
+    }
+  },
+  "then": {
+    "properties": {
+      "hydraulic_network": {
+        "properties": {
+          "nodes": { "minItems": 0 },
+          "edges": { "minItems": 0 }
+        }
+      }
+    }
+  },
+  "else": {
+    "properties": {
+      "hydraulic_network": {
+        "properties": {
+          "nodes": { "minItems": 2 },
+          "edges": { "minItems": 1 }
+        }
+      }
+    }
+  },
   "required": ["meta", "form_language", "massing", "materials", "water",
                "hydraulic_network",
                "site", "fabrication", "constraints", "confidence", "assumptions"],
@@ -108,10 +138,10 @@
     },
     "hydraulic_network": {
       "type": "object",
-      "description": "Amendment 3 (REQUIRED): pipe/pump/nozzle network for every water feature",
+      "description": "Amendment 3 (REQUIRED): pipe/pump/nozzle network for every water feature. Minimum counts live in the top-level if/then/else: a dry design (water.has_water = false) may leave nodes and edges EMPTY — never invent a pipe network for a sculpture that carries no water; a wet design needs at least 2 nodes and 1 edge.",
       "required": ["nodes", "edges"],
       "properties": {
-        "nodes": {"type": "array", "minItems": 2, "items": {
+        "nodes": {"type": "array", "items": {
           "type": "object", "required": ["node_id", "type", "elevation_m"],
           "properties": {
             "node_id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
@@ -121,7 +151,7 @@
             "pump_curve_ref": {"type": "string", "description": "required when type=pump"},
             "nozzle_bore_mm": {"type": "number", "description": "required when type=nozzle"}
           }}},
-        "edges": {"type": "array", "minItems": 1, "items": {
+        "edges": {"type": "array", "items": {
           "type": "object",
           "required": ["edge_id", "from_node", "to_node", "diameter_mm", "length_m",
                        "material", "elevation_change_m"],
@@ -232,9 +262,9 @@
       "properties": {
         "element_id":  { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
         "primitive":   { "type": "string",
-                         "description": "Must exist in geometry/registry.py — e.g. basin_round, tiered_cascade, nozzle_ring, lotus_array, spline_loft" },
+                         "description": "An id from the LIVE PRIMITIVE INDEX in this prompt — the registry in this checkout is the only source of truth; nothing else is accepted" },
         "parameters":  { "type": "object",
-                         "description": "Validated against the primitive's own parameter schema in registry.py; every numeric value is a $defs/dimension" },
+                         "description": "Validated against the primitive's own parameter table (see the LIVE PRIMITIVE INDEX). Dimensional values (lengths, angles) are $defs/dimension objects {value, unit}; ratios, fractions, counts and enumerations are PLAIN scalars with no unit — a ratio carrying a unit is refused. State every parameter you rely on explicitly: an omitted parameter is filled by a registry default and is not your design decision" },
         "material_id": { "type": "string" },
         "position": {
           "type": "object", "required": ["x_m", "y_m", "z_m"],

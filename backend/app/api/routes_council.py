@@ -4,11 +4,14 @@ GET  /api/council/sessions            -> session list (newest first)
 GET  /api/council/sessions/{id}       -> full transcript: calls, specs,
                                          engineering reviews, defect lists,
                                          arbiter decision, cost rollup
-POST /api/council/demo-session        -> replays the COMMITTED synthetic
-                                         fixture into the database so the
-                                         transcript UI is explorable offline
-                                         ($0). The fixture is labeled
-                                         synthetic everywhere it surfaces.
+POST /api/council/demo-session        -> replays a COMMITTED fixture into
+                                         the database so the transcript UI
+                                         is explorable offline ($0). Default:
+                                         the synthetic Phase 3 fixture; FF-A3
+                                         (ADR-069) accepts {"fixture": <one
+                                         discovered basename>} — never a path.
+                                         A synthetic fixture is labeled so
+                                         everywhere it surfaces.
 
 Cost rollup is computed from council_calls rows (themselves recomputed from
 tokens x pricing.yaml on replay — fixture costs are never trusted). The
@@ -20,9 +23,10 @@ actually cost (ADR-022 cache classes). Honest arithmetic from logged fields.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Body, HTTPException
 from sqlalchemy import select
 
 from pydantic import BaseModel, Field
@@ -274,15 +278,67 @@ def council_session_detail(session_id: str) -> dict:
     }
 
 
+#: FF-A3 (ADR-069): a demo fixture is addressed by BASENAME only, and only a
+#: basename this pattern accepts AND that discovery finds on disk is ever
+#: joined to a path. Absolute paths, separators and traversal never reach
+#: the filesystem — they fail the pattern before any join.
+_FIXTURE_BASENAME = re.compile(r"^council_session_[a-z0-9_]{1,64}$")
+
+
+def discovered_demo_fixtures() -> list[str]:
+    """Basenames (no extension) of the committed council fixtures."""
+    return sorted(
+        p.stem for p in FIXTURE_DIR.glob("council_session_*.json")
+        if _FIXTURE_BASENAME.match(p.stem)
+    )
+
+
+def resolve_demo_fixture(name: str | None) -> Path:
+    """The fixture path for a requested basename, or the default fixture.
+
+    Refuses (422) anything that is not exactly one of the discovered
+    basenames — a path, a separator, '..', a suffix or an unknown name.
+    """
+    if name is None:
+        return DEMO_FIXTURE_PATH
+    available = discovered_demo_fixtures()
+    if not _FIXTURE_BASENAME.match(name) or name not in available:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "unknown demo fixture",
+                "requested": name,
+                "available": available,
+                "rule": "a discovered basename only — no paths, separators, "
+                        "traversal or extensions",
+            },
+        )
+    return FIXTURE_DIR / f"{name}.json"
+
+
+class DemoSessionRequest(BaseModel):
+    #: Basename of a committed council fixture (see discovered_demo_fixtures);
+    #: None loads the original synthetic fixture, unchanged behaviour.
+    fixture: str | None = None
+
+
 @router.post("/council/demo-session")
-def load_demo_session() -> dict:
-    """Replay the committed synthetic fixture ($0, offline, idempotent)."""
-    if not Path(DEMO_FIXTURE_PATH).exists():
+def load_demo_session(req: DemoSessionRequest | None = Body(default=None)) -> dict:
+    """Replay a committed fixture ($0, offline, idempotent).
+
+    The default is the synthetic Phase 3 fixture. FF-A3 (ADR-069) lets the
+    operator load any committed council fixture by basename so a replayed
+    transcript can be read in the Council panel at $0 — a synthetic
+    hand-authored fixture proves replay and pipeline compatibility only,
+    never that an AI selected a primitive from prose.
+    """
+    fixture_path = resolve_demo_fixture(req.fixture if req else None)
+    if not Path(fixture_path).exists():
         raise HTTPException(status_code=500, detail="demo fixture missing")
     db = get_default_db()
     bundle = load_config_bundle()
     try:
-        fixture = load_fixture(DEMO_FIXTURE_PATH)
+        fixture = load_fixture(fixture_path)
     except FixtureError as exc:
         raise HTTPException(status_code=500, detail=f"fixture invalid: {exc}")
     session_id = fixture["session"]["id"]
@@ -293,14 +349,22 @@ def load_demo_session() -> dict:
         created = True
     else:
         created = False
+    synthetic = bool(fixture["synthetic"])
+    kind = ("Synthetic hand-authored fixture" if synthetic
+            else "Captured LIVE session fixture")
     return {
         "session_id": session_id,
         "created": created,
-        "synthetic": True,
+        "synthetic": synthetic,
+        "fixture": Path(fixture_path).stem,
         "note": (
-            "Synthetic fixture (tests/fixtures/council_session_v1.json) — no "
-            "real API calls were made; costs recomputed from tokens x "
-            "pricing.yaml on load. Safe to reload; it never overwrites."
+            f"{kind} (tests/fixtures/{Path(fixture_path).name}) — "
+            + ("no real API calls were made for this load; the dollar figure "
+               "is recomputed from scripted token counts x pricing.yaml and "
+               "was never spent. "
+               if synthetic else
+               "costs recomputed from the recorded tokens x pricing.yaml. ")
+            + "Safe to reload; it never overwrites."
         ),
     }
 

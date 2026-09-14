@@ -127,15 +127,65 @@ _ALIASES: dict[str, dict[str, str]] = {
         "bore_diameter": "bore_diameter_mm",
         "min_clearance": "min_clearance_mm",
     },
+    # FF-A3 (ADR-069): the ref-08 hollow lens. Every registry key is
+    # reachable by at least one spec-level name (gate_ffa3 proves it from
+    # the registry, never from this table). Ratio/fraction targets take a
+    # PLAIN number — see _dimension_to_number.
+    "freeform_loop": {
+        "height": "height_mm",
+        "width": "width_mm",
+        "depth": "depth_mm",
+        "wall": "wall_mm",
+        "wall_thickness": "wall_mm",
+        "twist": "section_twist_deg",
+        "section_twist": "section_twist_deg",
+        "bow": "wobble_mm",
+        "wobble": "wobble_mm",
+        "skew": "plan_skew_ratio",
+        "plan_skew": "plan_skew_ratio",
+        "window_width": "bore_width_mm",
+        "bore_width": "bore_width_mm",
+        "window_height": "bore_height_mm",
+        "bore_height": "bore_height_mm",
+        "window_center_height": "bore_center_height_fraction",
+        "bore_center_height": "bore_center_height_fraction",
+        "waist_height": "waist_height_fraction",
+        "plate_diameter": "base_plate_diameter_mm",
+        "base_plate_diameter": "base_plate_diameter_mm",
+    },
 }
+
+#: Parameter-name suffixes whose values are dimensionless. A Design Spec
+#: states them as PLAIN numbers; a {value, unit} object is refused because
+#: no unit is honest for a ratio (FF-A3, operator correction 4).
+_UNITLESS_SUFFIXES = ("_ratio", "_fraction")
 
 _CAN_INSERT = {("sculptural_column", "basin_round")}
 
 
+def spec_aliases_for(primitive: str) -> dict[str, str]:
+    """The spec-level names the mapper accepts for ``primitive`` (a copy).
+
+    Public so the Council prompt can be GENERATED from the same table the
+    mapper reads (ADR-026 anti-drift: prompt text never drifts from code).
+    """
+    return dict(_ALIASES.get(primitive, {}))
+
+
 def _dimension_to_number(value: Any, target_key: str, path: str) -> float | int | str:
     """Convert Design Spec dimension objects to primitive parameter values."""
+    unitless = target_key.endswith(_UNITLESS_SUFFIXES)
     if not isinstance(value, dict):
         return value
+    if unitless:
+        # A ratio is a plain number. Before FF-A3 a {value, unit: "m"} here
+        # was silently multiplied by 1000 and a wrong unit passed through
+        # untouched — the most dangerous silent failure in this mapper.
+        raise ConstraintViolation([
+            f"{path}: {target_key} is a dimensionless ratio and must be a "
+            f"plain number; a dimension object (unit {value.get('unit')!r}) "
+            "is refused — there is no honest unit for a ratio"
+        ])
     if "value" not in value or "unit" not in value:
         raise ConstraintViolation([
             f"{path}: dimension object must carry value and unit"
@@ -183,6 +233,15 @@ def _map_parameters(primitive: str, raw: dict[str, Any], material_id: str) -> di
 
     if violations:
         raise ConstraintViolation(violations)
+    # The element's material_id is the material of record. A parameters
+    # entry that names a DIFFERENT material is a contradiction inside the
+    # spec, refused rather than silently overwritten (FF-A3, ADR-069).
+    stated = mapped.get("material_id")
+    if stated is not None and stated != material_id:
+        raise ConstraintViolation([
+            f"{primitive}: parameters.material_id={stated!r} contradicts the "
+            f"element's material_id={material_id!r} — one material of record"
+        ])
     mapped["material_id"] = material_id
     return mapped
 

@@ -4982,3 +4982,228 @@ the fabrication-time PRIMITIVE INDEX already offers `freeform_loop`
 while no brief, Council prompt or `spec_mapper` alias can request it);
 PR-7A's parallel branch (ADR-069 reserved) rebases onto this commit.
 PR-5 starts neither.
+[Correction 2026-09-09, owner ruling: an unmerged parked branch cannot
+reserve an ADR number — ADR-069 is FF-A3's below; PR-7A is renumbered
+if resumed. The sentence above is preserved as written.]
+
+## ADR-069 - FF-A3: a typed brief can ask for the ref-08 loop — honestly (2026-09-09)
+
+**Context.** After FF-A2 the fabrication-time PRIMITIVE INDEX listed
+`freeform_loop`, but nothing upstream could ask for it: the Designer
+prompt named the lens without its parameters, `spec_mapper._ALIASES`
+had no entry for it, the schema forced every design — a dry sculpture
+included — to invent a two-node pipe network, and the schema's own
+`primitive` description named three primitives that never existed
+(`nozzle_ring`, `lotus_array`, `spline_loft`), text pasted verbatim into
+every paid Designer call. The owner approved the FF-A3 plan on
+2026-09-09 including hydraulic schema change B, with nine binding
+corrections recorded here.
+
+**Owner corrections (binding, recorded).** (1) PR-7A stays parked at
+its local commit `1292e6c` — no reset, rebase, merge, push, tests or
+container use. (2) This slice takes **ADR-069**, the next number on
+main: an unmerged parked branch cannot reserve an ADR number; PR-7A is
+renumbered if resumed. (3) `freeform_loop.PARAMETERS` holds **12 scalar
+geometry parameters plus `material_id` = 13 registry keys** — never
+"twelve total". (4) The schema no longer says every numeric parameter is
+a dimension object: dimensional values are `{value, unit}`; ratios,
+fractions, counts and enumerations are PLAIN scalars; no fake ratio unit
+was added; the gate proves a plain ratio schema-valid and every ratio
+carrying any unit refused. (5) Schema change B is exact: a dry design
+(`water.has_water` PRESENT and `false`) may carry empty `nodes`/`edges`;
+a wet design keeps 2 nodes and 1 edge; an ABSENT `has_water` never
+matches the dry branch — positive, negative and absent-guard tests
+exist. (6) Synthetic hand-authored Council alternatives prove replay
+and pipeline compatibility only — not that an AI selected the primitive
+from prose; that sentence appears in the fixture note, the generator,
+the gate, the visual gate, LIMITATIONS, NEXT and README. (7) The visual
+gate types and confirms the brief through the existing Brief tab; the
+claim "typed brief → Council selection → sculpture" is NOT made or
+closed until one real live Council + fabrication demonstration has been
+separately cost-approved, run and recorded — the build approval
+authorizes no provider spend. (8) The optional fixture loader accepts
+an enumerated DISCOVERED basename only; absolute paths, separators and
+traversal are refused before any path is joined. (9) The rank-1 spec
+states all 12 scalars plus `material_id` explicitly; silent registry
+defaults never masquerade as Council parameterization.
+
+**Decisions.**
+
+1. **The Designer vocabulary is generated, never typed.**
+   `prompts.primitive_index_surface()` prints, per primitive, every
+   registry key with the spec-level names that reach it (from
+   `spec_mapper.spec_aliases_for()`), unit, `[min..max]` and default, and
+   honesty lines derived from the module's own declarations
+   (`SUPPORTED_MATERIAL`, `INCOMPLETE_MASS_INPUTS`,
+   `REQUIRES_FREEFORM_INTEGRITY`). ADR-026's anti-drift property is
+   preserved: widening the registry changes the prompt automatically.
+   Trade-off: the static Designer prefix grows for every session (the
+   gate prints the size); it is still one cache prefix per session
+   (ADR-024).
+2. **"Valid Design Spec" now means registry-valid.**
+   `orchestrator._validate_live_primitives()` runs the live-id check,
+   then `assembly_plan_from_spec()`, then each primitive's own
+   `validate()` (parameter arithmetic, no geometry). A refusal becomes a
+   bounded re-ask carrying the registry's real text; ANY other exception
+   is also an error — never a silent pass. This applies to every
+   primitive, not only the lens (a lens-only rule would be a new D-10
+   special case). Consequence found at once: the suite's canonical
+   `valid_example_spec()` put a nozzle node on `column_01`, which the
+   slice-B mapper (ADR-054) has refused since 2026-08-26 — every scripted
+   Council test had been persisting a spec fabrication would refuse. The
+   fixture now drills the nozzle ring into `basin_01`; the check was not
+   loosened.
+3. **The mapper covers eleven; ratios are plain numbers.**
+   `_ALIASES["freeform_loop"]` reaches all 13 keys; `_dimension_to_number`
+   REFUSES a `{value, unit}` object on `_ratio`/`_fraction` targets
+   (before FF-A3 a ratio in metres was silently multiplied by 1000 and a
+   wrong unit passed through — the most dangerous silent failure in the
+   mapper); a `parameters.material_id` contradicting the element's is
+   refused rather than overwritten. Count/enumeration targets keep the
+   old behaviour — recorded as D-27, not fixed here.
+4. **Schema change B + descriptions.** Top-level `if/then/else`: the dry
+   branch requires `water` present, `has_water` present and `const
+   false`; `then` sets `minItems: 0`; `else` keeps 2/1 — so an absent
+   `has_water` falls to the wet minimums. The `primitive` description
+   cites the LIVE PRIMITIVE INDEX and names no id; the `parameters`
+   description states the dimension/plain-scalar rule and that omitted
+   parameters are registry defaults, not design decisions. The Phase 2
+   canonical STEP `e1a59fa6…` is untouched (schema governs spec
+   validation, not geometry). No registry, config, primitive or kernel
+   change.
+5. **Fixtures.** `intake_ffa3_v1.json` (operator-typed fields, no parser)
+   and `council_session_ffa3_v1.json`, SYNTHETIC: `make_ffa3_fixture.py`
+   composes the brief with the route's own `summary_block` (round-tripped
+   through the wire format exactly as the API does), generates every
+   PROMPT with the real builders, derives providers from `council.yaml`
+   and the critic from the ADR-025 never-a-producer rule, validates every
+   spec against schema + registry + mapper + `validate()`, and its
+   `--check` mode (run by the gate and a test) fails loudly the day a
+   builder or the schema changes. The RESPONSES are hand-authored and say
+   so in their first bracket; token counts are `len(text)//4`; the dollar
+   figure replay recomputes was never spent. Rank 1 is the FF-A2
+   acceptance lens (seed 8) so its STEP must equal FF-A2's.
+6. **Kernel cliff, recorded not hidden.** Three of the six alternatives
+   first written for the fixture passed the primitive's `validate()` and
+   were REFUSED at build by the ADR-066 stage checks: the exact mirror of
+   the acceptance lens (twist −20°, skew −0.15) — "inner lens produced 1
+   solids, volume −326316588654.8 mm³, expected one positive solid";
+   4800 × 2700 × 1000, wall 8, twist −25°, bow 200, skew −0.12 —
+   "cavity collapsed or split: clearance corridor left 1 solids, volume
+   −27648.4 mm³"; 3600 × 2200 × 800, wall 6, twist −35°, bow −100, skew
+   −0.20 — "clearance corridor left 2 solids". Each refusal is loud and
+   deterministic; the replacements that build are the sets now in the
+   fixture (listed under Evidence). That `validate()` accepts what the
+   kernel refuses remains the recorded FF-A2 limitation (no predictive
+   fold guard, by measurement).
+7. **Demo loader.** `POST /api/council/demo-session` takes
+   `{"fixture": <basename>}` matched against `^council_session_[a-z0-9_]{1,64}$`
+   AND the discovered files; the response carries the fixture's own
+   `synthetic` flag and, for a synthetic one, the words "never spent".
+   D-2 (a synthetic session in the real DB looks completed with a dollar
+   figure) is not widened silently: the loader's note and the visual
+   gate say what the figure is.
+
+**What it gives up.** The Designer prompt changed shape and length
+without a live run to watch a model read it — $0 by ruling; the live
+demonstration is the visual gate's Step 6 under its own approval. The
+boundary check adds up to two paid re-asks per alternative when a
+designer writes a spec the registry refuses; that is cheaper than the
+fabrication call that used to discover it. The fixture is pinned to
+today's prompt builders and schema: any change to either must
+regenerate it (loud, by design).
+
+**Evidence (build, 2026-09-09).** The three replacements for the refused
+variants (decision 6): openai alt 1 — 4250 × 2569 × 900, wall 6, twist
++20°, bow −150, skew −0.15, window 1110 × 1290, centre 0.485, waist
+0.45, plate 600; anthropic alt 2 — 4800 × 2700 × 1000, wall 8, twist
++20°, bow 200, skew 0.12, window 1200 × 1400, centre 0.5, waist 0.5,
+plate 700; openai alt 3 — 3600 × 2200 × 800, wall 6, twist +25°, bow
+100, skew 0.15, window 900 × 1050, centre 0.46, waist 0.42, plate 600.
+All six fixture alternatives build through the kernel (85.4 / 38.5 /
+22.0 / 34.1 / 53.4 / 38.8 s, one module each). Focused suite 155 passed
+(302.75 s). Host gates: scope audit PASS; PR-2.5 `--host-drift`
+218/218. Definitive `gate_ffa3_auto.py` on image `0d4180d2b8d7`
+(09:46:18Z → 09:53:44Z): **55/55, exit 0**, first run and definitive
+run both green without any gate edit; 12 of 12 FF-A3 files host ==
+container by sha256; the rank-1 Council spec's STEP
+`f3ccb95345d8534b…` equals the FF-A2 acceptance fixture's STEP built in
+a second process (pids 167 / 185); replayed fixture cost recomputed
+$0.20223 and never spent; real DB `a0e7225c322a` and WAL
+`e3b0c44298fc` identical before and after. Verbatim transcript in
+`PRODUCTION_V1_REPORT.md`. Same image, same chain: nine affected roster
+gates green (`phase3`, `phase4`, `6a2`, `6b`, `pr1`, `13a`, `ffa2`
+63/63, `pr5` with the sweep listing the new gate's six structural
+equalities as reviewed, `ffa1` 36/36 with 32 consumers — no new mass
+consumer), then the full suite **737 passed (6202.65 s)** with the
+render worker up at both ends (720 + 17 new). Visual gate
+`gate_ffa3_visual.md` pending; Step 6 (live Council + fabrication) is a
+separate cost approval; not closed.
+
+### Step 6 attempted and NOT ACHIEVED (2026-09-14) + owner ruling
+
+The operator authorized ONE live Council session and ONE fabrication
+attempt under the platform's standard $5.00 run cap, after a projection
+this session computed from the real FF-A3 prompts (expected actual
+$0.99) and the cap-safe reservation bounds (openai $0.4019, anthropic
+$0.8729, **kimi $3.2686**). The session ran 46 s and halted:
+researcher/primary on openai succeeded ($0.007725, 490 in / 650 out);
+researcher/parallel on kimi FAILED with a transient `Connection error.`;
+its reservation went UNCERTAIN at the full $3.268608 bound (ADR-061
+failing closed — no first-party proof exists that a failed attempt was
+not billed); the ADR-023 retry's own reservation was then refused
+($3.276333 spent + $3.268608 bound > $5.00 run cap) and the session
+finalized `halted_budget` with **zero Design Specs and zero arbiter
+decisions**. Session `2a7d3e5b-2b78-42f6-9479-637f0e1feaa6`;
+`budget_events` `b162e615…` `cap_breach`. Real money billed: $0.007725;
+$3.284036 counted against the $25 day cap; no safety lock engaged. The
+fabrication attempt was NOT run (the authorization said stop on any
+provider failure). **The Council never reached the Designer stage, so
+it neither selected nor declined `freeform_loop`: the demonstration did
+not reach the question.** Nothing was rerun, no prompt was touched, no
+selection was coerced.
+
+**Owner ruling, 2026-09-14 (binding):** no second Step 6 attempt now; no
+`council.yaml` change, no removal of kimi, no weakening of fail-closed
+accounting, no increase to the permanent $5 / $25 caps; **Step 6 remains
+NOT ACHIEVED and is NEVER marked PASS**; the halted session is
+preserved and **real Council selection of `freeform_loop` remains
+UNPROVEN**; FF-A3 may pass its formal gates and close **only** as
+*"typed-brief/Council contract implemented and fixture-gated; live
+end-to-end selection blocked by D-28 and not claimed"*; **D-28 becomes
+the next separate, rollbackable slice**, planned via `/lf-next` and not
+started until FF-A3 closes and its plan is approved, with the goal of a
+fail-closed reservation computed from the real serialized request
+envelope + configured maximum output + a proven conservative margin
+(context size an absolute ceiling, never an assumed billable request),
+ADR-009 first-party documentation fetched and recorded, and tests for
+retries, uncertain holds, multibyte prompts, maximum output and
+reservation-underflow safety; reservation
+`9077e77a-95ec-4633-b4be-c5a07ad4f74f` is **NOT reconciled** until the
+operator reports the Moonshot/Kimi console for 2026-09-14 08:22–08:23
+UTC.
+
+### Definitive chain (2026-09-14) — risk-based, accepted with Phase 9B FAILING
+
+Image `sha256:772e352a34ea…`, identical start and end; 20/20 files host
+== image; suite **737 passed** worker-REMOVED (PR-4's two-state baseline
+retained — FF-A3 changes no rendering or packaging code); **25/25**
+in-container gates incl. `gate_ffa3_auto` **55/55**; PR-3 static via
+stdin; scope audit, Phase 14 frontend, PR-2.5 host-drift 218/218 and
+PR-3 live all PASS. **`gate_phase9b_auto.py` FAILED TWICE and is NOT
+recorded as passing**: invocation 1 timed out at its fixed 300 s wait
+while the render succeeded 15 s later; the one authorized rerun reached
+section 5 and timed out at its fixed 20 s conversion wait while that
+conversion completed 4 s later. Measured cause, timed in the worker
+container: the worker rescans the whole scratch mount every poll —
+**1,904 directories, 8.89 s per scan** — so pickup latency scales with
+the backlog. The operator accepted the chain under the risk-based
+exception on five recorded grounds (no rendering/conversion/packaging/
+worker code changed; the previous closed Phase 9B PASS remains the
+regression baseline for those unchanged bytes; both pieces of work did
+complete, only late; the measured scan cost is the cause; FF-A3's own
+gate and every other gate passed) and opened **D-29** (linked to D-1):
+the fix must avoid per-poll full rescans and provide bounded, indexed or
+event-driven pickup plus safe retention/reaping — raising timeouts is
+not acceptable. **This chain must never be described as "all gates
+green."** No scratch artifact was deleted, moved or modified.

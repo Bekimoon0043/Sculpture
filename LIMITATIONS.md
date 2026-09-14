@@ -428,11 +428,24 @@ What Phase 6 still deliberately does NOT do:
   **CORRECTED 2026-09-08 (PR-5, ADR-068):** `spec_mapper._ALIASES` covers
   TEN primitives (basin_round, plinth, sculptural_column, basin_rect,
   stepped_monolith, water_wall, torus_ring, blade_fin_array,
-  lotus_petal_array, tiered_cascade — slices A1, B, C1). The one it does
+  lotus_petal_array, tiered_cascade — slices A1, B, C1). ~~The one it does
   NOT cover is `freeform_loop`: a Council spec cannot request the
   free-form primitive at all — no vocabulary, no alias, no mapping. That
   gap is FF-A3's, not a mapper defect; unknown parameter names still fail
-  loudly at fabrication naming the keys.
+  loudly at fabrication naming the keys.~~ **CORRECTED 2026-09-09 (FF-A3,
+  ADR-069):** the mapper covers all ELEVEN primitives; `freeform_loop`'s
+  13 registry keys (12 scalars + `material_id`) are each reachable by a
+  spec-level name, the Designer index prints every primitive's vocabulary
+  generated from the registry, and the Designer boundary now runs the
+  mapper plus each primitive's own `validate()` before a spec is
+  persisted — so unknown names, wrong units and out-of-range numbers are
+  re-asked at design time instead of failing at a paid fabrication call.
+  A ratio/fraction target takes a PLAIN number: a `{value, unit}` object
+  on a ratio is refused (before FF-A3 a ratio in metres was silently
+  multiplied by 1000 and a wrong unit passed through untouched). Count
+  and enumeration targets (`tiers`, `steps`, `blade_count`,
+  `petal_count`, `rim_treatment`) still accept a `{value, unit}` object
+  and pass the unit through unchecked — recorded as D-27, not fixed here.
 - **Mixed-material assemblies validate but cannot be costed correctly
   yet:** costing keys on a single material_id (`build_bom`). Per-element
   masses ARE now persisted with every design record; the costing
@@ -916,7 +929,38 @@ the changed acceptance gate. What remains missing, honestly:
   controls, built by the deterministic kernel, integrity-gated and
   **PRE-FABRICATION only**. What FF-A2 deliberately does NOT deliver:
   control-point editing (scalar parameters only — recorded unbuilt);
-  any brief/Council claim (the claim is Designer/spec → kernel);
+  ~~any brief/Council claim (the claim is Designer/spec → kernel);~~
+  **FF-A3 (2026-09-09, ADR-069) widened this to: a typed brief through
+  the Brief tab → a Council Design Spec naming `freeform_loop` with all
+  12 scalars + `material_id` stated explicitly → the trusted mapper →
+  the deterministic kernel — proven at $0 by fixture replay of a
+  SYNTHETIC hand-authored Council session, which proves replay and
+  pipeline compatibility only, NOT that an AI selected the primitive
+  from prose. The claim "typed brief → Council selection → sculpture"
+  is NOT made until one real live Council + fabrication demonstration
+  (gate_ffa3_visual.md Step 6, separately cost-approved) has been run
+  and recorded. **Attempted 2026-09-14 and NOT achieved:** the one
+  authorized live session halted 46 seconds in — the openai researcher
+  call succeeded ($0.007725), the parallel kimi call failed with a
+  transient "Connection error.", its reservation went UNCERTAIN at the
+  full $3.268608 cap-safe bound, and the retry's reservation was refused
+  by the $5.00 run cap. Session `2a7d3e5b…` persisted ZERO Design Specs
+  and zero arbiter decisions, so the Council never reached the Designer
+  stage: it neither selected nor declined `freeform_loop`, and the
+  demonstration did not reach the question. The fabrication attempt was
+  not run. **No AI has yet chosen this primitive from prose, and the
+  platform does not claim it has.** See D-28 for why the retry could not
+  proceed within the cap. **Owner ruling 2026-09-14: Step 6 remains NOT
+  ACHIEVED, is never marked PASS, and real Council selection of
+  `freeform_loop` remains UNPROVEN. FF-A3 closes only as "typed-brief/
+  Council contract implemented and fixture-gated; live end-to-end
+  selection blocked by D-28 and not claimed."** The kernel's measured robustness cliff (ADR-066
+  decision 10) also bites parameter sets the primitive's validate()
+  accepts: three of the six hand-authored alternatives first written for
+  the fixture were REFUSED at build (negative inner-lens volume; a
+  collapsed or split cavity corridor) and were replaced by sets that
+  build — every refusal is loud and deterministic, never a corrupt
+  solid, and the refused sets are recorded in ADR-069;**
   ref-11/ref-13/ref-14/ref-15/ref-16 classes (blocked or unstarted per
   their recorded findings); a verified wall (the modeled shell's
   measured minimum sits at the truncated tips and

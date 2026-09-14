@@ -134,7 +134,8 @@ def _validate_live_primitives(spec: dict) -> list[str]:
     deliberately code-level validation: Phase 6 widens the registry one gated
     slice at a time, and the prompt/schema must not carry a stale enum.
     """
-    from app.geometry.registry import PRIMITIVES
+    from app.geometry.primitives.base import ConstraintViolation
+    from app.geometry.registry import PRIMITIVES, assembly_plan_from_spec
 
     available = ", ".join(sorted(PRIMITIVES))
     errors: list[str] = []
@@ -148,6 +149,24 @@ def _validate_live_primitives(spec: dict) -> list[str]:
                 f"{primitive!r}, which is not in the live registry "
                 f"(available: {available})"
             )
+    if errors:
+        return errors
+
+    # FF-A3 (ADR-069): "valid Design Spec" means the trusted mapper accepts
+    # every parameter name and unit AND each primitive's own validate()
+    # accepts the numbers — parameter arithmetic only, no geometry is built.
+    # A violation is a re-ask carrying the registry's real text; any other
+    # exception is ALSO an error (never a silent pass).
+    try:
+        plan = assembly_plan_from_spec(spec)
+        for entry in plan:
+            PRIMITIVES[entry["primitive"]].validate(dict(entry["parameters"]))
+    except ConstraintViolation as exc:
+        errors.extend(f"registry refusal: {v}" for v in exc.violations)
+    except Exception as exc:  # noqa: BLE001 - reported to the designer
+        errors.append(
+            f"registry validation raised {type(exc).__name__}: {exc}"
+        )
     return errors
 
 

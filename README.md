@@ -84,7 +84,21 @@ operator documents all say the crane picks the heaviest module after
 segmentation and the truck envelope binds per axis — and the critique
 scorer now scores a design's pick weight with a stated basis or refuses
 to score it at all, instead of grading the whole mass against a lift
-limit it used to invent.
+limit it used to invent. Since 2026-09-09 (FF-A3, ADR-069) a brief typed
+into the Brief tab can reach the free-form lens: the Council's designers
+are told every primitive's parameter names, units and ranges (generated
+from the registry), a Design Spec naming `freeform_loop` is translated by
+trusted code onto the kernel's 13 registry keys, every Design Spec is
+checked at the Designer's desk against the mapper and the primitive's own
+arithmetic before it is persisted, a dry sculpture no longer has to
+invent a pipe network, and a ratio must be a plain number. The $0 proof
+replays a SYNTHETIC hand-authored Council session — that proves replay
+and pipeline compatibility only, **not** that an AI selected the
+primitive from prose. The one authorized live demonstration (2026-09-14)
+halted 46 seconds in on a dropped provider connection whose fail-closed
+reservation consumed the run cap, before the Council reached the
+Designer stage, so **real Council selection of `freeform_loop` remains
+unproven and is not claimed** (see D-28).
 
 Rendering and the vision-critique loop (Phase 5), the remaining primitive
 library work (Phase 6), exports beyond STEP/GLB, and DesignDNA/recovery

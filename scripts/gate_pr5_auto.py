@@ -301,8 +301,10 @@ def main() -> int:
           f"registered: {', '.join(offered)}")
     _check(failures, "the index is registry-driven (every primitive offered)",
            len(offered) == len(PRIMITIVES))
-    print("  NOTE for FF-A3: freeform_loop IS on the fabrication-time index "
-          "above, while no brief/Council/mapper path can request it.")
+    print("  NOTE: freeform_loop IS on the fabrication-time index above; "
+          "since FF-A3 (ADR-069) the Designer index, the trusted mapper and "
+          "the Designer-boundary check can also request and validate it — "
+          "gate_ffa3_auto.py proves that path.")
 
     # ------------------------------------------------------------------
     _section(2, "THE GATE BASES — module and axis, never per-element")

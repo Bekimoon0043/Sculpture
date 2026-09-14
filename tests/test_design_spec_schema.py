@@ -108,7 +108,13 @@ def valid_example_spec() -> dict:
                     "node_id": "nozzle_ring_01",
                     "type": "nozzle",
                     "elevation_m": 2.4,
-                    "element_id": "column_01",
+                    # FF-A3 (ADR-069): the Designer boundary now runs the
+                    # trusted mapper, whose slice-B rule (ADR-054) drills
+                    # nozzle rings into basin_round floors only. This node
+                    # used to target column_01 — a spec the mapper refused,
+                    # which every scripted Council test then persisted as
+                    # "valid" because nothing checked it before fabrication.
+                    "element_id": "basin_01",
                     "nozzle_bore_mm": 12.0,
                 },
                 {

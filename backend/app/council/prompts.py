@@ -27,8 +27,17 @@ def primitive_index_surface() -> str:
     anti-drift property ADR-026 depends on.
     """
     from app.geometry.registry import PRIMITIVES
+    from app.geometry.spec_mapper import spec_aliases_for
 
-    lines = ["LIVE PRIMITIVE INDEX - choose ONLY these primitive ids:"]
+    lines = [
+        "LIVE PRIMITIVE INDEX - choose ONLY these primitive ids:",
+        "(FF-A3, ADR-069: each primitive lists the parameter names the trusted "
+        "mapper accepts — spec name -> registry key (unit) [min..max] "
+        "default. Lengths and angles are {value, unit} objects; a ratio, "
+        "fraction, count or enumeration is a PLAIN scalar with no unit. State "
+        "every parameter you rely on explicitly: an omitted parameter takes "
+        "the registry default and is NOT your design decision.)",
+    ]
     for primitive_id, module in sorted(PRIMITIVES.items()):
         accepts = []
         if getattr(module, "CAN_PARENT_STACK", False):
@@ -37,12 +46,59 @@ def primitive_index_surface() -> str:
             accepts.append("can parent concentric_insert")
         accepts_text = ", ".join(accepts) if accepts else "cannot parent children"
         lines.append(f"- {primitive_id}: {module.PURPOSE}; {accepts_text}")
+        lines.append("    parameters: " + _parameter_vocabulary(
+            primitive_id, module.PARAMETERS, spec_aliases_for(primitive_id)))
+        for honesty in _honesty_lines(module):
+            lines.append(f"    {honesty}")
     lines.append(
         "If the brief needs a shape not listed here, approximate it with the "
         "listed primitives or state the limitation in assumptions; do not "
         "invent a primitive id."
     )
     return "\n".join(lines)
+
+
+def _parameter_vocabulary(primitive_id: str, parameters: dict,
+                          aliases: dict[str, str]) -> str:
+    """One line per primitive: every registry key with the spec names that
+    reach it, its unit, range and default — generated, never typed."""
+    names_for: dict[str, list[str]] = {}
+    for spec_name, key in sorted(aliases.items()):
+        names_for.setdefault(key, []).append(spec_name)
+    parts = []
+    for key, spec in parameters.items():
+        if key == "material_id":
+            continue  # the element's material_id is the material of record
+        names = "|".join(names_for.get(key, []) + [key])
+        rng = ""
+        if spec.get("min") is not None or spec.get("max") is not None:
+            rng = f" [{spec['min']}..{spec['max']}]"
+        unit = spec.get("unit", "")
+        if unit in ("ratio", "fraction", "count") or key.endswith(
+                ("_ratio", "_fraction")):
+            unit = f"{unit or 'ratio'}, PLAIN number"
+        parts.append(f"{names} ({unit}){rng} default {spec.get('default')}")
+    return "; ".join(parts) if parts else "(none)"
+
+
+def _honesty_lines(module) -> list[str]:
+    """What a primitive declares about itself — surfaced to the DESIGNER so
+    the Council cannot claim what the registry does not (FF-A3)."""
+    out: list[str] = []
+    supported = getattr(module, "SUPPORTED_MATERIAL", None)
+    if supported:
+        out.append(f"material: ONLY material_id={supported!r}; any other "
+                   "material is refused by name")
+    missing = tuple(getattr(module, "INCOMPLETE_MASS_INPUTS", ()) or ())
+    if missing:
+        out.append("mass: INCOMPLETE by declaration — total mass stays null "
+                   "until these professional inputs exist: "
+                   + "; ".join(missing))
+    if getattr(module, "REQUIRES_FREEFORM_INTEGRITY", False):
+        out.append("status: PRE-FABRICATION at best (integrity-gated; never "
+                   "fabrication-capable from this spec alone); the design's "
+                   "own controls are scalar parameters only")
+    return out
 
 
 def researcher_prompt(brief: str) -> str:

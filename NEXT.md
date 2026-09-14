@@ -5,7 +5,31 @@ the start of every session (`/lf-orient`) and rewritten at the end of every
 slice (`/lf-close`). If this file and a phase plan disagree, this file is
 stale and must be corrected in the same commit as the work.
 
-Last updated: 2026-09-08 — **PR-5 CLOSED** (ADR-068: every surface that
+Last updated: 2026-09-14 — **FF-A3 CLOSED (ADR-069)** with the owner's
+binding status: **"typed-brief/Council contract implemented and
+fixture-gated; live end-to-end selection blocked by D-28 and not
+claimed."** A typed brief confirmed in the Brief tab can now reach the
+ref-08 lens: the Designer index prints every primitive's parameter
+vocabulary and honesty lines generated from the registry; the trusted
+mapper covers `freeform_loop`'s 13 keys (12 scalars + `material_id`);
+ratios are PLAIN numbers and any unit on one is refused; every Design
+Spec is validated at the Designer boundary against the mapper and the
+primitive's own arithmetic before it is persisted; a dry design may
+carry an empty hydraulic network (schema change B). **What is NOT
+claimed: no AI has selected this primitive from prose.** The one
+authorized live demonstration (visual Step 6) **RAN and HALTED** after a
+single successful call — kimi dropped its connection, its reservation
+went UNCERTAIN at the full $3.268608 bound and the retry was refused by
+the $5 run cap — so the Council never reached the Designer stage.
+**Step 6 = NOT ACHIEVED, never PASS.** Definitive risk-based chain on
+image `772e352a34ea`: 20/20 files host==image, suite **737 passed**
+worker-REMOVED, **25/25** in-container gates incl. `gate_ffa3_auto`
+**55/55**, PR-3 static, four host gates — **and `gate_phase9b_auto.py`
+FAILED TWICE, preserved as FAIL and accepted as unrelated measured
+infrastructure debt (D-29). This chain is NOT "all gates green."**
+Real provider spend for the whole slice: **$0.007725**; reservation
+`9077e77a…` remains UNCERTAIN and unreconciled. New debts D-27, D-28
+(the next slice), D-29. Before that: **PR-5 CLOSED** (ADR-068: every surface that
 describes lifting now says what the fabrication gate measures — the
 GEOMETRIST contract, the two gate bases, the critique scorer and the
 operator documents all say heaviest MODULE after segmentation and
@@ -128,6 +152,8 @@ workflow controls, folded into PR-7B) ruled 2026-08-28.
 | **PR-4 — honest module transport costing (trips LOADED, never bounded)** | **CLOSED 2026-09-08; visual signed 2026-09-07 (all four steps YES)** | ADR-067; 707 both worker states + 27-script roster on final image `a8a6f3218ba8`; `gate_pr4_auto` PASS (disproof 3-vs-4 pinned; rate card sha-identical); first chain FAILED at `gate_ffa1` §1 = D-10 instance seven (census correctly caught the new consumer; corrected as three exact symbols by owner ruling), recovered under an operator-approved hash-proven protocol (15 production/test/config/build hashes identical); D-26 startup-write race recorded |
 | **PR-5 — AI contract and document repair (one story about lifting)** | **CLOSED 2026-09-08; visual signed 2026-09-08 (all six steps YES; real design `621d7497…` reads heaviest of 9 modules, 1,472.19 kg vs 11,346.1 kg)** | ADR-068; risk-based definitive chain on `753490ced0af`: 26 files host==container, 132 focused + `gate_pr5_auto` 49/49, suite **720 passed** worker-removed (PR-4's 707 two-state evidence retained as the unchanged baseline), all 28 roster gates green (25 hermetic worker-removed, 9B worker-up, PR-3 static+live, 4 host gates); scorer's silent 1,000 kg default removed; D-10 sweep is now a roster check |
 
+| **FF-A3 — a typed brief can ask for the ref-08 loop** | **CLOSED 2026-09-14 with the binding status "typed-brief/Council contract implemented and fixture-gated; live end-to-end selection blocked by D-28 and not claimed"; visual Steps 1–5 YES, Step 6 NOT ACHIEVED (never PASS)** | ADR-069; risk-based chain on `772e352a34ea`: 20/20 host==image, suite **737** worker-removed, **25/25** in-container gates incl. `gate_ffa3_auto` **55/55**, PR-3 static, 4 host gates; **`gate_phase9b_auto` FAILED TWICE — preserved as FAIL, accepted as unrelated infra debt D-29; NOT "all gates green"**; live Step 6 halted at the second call (kimi connection error → UNCERTAIN $3.268608 → retry refused by the $5 run cap), 0 specs, 0 decisions, $0.007725 spent |
+
 **Suite and roster state:** after PR-2 the pytest suite (475) passed
 with the render worker UP and with it removed — both runs recorded
 verbatim in `PRODUCTION_V1_REPORT.md` on final image `09ff920ccbbb`;
@@ -139,8 +165,14 @@ after PR-5 the suite is **720, passed worker-removed on final image
 `753490ced0af` (2026-09-08)** under the operator's risk-based protocol
 — PR-5 changed no worker-sensitive rendering or packaging code, so
 PR-4's 707 two-state run is retained as the unchanged baseline; chain
-evidence in ADR-068 and `PRODUCTION_V1_REPORT.md`. The auto-gate
-roster is 28 scripts (PR-5 added `gate_pr5_auto.py`, hermetic, in the
+evidence in ADR-068 and `PRODUCTION_V1_REPORT.md`; after the FF-A3
+BUILD (not yet closed) the suite is **737 passed, worker up, on image
+`0d4180d2b8d7` (2026-09-09, 6202.65 s)** — the definitive two-state or
+risk-based chain is `/lf-gate`'s. The auto-gate
+roster is 29 scripts as of 2026-09-09 (FF-A3 added `gate_ffa3_auto.py`,
+hermetic, in the backend container, D-26-safe DB fingerprinting, builds
+the rank-1 fixture lens in-process and the FF-A2 fixture in a second
+process — ADR-069; before it 28: PR-5 added `gate_pr5_auto.py`, hermetic, in the
 backend container, D-26-safe DB fingerprinting, carrying the D-10
 sweep — ADR-068; PR-4 added `gate_pr4_auto.py`, hermetic, in the
 backend container, rate card sha-checked — ADR-067; FF-A2 added `gate_ffa2_auto.py`,
@@ -349,6 +381,76 @@ binding; the slice notes below carry the ones that bite.
       CHANGED acceptance gate (eight conditions in
       `PR2_5_FREEFORM_DISCOVERY.md`), split FF-A1 → FF-A2 (approved
       2026-09-03).**
+- [x] **FF-A3 — a typed brief can ask for the ref-08 loop (CLOSED
+      2026-09-14, ADR-069, with the owner's binding status:
+      "typed-brief/Council contract implemented and fixture-gated; live
+      end-to-end selection blocked by D-28 and not claimed"; auto gate
+      `gate_ffa3_auto.py` = roster script 29, 55/55; visual gate
+      `gate_ffa3_visual.md` SIGNED 2026-09-14 — Steps 1–5 YES, **Step 6
+      NOT ACHIEVED, never PASS**).** Owner-approved 2026-09-09 with nine binding
+      corrections. **Visual gate walked 2026-09-14: Steps 1–5 all YES
+      (Step 3 with a recorded deviation — the operator asked the session
+      to enter the intake fields through the same API the Brief tab
+      calls, and the 30 m/s wind is a TEST value at the operator's
+      instruction, never a site measurement). Step 6, the one authorized
+      live demonstration, RAN and HALTED 46 s in: the researcher's
+      primary openai call succeeded ($0.007725), the parallel kimi call
+      failed with "Connection error.", its reservation went UNCERTAIN at
+      the full $3.268608 bound, and the ADR-023 retry's reservation was
+      refused by the $5.00 run cap. Session
+      `2a7d3e5b-2b78-42f6-9479-637f0e1feaa6` = halted_budget, 0 design
+      specs, 0 arbiter decisions — the Council NEVER REACHED the Designer
+      stage, so it neither selected nor declined `freeform_loop`. The
+      claim "typed brief → Council selection → sculpture" REMAINS
+      UNMADE. Real money billed: $0.007725. The uncertain reservation
+      `9077e77a-95ec-4633-b4be-c5a07ad4f74f` is PRESERVED and NOT
+      reconciled — the owner is checking the Moonshot/Kimi console for
+      2026-09-14 08:22–08:23 UTC and will report before any
+      reconciliation. New debt D-28, promoted by the same ruling to the
+      next slice. **Owner ruling 2026-09-14: no second Step 6 attempt
+      now; no council.yaml change, no kimi removal, no weakening of
+      fail-closed accounting, no increase to the $5/$25 caps; Step 6 is
+      NEVER marked PASS; FF-A3 may pass its formal gates and close ONLY
+      as "typed-brief/Council contract implemented and fixture-gated;
+      live end-to-end selection blocked by D-28 and not claimed."**
+      **Definitive risk-based chain run 2026-09-14 on image
+      `772e352a34ea` (identical start/end): 20/20 files host==image;
+      suite **737 passed** worker-REMOVED (PR-4's two-state baseline
+      retained); **25/25** in-container gates incl. `gate_ffa3_auto`
+      **55/55**; PR-3 static; scope audit, Phase 14 frontend, PR-2.5
+      host-drift 218/218, PR-3 live. `gate_phase9b_auto.py` **FAILED
+      TWICE and is NOT recorded as passing** — accepted by owner ruling
+      as unrelated measured infrastructure debt (D-29: 1,904-directory
+      scratch scan at 8.89 s per poll starves fixed gate waits; both the
+      render and the conversion succeeded, only after their deadlines).
+      **This chain is NOT "all gates green."** Evidence in
+      `PRODUCTION_V1_REPORT.md`; not committed, not closed.**
+      Delivered: the Designer index prints every
+      primitive's parameter vocabulary (spec name -> registry key, unit,
+      range, default) plus registry-derived honesty lines (316L-only,
+      incomplete-mass inputs, PRE-FABRICATION), generated from
+      `PRIMITIVES` + `spec_mapper.spec_aliases_for()`; the mapper covers
+      `freeform_loop`'s 13 registry keys (12 scalars + `material_id`),
+      refuses a `{value, unit}` object on any ratio/fraction target and
+      refuses a `parameters.material_id` that contradicts the element;
+      the Designer boundary (`orchestrator._validate_live_primitives`)
+      runs the mapper + each primitive's `validate()` before persisting
+      (any exception is an error, never a pass); schema change B — a
+      dry design (`water.has_water = false`, present AND false) may carry
+      an empty hydraulic network, wet or absent keeps 2 nodes/1 edge —
+      plus the phantom-id and dimension/ratio description fixes; the
+      demo-session loader takes a discovered basename only; fixtures
+      `intake_ffa3_v1.json` (typed brief) and `council_session_ffa3_v1.json`
+      (SYNTHETIC — prompts generated by the real builders, `--check`
+      drift-guarded; **synthetic hand-authored Council alternatives
+      prove replay and pipeline compatibility only, not that an AI
+      selected the primitive from prose**). The claim "typed brief →
+      Council selection → sculpture" is NOT made until the visual gate's
+      Step 6 live demonstration is separately cost-approved, run and
+      recorded. Preserved: one ref-08 family, 316L only, scalar
+      controls, incomplete mass, unresolved fabrication inputs,
+      integrity-gated, PRE-FABRICATION at best, registry unchanged at
+      eleven, `e1a59fa6…` untouched.
 - [x] **FF-A2 — the `freeform_loop` primitive (CLOSED 2026-09-07,
       ADR-066: definitive two-state chain on `044446e54c0e` — 672
       both worker states, 26-script roster green, `gate_ffa2_auto`
@@ -503,6 +605,26 @@ binding; the slice notes below carry the ones that bite.
       they are listed exactly, no wildcard). The 2,685.7 kg array figure
       is settled (2,988 was a transposed ratio, corrected at its sites).
       Gate evidence in PRODUCTION_V1_REPORT.md.
+- [ ] **D-28 SLICE — an honest reservation bound (owner ruling
+      2026-09-14; NEXT after FF-A3 closes; plan via `/lf-next` and NOT
+      started until the owner approves that plan).** Separate and
+      rollbackable. **Goal:** the fail-closed reservation is computed
+      from the REAL serialized request envelope + the configured maximum
+      output + a proven conservative margin — **never the model's entire
+      unused context window**. Context size remains an ABSOLUTE CEILING,
+      not an assumed billable request. **Binding constraints from the
+      ruling:** no `council.yaml` change, kimi is not removed, the
+      fail-closed accounting is not weakened, and the permanent $5 run /
+      $25 day caps are NOT increased. **ADR-009 applies:** fetch and
+      record current first-party provider documentation for every token
+      and billing claim, with the fetch date — the reason ADR-061
+      adopted the context-window fallback was that no first-party source
+      documented message framing overhead; that fetch must be redone,
+      not recalled. **Must test:** retries, uncertain holds, multibyte
+      prompts (a byte-vs-character bound is a real underflow), maximum
+      output, and reservation-UNDERFLOW safety (a bound that lands under
+      the real cost must fail closed and lock, never silently absorb).
+      Measured motivation in D-28 below and in `gate_ffa3_visual.md`.
 - [ ] **PR-6 — Costing tie-off machinery.** **Amendment 4 first:** one
       trusted measurement path per material for volume/mass, exposed
       finishing area (never proportional allocation of total surface),
@@ -579,6 +701,13 @@ binding; the slice notes below carry the ones that bite.
 Pick one up when a slice finishes early. Each is one commit.
 
 - [ ] **D-1 — `data/geo_scratch/` is never reaped.** Folded into PR-7C.
+      **Widened 2026-09-14: `data/render_scratch/` is not reaped either
+      — 1,904 job directories, and the backlog now has a MEASURED
+      operational cost: one pending-job scan costs 8.89 s, which starved
+      the Phase 9B gate TWICE (D-29). The cleanup design must be safe
+      for evidence a gate or an open slice still depends on, and must be
+      paired with bounded/indexed/event-driven pickup rather than longer
+      timeouts; nothing is deleted without an owner instruction.**
 - [ ] **D-2 — The synthetic demo Council session lies.** `54e12d62` shows
       `completed`, `$1.2624`, zero `ai_calls` rows. Mark it or delete it.
 - [ ] **D-3 — Doc drift: LIMITATIONS §4 says `pricing.yaml` ships
@@ -674,6 +803,75 @@ Pick one up when a slice finishes early. Each is one commit.
       `/api/health` + a quiesced WAL before fingerprinting, or exclude
       the startup transaction), chain scripts must not run gate_ffa1
       first after a rebuild. Recorded, not resolved.
+- [ ] **D-29 [operational, linked to D-1] — render-worker job pickup
+      scales with the historical scratch backlog, so fixed gate waits
+      starve (MEASURED 2026-09-14, FF-A3 definitive chain; the reason
+      `gate_phase9b_auto.py` FAILED TWICE in that chain).** The worker
+      rescans the ENTIRE scratch mount on every poll, statting ~4 paths
+      per directory over a Docker bind mount to NTFS. Timed inside the
+      worker container: **1,904 directories, `iterdir`+sort 0.04 s, one
+      full pending-job scan 8.89 s, 0 pending jobs found.** Consequences
+      measured in one chain: (a) a worker recreated mid-chain drained
+      **50 stale conversion jobs** first and claimed the gate's render
+      job only at 11:43:54Z though it was queued 11:39:17Z — the gate's
+      fixed **300 s** deadline expired 11:44:17Z, and the render then
+      finished successfully at 11:44:32Z (`ok: true`, `total_s 37.487`,
+      four views); (b) on the authorized rerun the render passed in
+      58.1 s and section 5's fixed **20 s** conversion wait expired at
+      12:16:24Z while that conversion, `conv515aca28338d`, completed
+      **ok at 12:16:28Z**. In both cases the WORK SUCCEEDED and the gate
+      reported FAIL purely on scheduling order.
+      **Owner ruling 2026-09-14 — the eventual correction MUST avoid
+      rescanning every historical directory on each poll and MUST
+      provide bounded, indexed or event-driven pickup PLUS safe
+      retention/reaping. Merely increasing the timeouts is NOT an
+      acceptable fix.** Same hazard family as D-26 (a fixed DURATION
+      standing in for a CONDITION) and the direct operational cost of
+      D-1's unreaped scratch. **No scratch artifact is to be deleted,
+      moved or modified without an explicit owner instruction; the 1,902
+      directories present at the time of this finding are preserved.**
+- [ ] **D-28 — one dropped connection on the kimi seat consumes 65% of
+      the run cap and halts a Council session (measured 2026-09-14,
+      FF-A3 Step 6).** The cap-safe reservation bound is context window
+      × input rate + max_tokens × output rate (ADR-061 Amendment 4), so
+      kimi-k3's 1,048,576-token window books **$3.268608 per call**
+      against a $5.00 run cap, versus $0.4019 (openai, 128k) and
+      $0.8729 (anthropic, 200k). A failed attempt goes UNCERTAIN at the
+      full bound (fail closed, correct), so the ADR-023 retry's own
+      reservation is then refused and the whole session halts — measured:
+      a live session died 46 s in, after ONE successful call, on a
+      transient "Connection error." from the Moonshot endpoint. On this
+      operator's connection (CLAUDE.md: "slow and drops... has cost more
+      time than any code defect") this will recur. Nothing here is a
+      defect in the caps: the arithmetic is deliberately conservative and
+      the failure was honest. What needs an owner ruling is whether a
+      1 M-token context window should be allowed to price a reservation
+      it can never use — options: a per-model reservation ceiling derived
+      from the request's real prompt plus a proven margin (needs
+      first-party framing documentation, which ADR-061 records does not
+      exist), a lower `max_tokens` for the kimi seats, moving kimi out of
+      the two optional seats, or a larger run cap for Council runs. Do
+      not weaken the fail-closed rule. **Owner ruling 2026-09-14: this
+      is PROMOTED to the next separate, rollbackable SLICE (see the work
+      queue above), to be planned only after FF-A3 closes. The options
+      list below is superseded by the ruling's goal: bound = real
+      serialized request envelope + configured max output + a proven
+      conservative margin; context size is an absolute ceiling, never an
+      assumed billable request. council.yaml is not changed, kimi is not
+      removed, fail-closed accounting is not weakened, and the $5/$25
+      caps are NOT raised.**
+- [ ] **D-27 — count/enumeration mapper targets still take a
+      `{value, unit}` object and pass the unit through unchecked
+      (found 2026-09-09, FF-A3).** `spec_mapper._dimension_to_number`
+      now REFUSES a dimension object on `_ratio`/`_fraction` targets
+      (ADR-069) but `tiers`, `steps`, `blade_count`, `petal_count` and
+      `rim_treatment` still accept e.g. `{"value": 8, "unit": "deg"}`
+      (the synthetic Phase 3 fixture does exactly that) and a unit in
+      metres is still multiplied by 1000 on those targets. Out of range
+      values are still refused by the primitive, so the failure is loud
+      in practice, but the wrong-unit acceptance is silent. Fix: extend
+      the plain-scalar rule to every non-dimensional target and
+      regenerate `council_session_v1.json`. One commit.
 - [ ] **D-13 — Critic independence reads the model's self-claimed
       `meta.provider`, not dispatch truth** (`orchestrator.py`; the true
       provider is already persisted two lines away). One-line fix + an

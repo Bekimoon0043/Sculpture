@@ -1,0 +1,24 @@
+{
+  "_comment": "FF-A3 (ADR-069) typed-brief fixture: the fields the operator types into the Brief tab for a ref-08-class sculpture, every one source=operator (no parser call). brief_text is the client's words. intake_id_in_fixture is the id the committed Council fixture's brief block was composed with; the real API assigns a fresh uuid, so gate_ffa3 compares the composed brief with that one token substituted and prints both ids. site.design_wind_speed_m_s = 30.0 is the same operator-typed figure the intake test suite uses — a fixture input, NOT a site measurement; the operator replaces it with the real 3-second gust for the real site. site.altitude_m 2355 is Addis Ababa (docs/operator/09_brief_intake.md). Synthetic hand-authored Council alternatives built from this brief prove replay and pipeline compatibility only — not that an AI selected the primitive from prose.",
+  "intake_id_in_fixture": "1a3f0c08-ffa3-4c11-9b2e-000000000008",
+  "brief_text": "A monumental free-standing sculpture for the entrance water court of a corporate campus in Addis Ababa. One smooth, asymmetrical hollow loop about 4.25 m tall and 2.6 m wide, welded from 316L stainless sheet and mirror polished, with a single large through-opening set slightly right of centre and a gently twisted, changing cross-section, standing on a small base plate. The sculpture itself carries no water; it stands in a still reflecting pool that is site work outside this design. The client's reference is our organic void sculpture family (reference 08). Budget ceiling ETB 6,000,000.",
+  "fields": {
+    "project.project_type": "sculpture",
+    "project.name": "Campus water-court loop",
+    "project.setting": "public",
+    "site.city": "Addis Ababa",
+    "site.country": "Ethiopia",
+    "site.indoor": false,
+    "site.altitude_m": 2355,
+    "site.design_wind_speed_m_s": 30.0,
+    "site.freeze_risk": false,
+    "site.water_available": true,
+    "dimensions.height_m": 4.25,
+    "dimensions.footprint_m": 2.6,
+    "water.has_water": false,
+    "materials.preferred": ["stainless_316l_sheet"],
+    "culture.inspiration": "organic void sculpture family (reference 08): one smooth asymmetrical loop, one large through-opening, twisted changing section",
+    "budget.currency": "ETB",
+    "budget.amount_max": 6000000
+  }
+}

@@ -36,6 +36,20 @@ quoting breaks — use Invoke-RestMethod):
 Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/council/sessions -ContentType "application/json" -Body '{"brief_text": "A three-tier basalt fountain for a hotel courtyard in Addis Ababa, 2.6 m basin."}'
 ```
 
+**With a confirmed intake (Phase 12 / FF-A3):** confirm the brief in the
+Designer's **Brief** tab first, then pass its id so the Council receives
+the normalized intake block ahead of the prose (the same block the FF-A3
+fixture was composed from):
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/council/sessions -ContentType "application/json" -Body '{"brief_text": "<the brief you typed>", "intake_id": "<the intake id shown on the Brief tab>"}'
+```
+
+Since FF-A3 (ADR-069) every Design Spec a designer returns is checked at
+the Designer boundary against the trusted mapper and the primitive's own
+arithmetic; a refused spec is re-asked (bounded, three attempts) with the
+registry's real text, and only a spec the kernel can accept is persisted.
+
 The request stays open for the whole session — **several minutes is
 normal** (about 15 provider calls, one after another). When it returns you
 get:

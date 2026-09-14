@@ -67,7 +67,9 @@ to the loop is `docs/operator/06_the_loop.md`; the queue itself is `NEXT.md`.
   PR-1 added `gate_pr1_auto.py`, PR-2 added `gate_pr2_auto.py`, the
   Master Scope audit added `gate_scope_audit_auto.py` — pure file checks,
   host or container — and LF-103A added `gate_lf103a_auto.py`, hermetic,
-  in the backend container). Nothing
+  in the backend container; later slices grew the roster to 29 as of
+  2026-09-09 — see `NEXT.md` "Suite and roster state" for the current
+  count and each script's required state). Nothing
   discovers or runs them
   automatically: a session lists the glob and runs each one explicitly**,
   before and after any change to `backend/`. Historical counts stand as
