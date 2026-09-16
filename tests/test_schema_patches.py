@@ -54,6 +54,21 @@ _PR2_RESERVATION_FRAGMENT = (
     "  -- PR-2 (ADR-061): 1:1, NULL pre-PR-2\n"
 )
 
+# D-28 (ADR-070): bound_basis postdates the operator's live database too —
+# the old-v3 fixture must strip it (and the comma it rides on) so the
+# additive patch has real work.
+_BOUND_BASIS_BLOCK = (
+    "    note            TEXT,                    -- uncertainty/recovery/reconciliation reason\n"
+    "    bound_basis     TEXT                     -- D-28 (ADR-070): JSON record of the arithmetic\n"
+    "                                             -- behind reserved_usd_micro (formula, envelope\n"
+    "                                             -- bytes, 256-token framing margin, token bound,\n"
+    "                                             -- ceiling, max_tokens, rates). NULL = a\n"
+    "                                             -- pre-D-28 hold at the ADR-061 window ceiling.\n"
+)
+_BOUND_BASIS_ORIGINAL = (
+    "    note            TEXT                     -- uncertainty/recovery/reconciliation reason\n"
+)
+
 
 def _old_v3_script() -> str:
     """The v3 schema as it existed BEFORE the ADR-022 cache columns and the
@@ -79,6 +94,8 @@ def _old_v3_script() -> str:
     )
     assert _CORRECTED_BLOCK in script, "schema.sql changed — update this test"
     script = script.replace(_CORRECTED_BLOCK, _CORRECTED_ORIGINAL)
+    assert _BOUND_BASIS_BLOCK in script, "schema.sql changed — update this test"
+    script = script.replace(_BOUND_BASIS_BLOCK, _BOUND_BASIS_ORIGINAL)
     return script
 
 

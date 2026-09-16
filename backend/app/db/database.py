@@ -94,6 +94,9 @@ _ADDITIVE_COLUMN_PATCHES: dict[tuple[str, str], str] = {
     # pre-PR-2 row; the unique partial index below enforces 1:1 on non-NULL.
     ("ai_calls", "reservation_id"):
         "reservation_id TEXT REFERENCES spend_reservations(id)",
+    # D-28 (ADR-070): the arithmetic behind every reservation, as JSON.
+    # NULL on every pre-D-28 row = the ADR-061 context-window ceiling.
+    ("spend_reservations", "bound_basis"): "bound_basis TEXT",
 }
 
 #: Unique indexes added after a schema version shipped. Same idempotent,

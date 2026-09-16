@@ -1,18 +1,24 @@
 """The single dispatch path for every AI call (SPEC section F, Rule 8).
 
 ``execute()`` is the ONLY way a prompt reaches a provider. PR-2 (ADR-061)
-made the cap enforcement RESERVATION-based, per PHYSICAL attempt:
+made the cap enforcement RESERVATION-based, per PHYSICAL attempt; D-28
+(ADR-070) made the reserved bound HONEST — derived from the real request:
 
 1. refuses outright when the provider carries no BudgetEnforcer — an
    uncapped paid dispatch is structurally impossible, not a convention,
-2. computes the cap-safe reservation bound (context-window fallback — see
-   ``reserve_bound_usd_micro`` below; the old chars/4 estimate is gone),
+2. BUILDS the exact request dict the SDK will receive, and computes the
+   cap-safe reservation bound from THAT object (``envelope_bound_usd_micro``
+   below): min(context window, UTF-8 bytes of the serialized envelope + a
+   256-token framing margin) x highest input rate + max_tokens x output
+   rate. The context window is an absolute ceiling, never an assumed
+   billable request. Vision requests stay on the ADR-061 window ceiling,
 3. ensures the sessions row exists (the reservation FKs it),
-4. for EACH physical attempt: atomically RESERVES the bound (BudgetHalt
-   raises here, with its evidence committed, before any network traffic),
-   dispatches, then settles in ONE transaction — the ai_calls row insert,
-   the reservation settlement and the sessions ledger update commit
-   together, so a crash can never leave a partial state,
+4. for EACH physical attempt: atomically RESERVES the bound with its basis
+   record (BudgetHalt raises here, with its evidence committed, before any
+   network traffic), SENDS the same request object, then settles in ONE
+   transaction — the ai_calls row insert, the reservation settlement and
+   the sessions ledger update commit together, so a crash can never leave
+   a partial state,
 5. a failed attempt writes its own error ai_calls row and its reservation
    goes UNCERTAIN — counted at the full bound forever (fail closed: no
    first-party documentation proves any provider error class non-billing;
@@ -22,7 +28,10 @@ made the cap enforcement RESERVATION-based, per PHYSICAL attempt:
 6. a pricing failure after a billed call settles UNCERTAIN at the full
    bound AND engages a provider/model safety lock (the pricing machinery
    may be wrong for every run using that model); an actual cost above the
-   reserved bound does the same at settlement. Both halt the spend scope.
+   reserved bound does the same at settlement (``bound_exceeded``); billed
+   input tokens above the token bound, or output tokens above max_tokens,
+   engage ``ceiling_violated`` even when the dollars still fit. All halt
+   the spend scope.
 
 Missing API key -> ProviderError("... not configured ...") BEFORE any
 reservation or network. Pricing/bound lookup failure -> ProviderError; a
@@ -37,7 +46,14 @@ from decimal import ROUND_CEILING, Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from app.core.budget import usd_to_micro
+from app.ai.provider import request_envelope_bytes
+from app.core.budget import (
+    ENVELOPE_FORMULA,
+    FRAMING_MARGIN_STATUS,
+    FRAMING_MARGIN_TOKENS,
+    VISION_FORMULA,
+    usd_to_micro,
+)
 from app.core.config import PricingLookupError
 from app.db.models import SessionRow
 
@@ -45,18 +61,46 @@ if TYPE_CHECKING:
     from app.ai.provider import AIProvider, ProviderResponse, RawResult
 
 
+def _rates(pricing, provider_name: str, model: str):
+    """(entry, input rate, output rate) — the highest applicable input
+    class and the output class, as Decimals from the stored decimal text.
+    Raises PricingLookupError when the price or the first-party context
+    window is absent: never guessed."""
+    entry = pricing.price_for(provider_name, model)  # raises if absent
+    if entry.context_window_tokens is None:
+        raise PricingLookupError(
+            f"no context_window_tokens for {provider_name}/{model} in "
+            f"config/pricing.yaml — the reservation bound needs the model's "
+            "first-party documented context window (with source and fetch "
+            "date); add it rather than guessing"
+        )
+    input_rate = Decimal(str(entry.usd_per_1m_input_tokens))
+    if entry.usd_per_1m_cache_write_input_tokens is not None:
+        input_rate = max(
+            input_rate, Decimal(str(entry.usd_per_1m_cache_write_input_tokens))
+        )
+    output_rate = Decimal(str(entry.usd_per_1m_output_tokens))
+    return entry, input_rate, output_rate
+
+
+def _bound_micro(input_tokens: int, input_rate: Decimal, max_tokens: int,
+                 output_rate: Decimal) -> int:
+    bound = (
+        Decimal(input_tokens) * input_rate + Decimal(max_tokens) * output_rate
+    ) / Decimal(1_000_000)
+    return usd_to_micro(bound, rounding=ROUND_CEILING)
+
+
 def reserve_bound_usd_micro(
     pricing, provider_name: str, model: str, max_tokens: int
 ) -> int:
-    """Cap-safe reservation upper bound in micro-USD (ADR-061, Amendment 4).
+    """The context-window CEILING in micro-USD (ADR-061, Amendment 4).
 
-    No provider's first-party documentation proves every component of a
-    prompt-based token formula (message framing overhead is documented by
-    none of the three; fetched 2026-08-28 — see pricing.yaml), so ALL
-    providers use the mandated conservative fallback:
+    Since D-28 (ADR-070) this is the CEILING the envelope bound can never
+    exceed, not the reservation itself:
 
-        bound = context_window_tokens x highest applicable input rate
-              + max_tokens          x output rate
+        ceiling = context_window_tokens x highest applicable input rate
+                + max_tokens          x output rate
 
     * context_window_tokens is the model's FIRST-PARTY documented context
       window (pricing.yaml, per model, with source + fetch date). Billed
@@ -67,31 +111,77 @@ def reserve_bound_usd_micro(
       caching; the 1h class ($6) is unreachable — no code path sends a ttl.
       Cache READS are cheaper than base, so assuming zero reads is safe.
     * max_tokens is the request's own output ceiling, enforced server-side
-      (first-party model pages list max output; the request cannot exceed
-      what it asked for).
+      (first-party: anthropic "the absolute maximum number of tokens to
+      generate"; openai "the maximum number of tokens that can be
+      generated"; moonshot "the maximum number of tokens to generate" —
+      all fetched 2026-09-14).
     * Rounding is CEILING to the next micro-USD — a bound never rounds down.
     """
-    entry = pricing.price_for(provider_name, model)  # raises if absent
-    if entry.context_window_tokens is None:
-        raise PricingLookupError(
-            f"no context_window_tokens for {provider_name}/{model} in "
-            f"config/pricing.yaml — the ADR-061 reservation bound needs the "
-            "model's first-party documented context window (with source and "
-            "fetch date); add it rather than guessing"
-        )
+    entry, input_rate, output_rate = _rates(pricing, provider_name, model)
     if max_tokens < 1:
         raise ValueError("max_tokens must be at least 1")
-    input_rate = Decimal(str(entry.usd_per_1m_input_tokens))
-    if entry.usd_per_1m_cache_write_input_tokens is not None:
-        input_rate = max(
-            input_rate, Decimal(str(entry.usd_per_1m_cache_write_input_tokens))
-        )
-    output_rate = Decimal(str(entry.usd_per_1m_output_tokens))
-    bound = (
-        Decimal(entry.context_window_tokens) * input_rate
-        + Decimal(max_tokens) * output_rate
-    ) / Decimal(1_000_000)
-    return usd_to_micro(bound, rounding=ROUND_CEILING)
+    return _bound_micro(entry.context_window_tokens, input_rate, max_tokens,
+                        output_rate)
+
+
+def envelope_bound_usd_micro(
+    pricing, provider_name: str, model: str, kind: str, request: dict,
+    max_tokens: int,
+) -> tuple[int, dict]:
+    """The honest reservation bound (D-28, ADR-070) and its basis record.
+
+    TEXT:   input_tokens_bound = min(context_window,
+                                     utf8_bytes(serialized request) + 256)
+    VISION: input_tokens_bound = context_window (ADR-061 unchanged — image
+            token formulas are not fetched; the window remains the ceiling)
+
+        bound = input_tokens_bound x highest input rate
+              + max_tokens         x output rate         (ceiling µUSD)
+
+    The byte term: a lossless, reversible tokenizer over arbitrary text
+    maps every byte into some token and emits no empty token, so tokens
+    never exceed bytes (tiktoken README, fetched 2026-09-14, for openai).
+    Anthropic and Moonshot publish neither a tokenizer nor a worst case:
+    on the operator's real ledger the worst observed is 0.36 billed input
+    tokens per prompt byte. The 256-token framing margin is the owner's
+    amendment (2026-09-14): a conservative JUDGEMENT value, not first-party
+    proof for anthropic or kimi (openai documents 3 per message + 3 reply
+    priming as an estimate; anthropic bills no system-added tokens;
+    moonshot documents nothing). The assumption is self-policed: billed
+    input above input_tokens_bound engages ``ceiling_violated`` at
+    settlement and the startup census re-checks every settled text call.
+
+    Returns (micro-USD bound, basis dict persisted on the reservation).
+    """
+    entry, input_rate, output_rate = _rates(pricing, provider_name, model)
+    if max_tokens < 1:
+        raise ValueError("max_tokens must be at least 1")
+    if kind not in ("text", "vision"):
+        raise ValueError(f"unknown call kind {kind!r}")
+    window = int(entry.context_window_tokens)
+    nbytes = request_envelope_bytes(request)
+    if kind == "vision":
+        input_tokens = window
+        formula = VISION_FORMULA
+    else:
+        input_tokens = min(window, nbytes + FRAMING_MARGIN_TOKENS)
+        formula = ENVELOPE_FORMULA
+    micro = _bound_micro(input_tokens, input_rate, max_tokens, output_rate)
+    basis = {
+        "formula": formula,
+        "kind": kind,
+        "envelope_utf8_bytes": nbytes,
+        "framing_margin_tokens": FRAMING_MARGIN_TOKENS,
+        "framing_margin_status": FRAMING_MARGIN_STATUS,
+        "context_window_tokens": window,
+        "input_tokens_bound": input_tokens,
+        "ceiling_applied": input_tokens == window,
+        "max_tokens": max_tokens,
+        "input_rate_usd_per_1m": str(input_rate),
+        "output_rate_usd_per_1m": str(output_rate),
+        "bound_usd_micro": micro,
+    }
+    return micro, basis
 
 
 def _is_transient(exc: Exception) -> bool:
@@ -155,10 +245,22 @@ def execute(
         )
     budget = provider._budget
 
+    # D-28: build the EXACT request first; the bound is priced from it and
+    # the same object is what gets sent.
+    if kind == "text":
+        request = provider._build_text_request(
+            prompt, model, max_tokens, temperature
+        )
+    else:
+        assert image_path is not None
+        request = provider._build_vision_request(
+            prompt, Path(image_path), model, max_tokens
+        )
+
     # Bound lookup failure -> ProviderError; never guess.
     try:
-        bound_micro = reserve_bound_usd_micro(
-            provider._pricing, provider.name, model, max_tokens
+        bound_micro, basis = envelope_bound_usd_micro(
+            provider._pricing, provider.name, model, kind, request, max_tokens
         )
     except PricingLookupError as exc:
         raise ProviderError(provider.name, str(exc)) from exc
@@ -185,19 +287,12 @@ def execute(
             model=model,
             kind=kind,
             attempt_no=attempt,
+            bound_basis=basis,
         )
         ts = _utc_now_iso()
         attempt_started = time.perf_counter()
         try:
-            if kind == "text":
-                raw: "RawResult" = provider._raw_complete(
-                    prompt, model, max_tokens, temperature
-                )
-            else:
-                assert image_path is not None
-                raw = provider._raw_vision(
-                    prompt, Path(image_path), model, max_tokens
-                )
+            raw: "RawResult" = provider._send(request, kind=kind)
         except Exception as exc:
             latency_ms = round((time.perf_counter() - attempt_started) * 1000, 3)
             error_text = str(exc)

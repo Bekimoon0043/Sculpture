@@ -950,7 +950,11 @@ the changed acceptance gate. What remains missing, honestly:
   demonstration did not reach the question. The fabrication attempt was
   not run. **No AI has yet chosen this primitive from prose, and the
   platform does not claim it has.** See D-28 for why the retry could not
-  proceed within the cap. **Owner ruling 2026-09-14: Step 6 remains NOT
+  proceed within the cap. **Update 2026-09-15: D-28 is CLOSED (ADR-070) —
+  the same retry now holds under $0.20 and fits under the $5 run cap —
+  but Step 6 has STILL not been run; "no AI has chosen this primitive
+  from prose" remains true until a cost-approved retry is executed and
+  recorded.** **Owner ruling 2026-09-14: Step 6 remains NOT
   ACHIEVED, is never marked PASS, and real Council selection of
   `freeform_loop` remains UNPROVEN. FF-A3 closes only as "typed-brief/
   Council contract implemented and fixture-gated; live end-to-end

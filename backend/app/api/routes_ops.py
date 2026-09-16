@@ -20,6 +20,7 @@ from typing import Any
 from fastapi import APIRouter
 from sqlalchemy import select
 
+from app.core.budget import bound_basis_for_display
 from app.db.database import get_default_db
 from app.db.models import (
     AICallRow,
@@ -183,6 +184,8 @@ def get_costs() -> dict[str, Any]:
             "reconciled_usd": round(amount, 6),
             "ai_call_id": r.ai_call_id,
             "note": r.note,
+            # D-28 (ADR-070): the arithmetic behind reserved_usd.
+            "bound_basis": bound_basis_for_display(r.bound_basis),
         })
         if r.ai_call_id and call_status.get(r.ai_call_id) == "ok":
             double_counts.append({

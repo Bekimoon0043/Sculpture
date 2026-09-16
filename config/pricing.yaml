@@ -43,6 +43,36 @@
 # output rate). B-4 (price re-verification) remains OPEN: these fetches
 # confirm context windows and, where shown, the anthropic prices; the
 # gpt-4o PRICES are still not first-party-verified.
+# D-28 (ADR-070, 2026-09-14): the reservation BOUND is no longer the window
+# fallback — it is derived from the real serialized request envelope:
+#   input_tokens_bound = min(context_window, utf8_bytes(request) + 256)
+# The context windows below remain the absolute CEILING. No price or window
+# value changed (pricing_version unchanged). First-party re-fetches recorded
+# 2026-09-14 for the derivation (ADR-009):
+#   - anthropic: platform.claude.com/docs/en/api/messages — max_tokens is
+#     "the absolute maximum number of tokens to generate";
+#     platform.claude.com/docs/en/build-with-claude/token-counting — the
+#     count endpoint is free and an ESTIMATE ("might differ by a small
+#     amount"); "You are not billed for system-added tokens. Billing
+#     reflects only your content."
+#   - openai: developers.openai.com chat completions reference — max_tokens
+#     is "the maximum number of tokens that can be generated in the chat
+#     completion"; developers.openai.com/cookbook how_to_count_tokens —
+#     framing 3 tokens per message + 3 reply priming for gpt-4o-2024-08-06,
+#     "an estimate, not a timeless guarantee"; github.com/openai/tiktoken
+#     README — BPE "reversible and lossless", "works on arbitrary text",
+#     "each token corresponds to about 4 bytes" on average (so tokens
+#     never exceed bytes for that tokenizer).
+#   - kimi: platform.kimi.ai/docs/api/chat.md — max_completion_tokens is
+#     "the maximum number of tokens to generate for the chat completion";
+#     platform.kimi.ai/docs/api/estimate — POST /v1/tokenizers/
+#     estimate-token-count is an ESTIMATE; no first-party statement on
+#     framing overhead, worst-case tokens per byte, or whether K3's
+#     always-on reasoning is inside max_completion_tokens (the operator's
+#     ledger shows completion tokens capped at exactly the requested
+#     maximum, never above).
+#   The 256-token framing margin is the owner's amendment: a conservative
+#   JUDGEMENT value, not first-party proof for anthropic or kimi.
 # Every AI call logged in the database records the pricing_version that
 # computed its cost, so stale prices can never silently rewrite history.
 pricing_version: "2026-08-v4"

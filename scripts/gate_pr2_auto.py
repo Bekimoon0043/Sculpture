@@ -145,6 +145,9 @@ def main() -> int:
            f"run ${caps.run_cap_usd:.2f} / day ${caps.day_cap_usd:.2f}")
     _check("pricing_version bumped for the context windows",
            pricing.pricing_version == "2026-08-v4", pricing.pricing_version)
+    # D-28 (ADR-070): these three values are now the context-window CEILING
+    # the envelope bound can never exceed (gate_d28_auto.py proves the
+    # envelope bound itself); the ceiling stays exact and first-party.
     expected = {
         ("anthropic", "claude-sonnet-4-5", 8192): 872_880,
         ("openai", "gpt-4o", 8192): 401_920,
@@ -158,13 +161,13 @@ def main() -> int:
                and "2026-08-28" in (entry.context_window_source or ""),
                f"{entry.context_window_tokens} tokens :: {entry.context_window_source}")
         got = reserve_bound_usd_micro(pricing, prov, model, mt)
-        _check(f"{prov}/{model} bound at max_tokens={mt} is exact",
+        _check(f"{prov}/{model} CEILING at max_tokens={mt} is exact",
                got == want, f"${micro_to_usd(got):.6f} == ${micro_to_usd(want):.6f}")
     dense = "警告" * 4000
     old_est = ((len(dense) // 4 + 1) * 2.50 + 256 * 10.0) / 1_000_000
     new_bound = micro_to_usd(reserve_bound_usd_micro(pricing, "openai", "gpt-4o", 256))
-    _check("the bound dominates the retired chars/4 estimate on dense text",
-           new_bound > old_est, f"bound ${new_bound:.6f} > old ${old_est:.6f}")
+    _check("the ceiling dominates the retired chars/4 estimate on dense text",
+           new_bound > old_est, f"ceiling ${new_bound:.6f} > old ${old_est:.6f}")
 
     # ------------------------------------------------------------------
     _section(2, "barrier race — two reservers, one slot")
@@ -262,13 +265,21 @@ def main() -> int:
         st = [r[0] for r in conn.execute(
             "SELECT status FROM spend_reservations ORDER BY attempt_no")]
         n_calls = conn.execute("SELECT COUNT(*) FROM ai_calls").fetchone()[0]
+        uncertain_bound = conn.execute(
+            "SELECT reserved_usd_micro FROM spend_reservations "
+            "WHERE status='uncertain'").fetchone()[0]
     _check("a transient retry took a NEW reservation per physical attempt",
            st == ["uncertain", "settled"] and n_calls == 2,
            f"reservation statuses {st}; ai_calls rows {n_calls} (one per attempt)")
-    _check("the uncertain attempt stays counted at its full bound",
-           b4b.spent_run_usd() > micro_to_usd(
-               reserve_bound_usd_micro(pricing, "openai", "gpt-4o", 256)),
-           f"run spend ${b4b.spent_run_usd():.6f}")
+    # D-28 (ADR-070): the hold is the ENVELOPE bound of the request, not the
+    # window ceiling; the uncertain attempt still counts at all of it.
+    _check("the uncertain attempt stays counted at its full (envelope) bound",
+           b4b.spent_run_usd() == micro_to_usd(int(uncertain_bound) + 60)
+           and 0 < int(uncertain_bound) < reserve_bound_usd_micro(
+               pricing, "openai", "gpt-4o", 256),
+           f"run spend ${b4b.spent_run_usd():.6f} == uncertain bound "
+           f"${micro_to_usd(int(uncertain_bound)):.6f} + $0.000060; ceiling "
+           f"${micro_to_usd(reserve_bound_usd_micro(pricing, 'openai', 'gpt-4o', 256)):.6f}")
 
     db4c = _tmp_db()
     prov, b4c = provider_for(db4c, _Transport("never", 1, 1, fail_first=99))

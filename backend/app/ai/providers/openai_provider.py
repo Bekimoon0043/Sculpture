@@ -11,6 +11,12 @@ by third-party trackers — NOT first-party/account-verified as of 2026-08-07
 provider deliberately does NOT split: all input bills at the verified full
 input rate (conservative — real cost can only be lower). Revisit when the
 cached rate is first-party verified; pricing.yaml documents the same.
+
+D-28 (ADR-070): the request is built as a plain dict (`_build_*_request`)
+and sent unchanged (`_send`); call_log prices the reservation from that
+same dict. `max_tokens` is "The maximum number of tokens that can be
+generated in the chat completion" (developers.openai.com chat completions
+reference, fetched 2026-09-14) — the output ceiling the bound relies on.
 """
 
 from __future__ import annotations
@@ -52,9 +58,9 @@ class OpenAIProvider(AIProvider):
             "reason": f"missing API key (set {self.env_var} in .env)",
         }
 
-    def _raw_complete(
+    def _build_text_request(
         self, prompt: str, model: str, max_tokens: int, temperature: float | None
-    ) -> RawResult:
+    ) -> dict:
         kwargs: dict = dict(
             model=model,
             max_tokens=max_tokens,
@@ -62,23 +68,18 @@ class OpenAIProvider(AIProvider):
         )
         if temperature is not None:  # None = omit the parameter entirely
             kwargs["temperature"] = temperature
-        resp = self._client.chat.completions.create(**kwargs)
-        return RawResult(
-            text=resp.choices[0].message.content or "",
-            tokens_in=resp.usage.prompt_tokens,
-            tokens_out=resp.usage.completion_tokens,
-        )
+        return kwargs
 
-    def _raw_vision(
+    def _build_vision_request(
         self, prompt: str, image_path: Path, model: str, max_tokens: int
-    ) -> RawResult:
+    ) -> dict:
         media_type = _MEDIA_TYPES.get(image_path.suffix.lower())
         if media_type is None:
             raise ValueError(
                 f"unsupported image type {image_path.suffix!r} for vision call"
             )
         b64 = base64.b64encode(image_path.read_bytes()).decode("ascii")
-        resp = self._client.chat.completions.create(
+        return dict(
             model=model,
             max_tokens=max_tokens,
             messages=[
@@ -96,6 +97,9 @@ class OpenAIProvider(AIProvider):
                 }
             ],
         )
+
+    def _send(self, request: dict, *, kind: str) -> RawResult:
+        resp = self._client.chat.completions.create(**request)
         return RawResult(
             text=resp.choices[0].message.content or "",
             tokens_in=resp.usage.prompt_tokens,

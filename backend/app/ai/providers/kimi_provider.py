@@ -13,12 +13,20 @@ Moonshot's API is OpenAI-compatible, so this provider uses the official
 * parameter — max_completion_tokens, NOT max_tokens: the live chat-completion
   reference marks max_tokens "Deprecated, please refer to
   max_completion_tokens" (platform.kimi.ai/docs/api/chat.md, fetched
-  2026-08-01).
+  2026-08-01). Re-fetched 2026-09-14 (D-28, ADR-070): "The maximum number
+  of tokens to generate for the chat completion" — the output ceiling the
+  reservation bound relies on. Whether K3's always-on reasoning is inside
+  that ceiling is NOT documented; the operator's ledger shows completion
+  tokens capped at exactly the requested maximum and never above.
 
 Amendment 5: if the vision call fails with a model/endpoint error, the raw
 message is surfaced verbatim in the ProviderError (and the gate instructs the
 operator to record it in LIMITATIONS.md) — honest failure, never a silent
 fallback.
+
+D-28 (ADR-070): the request is built as a plain dict (`_build_*_request`)
+and sent unchanged (`_send`); call_log prices the reservation from that
+same dict.
 """
 
 from __future__ import annotations
@@ -93,9 +101,9 @@ class KimiProvider(AIProvider):
             "reason": f"missing API key (set {self.env_var} in .env)",
         }
 
-    def _raw_complete(
+    def _build_text_request(
         self, prompt: str, model: str, max_tokens: int, temperature: float | None
-    ) -> RawResult:
+    ) -> dict:
         kwargs: dict = dict(
             model=model,
             # Live docs (chat.md, fetched 2026-08-01): max_tokens is
@@ -110,48 +118,48 @@ class KimiProvider(AIProvider):
         # is only sent if the operator explicitly configures one.
         if temperature is not None:
             kwargs["temperature"] = temperature
-        resp = self._client.chat.completions.create(**kwargs)
-        uncached, cached = _split_cached(resp.usage)
-        return RawResult(
-            text=resp.choices[0].message.content or "",
-            tokens_in=uncached,
-            tokens_out=resp.usage.completion_tokens,
-            cached_input_tokens=cached,
-        )
+        return kwargs
 
-    def _raw_vision(
+    def _build_vision_request(
         self, prompt: str, image_path: Path, model: str, max_tokens: int
-    ) -> RawResult:
+    ) -> dict:
         media_type = _MEDIA_TYPES.get(image_path.suffix.lower())
         if media_type is None:
             raise ValueError(
                 f"unsupported image type {image_path.suffix!r} for vision call"
             )
         b64 = base64.b64encode(image_path.read_bytes()).decode("ascii")
-        try:
-            resp = self._client.chat.completions.create(
-                model=model,
-                max_completion_tokens=max_tokens,  # see _raw_complete note
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:{media_type};base64,{b64}"
-                                },
+        return dict(
+            model=model,
+            max_completion_tokens=max_tokens,  # see _build_text_request note
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{media_type};base64,{b64}"
                             },
-                        ],
-                    }
-                ],
-            )
-        except Exception as exc:
-            # Amendment 5: surface the raw model/endpoint error verbatim.
-            raise RuntimeError(
-                f"kimi vision call failed (model={model}): {exc}"
-            ) from exc
+                        },
+                    ],
+                }
+            ],
+        )
+
+    def _send(self, request: dict, *, kind: str) -> RawResult:
+        if kind == "vision":
+            try:
+                resp = self._client.chat.completions.create(**request)
+            except Exception as exc:
+                # Amendment 5: surface the raw model/endpoint error verbatim.
+                raise RuntimeError(
+                    f"kimi vision call failed (model={request.get('model')}): "
+                    f"{exc}"
+                ) from exc
+        else:
+            resp = self._client.chat.completions.create(**request)
         uncached, cached = _split_cached(resp.usage)
         return RawResult(
             text=resp.choices[0].message.content or "",

@@ -5,7 +5,29 @@ the start of every session (`/lf-orient`) and rewritten at the end of every
 slice (`/lf-close`). If this file and a phase plan disagree, this file is
 stale and must be corrected in the same commit as the work.
 
-Last updated: 2026-09-14 — **FF-A3 CLOSED (ADR-069)** with the owner's
+Last updated: 2026-09-15 — **D-28 SLICE CLOSED (ADR-070): the
+reservation bound is the REAL serialized request envelope
+(`min(context_window, utf8_bytes(request) + 256 framing margin)` × rates,
+ceiling µUSD), never the whole context window — text requests only;
+vision stays on the ADR-061 window bound; the ADR-061 values and the
+$5/$25 caps are untouched; the owner ruling of 2026-09-14 is honoured on
+every point (no council.yaml change, kimi retained, fail-closed
+accounting strengthened, not weakened).** Every hold persists its
+`bound_basis` JSON (additive startup-patched column); billed tokens above
+the recorded bound engage `ceiling_violated` at settlement even when the
+dollars fit; the startup census re-checks every settled text call in
+history and locks GLOBALLY on the first falsification; pre-D-28 rows
+reach both operator surfaces labelled `PRE_D28_FORMULA`. The measured
+FF-A3 hold replays offline at **under $0.20** and the retry now fits
+under $5 — FF-A3 Step 6 is UNBLOCKED for a separately cost-approved
+retry (ADR-069's binding status stands until that retry runs).
+**Environment caveat, recorded honestly:** the host Docker engine did
+not start on the build machine, so the definitive in-container suite +
+roster re-run is DEFERRED — the full suite ran on a host Python 3.12
+venv and three platform fixes landed (the real `routes_ops.py` import
+defect, a census-fixture prompt length, the `0.1 + 0.2` drift preamble —
+see ADR-070). NOT claimed as the definitive chain. Before that:
+**FF-A3 CLOSED (ADR-069)** with the owner's
 binding status: **"typed-brief/Council contract implemented and
 fixture-gated; live end-to-end selection blocked by D-28 and not
 claimed."** A typed brief confirmed in the Brief tab can now reach the
@@ -605,10 +627,9 @@ binding; the slice notes below carry the ones that bite.
       they are listed exactly, no wildcard). The 2,685.7 kg array figure
       is settled (2,988 was a transposed ratio, corrected at its sites).
       Gate evidence in PRODUCTION_V1_REPORT.md.
-- [ ] **D-28 SLICE — an honest reservation bound (owner ruling
-      2026-09-14; NEXT after FF-A3 closes; plan via `/lf-next` and NOT
-      started until the owner approves that plan).** Separate and
-      rollbackable. **Goal:** the fail-closed reservation is computed
+- [x] **D-28 SLICE — an honest reservation bound (CLOSED 2026-09-15,
+      ADR-070).** Separate and rollbackable. **Goal:**
+      the fail-closed reservation is computed
       from the REAL serialized request envelope + the configured maximum
       output + a proven conservative margin — **never the model's entire
       unused context window**. Context size remains an ABSOLUTE CEILING,
@@ -625,6 +646,13 @@ binding; the slice notes below carry the ones that bite.
       output, and reservation-UNDERFLOW safety (a bound that lands under
       the real cost must fail closed and lock, never silently absorb).
       Measured motivation in D-28 below and in `gate_ffa3_visual.md`.
+      **All of it landed:** `tests/test_d28_envelope_bound.py` (37
+      hermetic tests) covers every ruled test; the envelope is the sent
+      envelope field-for-field for all three providers; the census is
+      read-only and global-locking; the operator surfaces expose the
+      basis. **Deferred:** the definitive in-container suite + roster
+      re-run (host Docker engine down) — first action when the engine is
+      back. Reservation `9077e77a…` remains owner-pending, unreconciled.
 - [ ] **PR-6 — Costing tie-off machinery.** **Amendment 4 first:** one
       trusted measurement path per material for volume/mass, exposed
       finishing area (never proportional allocation of total surface),
@@ -830,9 +858,14 @@ Pick one up when a slice finishes early. Each is one commit.
       D-1's unreaped scratch. **No scratch artifact is to be deleted,
       moved or modified without an explicit owner instruction; the 1,902
       directories present at the time of this finding are preserved.**
-- [ ] **D-28 — one dropped connection on the kimi seat consumes 65% of
+- [x] **D-28 — one dropped connection on the kimi seat consumes 65% of
       the run cap and halts a Council session (measured 2026-09-14,
-      FF-A3 Step 6).** The cap-safe reservation bound is context window
+      FF-A3 Step 6). CLOSED 2026-09-15 by the D-28 slice (ADR-070): the
+      reservation bound is now the real serialized request envelope +
+      256-token framing margin (an explicit JUDGEMENT value), capped by
+      the context window as an absolute ceiling — the kimi hold for the
+      actual FF-A3 prompt is under $0.20 and a retry fits under $5.**
+      The cap-safe reservation bound WAS context window
       × input rate + max_tokens × output rate (ADR-061 Amendment 4), so
       kimi-k3's 1,048,576-token window books **$3.268608 per call**
       against a $5.00 run cap, versus $0.4019 (openai, 128k) and

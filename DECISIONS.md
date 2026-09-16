@@ -5207,3 +5207,88 @@ the fix must avoid per-poll full rescans and provide bounded, indexed or
 event-driven pickup plus safe retention/reaping — raising timeouts is
 not acceptable. **This chain must never be described as "all gates
 green."** No scratch artifact was deleted, moved or modified.
+
+
+## ADR-070 - D-28: an honest reservation bound — the real request envelope, never the whole context window (2026-09-15)
+
+**Decision.** A TEXT request's reservation bound is derived from the
+request that will actually be sent, never from the model's entire unused
+context window (the ADR-061 fallback, kept only as the absolute ceiling):
+
+    input_tokens_bound = min(context_window, utf8_bytes(request) + 256)
+    bound_usd          = input_tokens_bound x highest input rate
+                       + max_tokens x output rate   (ceiling micro-USD)
+
+The 256-token framing margin is the owner's amendment of 2026-09-14: a
+conservative JUDGEMENT value, recorded as such on every hold — openai
+documents 3 tokens per message plus reply priming (an estimate),
+anthropic bills no system-added tokens, and moonshot documents nothing
+about framing, so it is **not first-party proof for anthropic or kimi**.
+The assumption is self-policed two ways instead of trusted: (1) at
+settlement, billed input tokens above the recorded `input_tokens_bound`,
+or output tokens above `max_tokens`, engage a `ceiling_violated`
+provider/model safety lock and halt the scope **even when the DOLLARS
+still fit** — a bound that lands under the real cost must fail closed,
+never silently absorb; money above the bound still engages
+`bound_exceeded` first, exactly one lock per settlement. (2) at every
+startup, `envelope_census` re-checks EVERY settled text call in history
+against prompt-bytes + margin (pre-D-28 rows measured against the
+ADR-061 ceiling they actually held) and engages a GLOBAL lock on the
+first falsification, via `reconcile_spend_books` in the operator
+surfaces. VISION requests stay on the ADR-061 window bound unchanged —
+ADR-070 changes text requests only. The pricing values, context windows
+and `$5` run / `$25` day caps are untouched (`pricing_version`
+unchanged); no `council.yaml` change; kimi is not removed; the
+fail-closed accounting is not weakened — the owner ruling of 2026-09-14
+is honoured on every point.
+
+**Why.** Measured on 2026-09-14 (ADR-069): one dropped kimi connection
+held $3.268608 — 65% of the $5 run cap — because the reservation was the
+whole 1,048,576-token context window. The FF-A3 Step 6 retry was refused
+by the cap and the live demonstration died on infrastructure, not on
+anything a model did. Under the envelope bound the same ~2.1 kB
+researcher prompt holds for **under $0.20**, and the uncertain hold plus
+one retry fits under $5 with room to spare (pinned in
+`test_d28_envelope_bound.py`).
+
+**Mechanics.** Every provider builds its request envelope through ONE
+builder (`_build_text_request`) whose output is what the SDK is called
+with — the priced envelope IS the sent envelope, asserted field-for-field
+for all three providers, with ≥ 64 bytes of non-content headroom pinned.
+Multibyte prompts bind by UTF-8 BYTES, never characters (a byte-vs-char
+bound is a real underflow: 8,000 CJK characters are 24,000 bytes). The
+derivation (`envelope_bound_usd_micro` in `app.ai.call_log`) needs a
+first-party `context_window_tokens` still — absent, it raises
+`PricingLookupError` rather than assume. The arithmetic behind every
+hold is persisted as JSON on `spend_reservations.bound_basis` (additive
+startup-patched column, schema_patches recorded; pre-D-28 NULL rows
+reach both operator surfaces labelled `PRE_D28_FORMULA`, never guessed)
+and `spend_admin.py census` reports it READ-ONLY (byte-identical DB
+pinned before/after). Retries, exhaustion and startup recovery keep
+every uncertain hold at its own envelope bound with its basis intact.
+
+**Verification (recorded honestly).** New hermetic suite
+`tests/test_d28_envelope_bound.py` (37 tests, $0, injected transports)
+plus updates to `tests/test_spend_reservations.py`; 61 targeted tests
+pass. The host Docker engine did not start on the build machine
+(2026-09-15), so the definitive in-container run of the FULL suite and
+the roster is DEFERRED: the suite and `gate_pr2_auto.py` were run on a
+host Python 3.12 venv (editable install, `--ignore-requires-python` —
+the production pin stays `>=3.11,<3.12`), and three tests needed
+platform fixes the container will also accept: a missing
+`bound_basis_for_display` import in `routes_ops.py` (the actual defect),
+a census-fixture prompt lengthened so its tokens-per-byte ratio is
+strictly below 1 as the assertion documents, and the float-drift
+preamble rewritten to `0.1 + 0.2` because Python 3.12's compensated
+`sum()` makes the original 3.11-era `1e-6 x 1000` demonstration exactly
+exact (gh-100425). The in-container suite + full roster re-run is the
+first action when the engine is back; this chain is NOT claimed as the
+definitive gate chain. Reservation `9077e77a-…` remains UNCERTAIN and
+unreconciled, owner-pending, exactly as ruled.
+
+**Consequences.** Live Council sessions no longer risk the cap on one
+dropped connection; FF-A3 Step 6 (real Council selection of
+`freeform_loop`) is UNBLOCKED for a separately cost-approved retry —
+ADR-069's binding status stands until that retry is run and recorded.
+The ADR-061 ceiling function is retained verbatim as the ceiling the
+envelope bound can never exceed.

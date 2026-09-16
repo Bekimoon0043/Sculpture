@@ -28,3 +28,4 @@ docker/render/probe/
 # PR-2.5 (ADR-064): operator-supplied reference images stay LOCAL until the
 # owner explicitly confirms repo privacy AND permission to store every image.
 briefs/freeform_references/*.jpg
+.venv-host/

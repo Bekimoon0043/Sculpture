@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy import select
 
-from app.ai.call_log import reserve_bound_usd_micro
+from app.ai.call_log import envelope_bound_usd_micro, reserve_bound_usd_micro
 from app.ai.provider import ProviderError
 from app.ai.providers.kimi_provider import KimiProvider
 from app.ai.providers.openai_provider import OpenAIProvider
@@ -117,8 +117,11 @@ def test_many_row_sum_is_exact_where_float_sum_drifts(db):
                 (f"c{i}", ts),
             )
         conn.commit()
-    # float arithmetic would say sum(1000 * 1e-6) = 0.0009999999999999731
-    assert abs(sum([1e-6] * 1000) - 0.001) > 0  # the drift is real
+    # float arithmetic is not exact (0.1 + 0.2 drifts on every IEEE-754
+    # platform; Python 3.12's compensated sum() hides the 1e-6 x 1000 case
+    # that motivated this test on 3.11, so the demonstration uses the
+    # classic) — the ledger instead sums INTEGER micro-USD, exactly.
+    assert 0.1 + 0.2 != 0.3  # the drift is real
     fits = _enforcer(db, run_cap=5.0, day_cap=0.001001, session="s-fits")
     fits.reserve(1, provider="openai", model="gpt-4o", kind="text",
                  attempt_no=1)  # 1000µ + 1µ <= 1001µ — exact integers
@@ -129,11 +132,14 @@ def test_many_row_sum_is_exact_where_float_sum_drifts(db):
 
 
 # ---------------------------------------------------------------------------
-# the bound formula (context-window fallback) — exact µUSD values
+# the context-window CEILING (ADR-061 formula) — exact µUSD values.
+# D-28 (ADR-070): the RESERVATION is now the envelope bound (see
+# test_d28_envelope_bound.py); these values remain the ceiling it can
+# never exceed, so they are pinned exactly, unchanged.
 # ---------------------------------------------------------------------------
 
 
-def test_reserve_bounds_are_the_documented_context_window_fallback(config):
+def test_context_window_ceilings_are_the_documented_adr061_values(config):
     p = config.pricing
     # anthropic: 200000 x $3.75 (cache-write is the highest input class)
     # + 8192 x $15 output = $0.75 + $0.12288 = $0.872880 exactly.
@@ -156,9 +162,9 @@ def test_bound_needs_a_first_party_context_window(config):
         reserve_bound_usd_micro(pricing, "openai", "gpt-4o", 100)
 
 
-def test_bound_dwarfs_the_old_chars4_estimate(config):
+def test_ceiling_dwarfs_the_old_chars4_estimate(config):
     """The retired chars/4 estimate for an adversarial dense prompt vs the
-    reservation bound: the bound must dominate by construction."""
+    context-window ceiling: the ceiling must dominate by construction."""
     prompt = "警告" * 4000  # unicode-dense: far more tokens than chars/4
     old_estimate = ((len(prompt) // 4 + 1) * 2.50 + 256 * 10.0) / 1_000_000
     bound = micro_to_usd(
@@ -185,7 +191,12 @@ def test_settlement_is_atomic_and_one_to_one(db, config, openai_transport):
     r, c = res[0], calls[0]
     assert r.status == "settled"
     assert r.settled_usd_micro == 60  # $0.000060 exactly
-    assert r.reserved_usd_micro == reserve_bound_usd_micro(
+    # D-28 (ADR-070): the hold is the envelope bound of the request that
+    # was actually sent, strictly under the ADR-061 ceiling.
+    assert r.reserved_usd_micro == envelope_bound_usd_micro(
+        config.pricing, "openai", "gpt-4o", "text",
+        provider._build_text_request("hello", "gpt-4o", 256, 0.0), 256)[0]
+    assert r.reserved_usd_micro < reserve_bound_usd_micro(
         config.pricing, "openai", "gpt-4o", 256)
     assert r.ai_call_id == c.id and c.reservation_id == r.id  # both directions
     assert r.attempt_no == 1 and r.day_utc == r.created_at[:10]
@@ -366,8 +377,11 @@ def test_a_retry_that_no_longer_fits_halts_mid_sequence(
     """Money may already be gone: attempt 1's uncertain hold + attempt 2's
     bound exceed the run cap, so the RETRY refuses — honestly, pre-network."""
     monkeypatch.setenv("LUXURYFORM_PROVIDER_BACKOFF_BASE_S", "0")
-    bound = micro_to_usd(reserve_bound_usd_micro(
-        config.pricing, "openai", "gpt-4o", 256))
+    # D-28 (ADR-070): the hold is the envelope bound of THIS request.
+    probe = _openai(db, config, openai_transport("x", 1, 1), _enforcer(db))
+    bound = micro_to_usd(envelope_bound_usd_micro(
+        config.pricing, "openai", "gpt-4o", "text",
+        probe._build_text_request("hello", "gpt-4o", 256, 0.0), 256)[0])
     flaky = _FlakyTransport(openai_transport("never", 1, 1), failures=99)
     budget = _enforcer(db, run_cap=round(bound * 1.5, 6))
     provider = _openai(db, config, flaky, budget)

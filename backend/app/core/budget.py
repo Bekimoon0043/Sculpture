@@ -64,6 +64,34 @@ SPEND_SCOPE_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL,
 #: checkpoint without ever masking a real deadlock.
 LEDGER_BUSY_TIMEOUT_MS = 5000
 
+#: D-28 (ADR-070) — the honest reservation bound's constants. The bound is
+#: derived from the REAL serialized request envelope:
+#:     input_tokens_bound = min(context_window, utf8_bytes(request) + 256)
+#: The 256-token framing margin is the owner's amendment of 2026-09-14: a
+#: conservative JUDGEMENT value — openai documents 3 tokens per message +
+#: 3 for reply priming (an estimate); anthropic bills no system-added
+#: tokens; moonshot documents nothing — so it is NOT first-party proof for
+#: anthropic or kimi. The assumption is self-policed: billed tokens above
+#: the recorded bound engage a safety lock at settlement (``settle_success``)
+#: and the startup census (``envelope_census`` via ``reconcile_spend_books``)
+#: re-checks every settled text call in history.
+FRAMING_MARGIN_TOKENS = 256
+FRAMING_MARGIN_STATUS = (
+    "conservative judgement value (owner amendment 2026-09-14): "
+    "not first-party proof for anthropic or kimi (ADR-070)"
+)
+ENVELOPE_FORMULA = (
+    "ADR-070 envelope v1: min(context_window, utf8_bytes(request) + 256) "
+    "x highest input rate + max_tokens x output rate, ceiling micro-USD"
+)
+VISION_FORMULA = (
+    "ADR-061 context-window ceiling (vision requests stay on the window; "
+    "ADR-070 changes text requests only)"
+)
+PRE_D28_FORMULA = (
+    "ADR-061 context-window ceiling (pre-D-28 reservation, no basis recorded)"
+)
+
 _MICRO = Decimal("0.000001")
 
 
@@ -96,6 +124,50 @@ def _utc_now_iso() -> str:
 
 def _round6(value: float) -> float:
     return round(float(value), 6)
+
+
+def bound_basis_for_display(raw: str | None) -> dict:
+    """The persisted basis JSON as a dict for the operator surfaces; a
+    pre-D-28 row (NULL) is labelled as the ADR-061 ceiling, never guessed."""
+    if not raw:
+        return {"formula": PRE_D28_FORMULA, "pre_d28": True}
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        return {"formula": PRE_D28_FORMULA, "pre_d28": True,
+                "unparseable_basis": raw[:200]}
+    if isinstance(parsed, dict):
+        parsed.setdefault("pre_d28", False)
+        return parsed
+    return {"formula": PRE_D28_FORMULA, "pre_d28": True}
+
+
+def _ceiling_violation(basis: dict | None, billed_input_tokens: int,
+                       tokens_out: int) -> dict | None:
+    """D-28: the provider billed more than the recorded token bound allows.
+    Input above ``input_tokens_bound`` or output above ``max_tokens``
+    falsifies the bound derivation — even if the DOLLARS still fit."""
+    if not basis:
+        return None
+    in_bound = basis.get("input_tokens_bound")
+    max_tokens = basis.get("max_tokens")
+    if in_bound is not None and billed_input_tokens > int(in_bound):
+        return {
+            "which": "input",
+            "billed_input_tokens": billed_input_tokens,
+            "input_tokens_bound": int(in_bound),
+            "tokens_out": tokens_out,
+            "max_tokens": max_tokens,
+        }
+    if max_tokens is not None and tokens_out > int(max_tokens):
+        return {
+            "which": "output",
+            "billed_input_tokens": billed_input_tokens,
+            "input_tokens_bound": in_bound,
+            "tokens_out": tokens_out,
+            "max_tokens": int(max_tokens),
+        }
+    return None
 
 
 def fabrication_scope_id(session_id: str, spec_id: str) -> str:
@@ -265,6 +337,7 @@ class BudgetEnforcer:
         model: str,
         kind: str,
         attempt_no: int,
+        bound_basis: dict | None = None,
     ) -> str:
         """Atomically take a hold of ``bound_usd_micro`` against BOTH caps.
 
@@ -272,11 +345,19 @@ class BudgetEnforcer:
         check, both cap sums, and the hold insert — or, on refusal, the
         budget_events + jobs evidence rows — commit together. Raises
         BudgetHalt (or a subclass) after the evidence is durably committed.
+
+        ``bound_basis`` (D-28, ADR-070) is the arithmetic behind the bound,
+        persisted as JSON on the hold so settlement can check the billed
+        tokens against it and the operator can see why a hold is its size.
         """
         if bound_usd_micro <= 0:
             raise ValueError("reservation bound must be positive")
         if attempt_no < 1:
             raise ValueError("attempt_no starts at 1")
+        basis_json = (
+            json.dumps(bound_basis, sort_keys=True)
+            if bound_basis is not None else None
+        )
         now = _utc_now_iso()
         day = now[:10]
         conn = _ledger_conn(self.db)
@@ -347,10 +428,11 @@ class BudgetEnforcer:
             conn.execute(
                 "INSERT INTO spend_reservations (id, created_at, day_utc, "
                 "scope_id, session_id, attempt_no, provider, model, kind, "
-                "reserved_usd_micro, status) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'held')",
+                "reserved_usd_micro, status, bound_basis) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'held', ?)",
                 (reservation_id, now, day, self.scope_id, self.session_id,
-                 attempt_no, provider, model, kind, bound_usd_micro),
+                 attempt_no, provider, model, kind, bound_usd_micro,
+                 basis_json),
             )
             conn.execute("COMMIT")
             return reservation_id
@@ -384,7 +466,11 @@ class BudgetEnforcer:
         ledger — atomically. If the actual cost exceeded the reserved bound
         (a bound-derivation defect), the same transaction records the
         bound_exceeded event, engages a provider/model safety lock and
-        halts the scope (fail closed). Returns the ai_calls id."""
+        halts the scope (fail closed). D-28 (ADR-070): if the money fit
+        but the provider billed more INPUT tokens than the recorded token
+        bound, or more OUTPUT tokens than max_tokens, the same transaction
+        engages ``ceiling_violated`` instead — the derivation is falsified
+        either way. Returns the ai_calls id."""
         cost = _round6(cost_usd)
         cost_micro = usd_to_micro(cost)
         now = _utc_now_iso()
@@ -393,7 +479,7 @@ class BudgetEnforcer:
         try:
             conn.execute("BEGIN IMMEDIATE")
             res = conn.execute(
-                "SELECT status, reserved_usd_micro, scope_id "
+                "SELECT status, reserved_usd_micro, scope_id, bound_basis "
                 "FROM spend_reservations WHERE id = ?", (reservation_id,)
             ).fetchone()
             if res is None or res[0] != "held":
@@ -402,6 +488,13 @@ class BudgetEnforcer:
                     f"{res[0] if res else 'MISSING'} — refusing to settle"
                 )
             reserved_micro, scope_id = int(res[1]), res[2]
+            basis = json.loads(res[3]) if res[3] else None
+            violation = _ceiling_violation(
+                basis,
+                int(tokens_in) + int(cached_input_tokens)
+                + int(cache_write_input_tokens),
+                int(tokens_out),
+            )
             self._insert_call_locked(
                 conn, call_id=call_id, reservation_id=reservation_id,
                 ts=ts, provider=provider, model=model, purpose=purpose,
@@ -435,12 +528,31 @@ class BudgetEnforcer:
                         "actual_usd": cost,
                     },
                 )
+            elif violation is not None:
+                self._engage_lock_locked(
+                    conn, now, provider=provider, model=model,
+                    reason="ceiling_violated", scope_id=scope_id,
+                    detail={
+                        "reservation_id": reservation_id,
+                        "ai_call_id": call_id,
+                        "reserved_usd": micro_to_usd(reserved_micro),
+                        "actual_usd": cost,
+                        **violation,
+                    },
+                )
             conn.execute("COMMIT")
             if cost_micro > reserved_micro:
                 log.error(
                     "SPEND BOUND EXCEEDED: %s/%s actual $%.6f > reserved "
                     "$%.6f — safety lock engaged, scope %s halted",
                     provider, model, cost, micro_to_usd(reserved_micro),
+                    scope_id,
+                )
+            elif violation is not None:
+                log.error(
+                    "TOKEN CEILING VIOLATED: %s/%s %s — safety lock engaged, "
+                    "scope %s halted (D-28 bound derivation falsified)",
+                    provider, model, json.dumps(violation, sort_keys=True),
                     scope_id,
                 )
             return call_id
@@ -773,10 +885,113 @@ def recover_stale_spend_holds(db: Database) -> list[str]:
     return recovered
 
 
+def envelope_census(db: Database) -> dict:
+    """READ-ONLY census of the D-28 bound assumption over every settled
+    ('ok') TEXT call in history (ADR-070).
+
+    For each row: billed input tokens (all classes) must not exceed the
+    token bound — the reservation's recorded ``input_tokens_bound`` when a
+    basis exists, else (pre-D-28 rows) the prompt's UTF-8 bytes + the
+    256-token framing margin. Vision calls are out of scope (they stay on
+    the window ceiling). Returns per-model statistics (worst billed tokens
+    per prompt byte, worst headroom) and the list of violations; it never
+    writes — ``reconcile_spend_books`` is what engages the lock.
+    """
+    per_model: dict[str, dict] = {}
+    violations: list[dict] = []
+    text_calls = 0
+    vision_skipped = 0
+    with _ledger(db) as conn:
+        rows = conn.execute(
+            "SELECT c.id, c.provider, c.model, c.purpose, c.tokens_in, "
+            "c.cached_input_tokens, c.cache_write_input_tokens, c.prompt, "
+            "c.ts, r.kind, r.bound_basis FROM ai_calls c "
+            "LEFT JOIN spend_reservations r ON r.id = c.reservation_id "
+            "WHERE c.status = 'ok' ORDER BY c.ts"
+        ).fetchall()
+    for (cid, prov, model, purpose, tin, cin, cwin, prompt, ts, kind,
+         basis_raw) in rows:
+        kind = kind or ("vision" if "vision" in (purpose or "") else "text")
+        if kind == "vision":
+            vision_skipped += 1
+            continue
+        text_calls += 1
+        billed = int(tin or 0) + int(cin or 0) + int(cwin or 0)
+        prompt_bytes = len((prompt or "").encode("utf-8"))
+        basis = json.loads(basis_raw) if basis_raw else None
+        if basis and basis.get("input_tokens_bound") is not None:
+            bound = int(basis["input_tokens_bound"])
+            basis_label = basis.get("formula") or ENVELOPE_FORMULA
+            pre = False
+        else:
+            bound = prompt_bytes + FRAMING_MARGIN_TOKENS
+            basis_label = PRE_D28_FORMULA
+            pre = True
+        key = f"{prov}/{model}"
+        st = per_model.setdefault(key, {
+            "calls": 0, "pre_d28_rows": 0, "worst_tokens_per_prompt_byte": 0.0,
+            "worst_tokens_per_prompt_byte_call": None,
+            "worst_headroom_tokens": None, "worst_headroom_call": None,
+            "violations": 0,
+        })
+        st["calls"] += 1
+        if pre:
+            st["pre_d28_rows"] += 1
+        if prompt_bytes:
+            ratio = billed / prompt_bytes
+            if ratio > st["worst_tokens_per_prompt_byte"]:
+                st["worst_tokens_per_prompt_byte"] = round(ratio, 4)
+                st["worst_tokens_per_prompt_byte_call"] = cid
+        headroom = bound - billed
+        if st["worst_headroom_tokens"] is None or headroom < st["worst_headroom_tokens"]:
+            st["worst_headroom_tokens"] = headroom
+            st["worst_headroom_call"] = cid
+        if billed > bound:
+            st["violations"] += 1
+            violations.append({
+                "ai_call_id": cid, "ts": ts, "provider": prov, "model": model,
+                "purpose": purpose, "billed_input_tokens": billed,
+                "input_tokens_bound": bound, "prompt_utf8_bytes": prompt_bytes,
+                "basis": basis_label,
+            })
+    return {
+        "framing_margin_tokens": FRAMING_MARGIN_TOKENS,
+        "framing_margin_status": FRAMING_MARGIN_STATUS,
+        "text_calls": text_calls,
+        "vision_skipped": vision_skipped,
+        "per_model": per_model,
+        "violations": violations,
+    }
+
+
 def reconcile_spend_books(db: Database) -> list[str]:
     """Assert the two books agree (Amendment 6, both directions). Any
-    mismatch engages a GLOBAL safety lock — fail closed — and is returned."""
+    mismatch engages a GLOBAL safety lock — fail closed — and is returned.
+    D-28 (ADR-070): also runs ``envelope_census``; any settled text call
+    billed above its token bound engages a GLOBAL ``ceiling_violated``
+    lock — the bound assumption is re-checked at every startup."""
     problems: list[str] = []
+    census = envelope_census(db)
+    census_problems = [
+        f"ceiling violated: ai_call {v['ai_call_id']} ({v['provider']}/"
+        f"{v['model']}, {v['ts']}) billed {v['billed_input_tokens']} input "
+        f"tokens > bound {v['input_tokens_bound']} [{v['basis']}]"
+        for v in census["violations"]
+    ]
+    if census_problems:
+        with _ledger(db) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                "INSERT INTO spend_safety_locks (id, created_at, provider, "
+                "model, reason, detail, status) VALUES (?, ?, NULL, NULL, "
+                "'ceiling_violated', ?, 'active')",
+                (str(uuid.uuid4()), _utc_now_iso(),
+                 json.dumps({"census_violations": census["violations"]},
+                            sort_keys=True)),
+            )
+            conn.execute("COMMIT")
+        for p in census_problems:
+            log.error("spend bound assumption falsified: %s", p)
     with _ledger(db) as conn:
         for rid, call_id, settled in conn.execute(
             "SELECT id, ai_call_id, settled_usd_micro FROM "
@@ -839,7 +1054,7 @@ def reconcile_spend_books(db: Database) -> list[str]:
             conn.execute("COMMIT")
             for p in problems:
                 log.error("spend ledger mismatch: %s", p)
-    return problems
+    return census_problems + problems
 
 
 def _audited_resolution(db: Database, *, event_type: str, detail: dict) -> None:

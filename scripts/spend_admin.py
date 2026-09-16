@@ -9,6 +9,7 @@ a --reason and writes a budget_events row.
 Run in the backend container (or on the host from the repo root):
 
     docker compose exec backend python scripts/spend_admin.py list
+    docker compose exec backend python scripts/spend_admin.py census
     docker compose exec backend python scripts/spend_admin.py resolve-lock  <lock_id>        --reason "..."
     docker compose exec backend python scripts/spend_admin.py resolve-scope <scope_id>       --reason "..."
     docker compose exec backend python scripts/spend_admin.py resolve-hold  <reservation_id> --actual-usd 0.00 --reason "checked all three provider consoles for the hold's window; no charge"
@@ -17,6 +18,12 @@ Run in the backend container (or on the host from the repo root):
 provider's own console (0.00 = confirmed not billed). Verify BEFORE you
 resolve — the consoles are the only source of truth for a dead call
 (ADR-033 taught that the hard way). Cost: $0; this script never dispatches.
+
+`census` (D-28, ADR-070) is READ-ONLY: for every settled text call in the
+ledger it prints the worst billed-tokens-per-prompt-byte ratio per model,
+the smallest headroom under the recorded token bound, and any violation
+of the bound assumption (which the backend also turns into a GLOBAL
+safety lock at startup). It writes nothing.
 """
 
 from __future__ import annotations
@@ -29,6 +36,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
 from app.core.budget import (  # noqa: E402
+    envelope_census,
     micro_to_usd,
     resolve_halted_scope,
     resolve_safety_lock,
@@ -37,11 +45,14 @@ from app.core.budget import (  # noqa: E402
 from app.db.database import Database  # noqa: E402
 
 
-def _db() -> Database:
-    data_root = (
-        Path("/app/data") if Path("/app/data").exists() else REPO_ROOT / "data"
-    )
-    db = Database(data_root / "luxuryform.db")
+def _db(path: str | None = None) -> Database:
+    if path:
+        db = Database(Path(path))
+    else:
+        data_root = (
+            Path("/app/data") if Path("/app/data").exists() else REPO_ROOT / "data"
+        )
+        db = Database(data_root / "luxuryform.db")
     db.init_db()
     return db
 
@@ -75,12 +86,14 @@ def cmd_list(db: Database) -> int:
               "provider console):")
         rows = conn.execute(
             "SELECT id, created_at, provider, model, reserved_usd_micro, "
-            "note FROM spend_reservations WHERE status='uncertain' "
-            "ORDER BY created_at"
+            "note, bound_basis FROM spend_reservations "
+            "WHERE status='uncertain' ORDER BY created_at"
         ).fetchall()
         for r in rows:
+            basis = "envelope bound (ADR-070)" if r[6] else \
+                "context-window ceiling (pre-D-28, ADR-061)"
             print(f"  {r[0]}  {r[1]}  {r[2]}/{r[3]}  "
-                  f"bound ${micro_to_usd(int(r[4])):.6f}  {r[5] or ''}")
+                  f"bound ${micro_to_usd(int(r[4])):.6f} [{basis}]  {r[5] or ''}")
         if not rows:
             print("  (none)")
         return 0
@@ -88,12 +101,44 @@ def cmd_list(db: Database) -> int:
         conn.close()
 
 
+def cmd_census(db: Database) -> int:
+    """READ-ONLY (D-28, ADR-070). Exit 0 with no violations, 2 otherwise."""
+    report = envelope_census(db)
+    print("D-28 ENVELOPE-BOUND CENSUS (read-only; ADR-070)")
+    print(f"  rule: billed input tokens <= min(context window, request "
+          f"UTF-8 bytes + framing margin {report['framing_margin_tokens']})")
+    print(f"  framing margin status: {report['framing_margin_status']}")
+    print(f"  settled text calls checked: {report['text_calls']}; vision "
+          f"calls skipped (window ceiling): {report['vision_skipped']}")
+    for key in sorted(report["per_model"]):
+        st = report["per_model"][key]
+        print(f"  {key}: calls {st['calls']} (pre-D-28 rows "
+              f"{st['pre_d28_rows']}); worst billed tokens per prompt byte "
+              f"{st['worst_tokens_per_prompt_byte']:.4f} "
+              f"(call {st['worst_tokens_per_prompt_byte_call']}); smallest "
+              f"headroom under the bound {st['worst_headroom_tokens']} tokens "
+              f"(call {st['worst_headroom_call']}); violations "
+              f"{st['violations']}")
+    if not report["per_model"]:
+        print("  (no settled text calls in this database)")
+    print(f"  violations: {len(report['violations'])}")
+    for v in report["violations"]:
+        print(f"    VIOLATION {v['ai_call_id']} {v['provider']}/{v['model']} "
+              f"{v['ts']} billed {v['billed_input_tokens']} > bound "
+              f"{v['input_tokens_bound']} [{v['basis']}]")
+    return 2 if report["violations"] else 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="Audited resolution of spend locks/scopes/holds (ADR-061)."
     )
+    ap.add_argument("--db", default=None,
+                    help="database file (default: the platform's data/"
+                         "luxuryform.db)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list", help="show everything that needs a decision")
+    sub.add_parser("census", help="READ-ONLY D-28 bound census over history")
 
     p = sub.add_parser("resolve-lock", help="resolve one ACTIVE safety lock")
     p.add_argument("lock_id")
@@ -114,10 +159,12 @@ def main() -> int:
     p.add_argument("--reason", required=True)
 
     args = ap.parse_args()
-    db = _db()
+    db = _db(args.db)
 
     if args.cmd == "list":
         return cmd_list(db)
+    if args.cmd == "census":
+        return cmd_census(db)
     try:
         if args.cmd == "resolve-lock":
             resolve_safety_lock(db, args.lock_id, args.reason)

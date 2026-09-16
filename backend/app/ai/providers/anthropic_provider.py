@@ -3,6 +3,15 @@
 Text and vision both go through client.messages.create; vision attaches the
 image as a base64 image block. Token counts are read from response.usage —
 real numbers from the API, never estimates.
+
+D-28 (ADR-070): the request is built as a plain dict (`_build_*_request`)
+and sent unchanged (`_send`); call_log prices the reservation from that
+same dict. `max_tokens` is "the absolute maximum number of tokens to
+generate" (platform.claude.com/docs/en/api/messages, fetched 2026-09-14)
+— the output ceiling the bound relies on. Anthropic also states "You are
+not billed for system-added tokens. Billing reflects only your content"
+(token-counting guide, fetched 2026-09-14), so no framing is billed on
+top of the content bytes.
 """
 
 from __future__ import annotations
@@ -85,9 +94,9 @@ class AnthropicProvider(AIProvider):
             "reason": f"missing API key (set {self.env_var} in .env)",
         }
 
-    def _raw_complete(
+    def _build_text_request(
         self, prompt: str, model: str, max_tokens: int, temperature: float | None
-    ) -> RawResult:
+    ) -> dict:
         kwargs: dict = dict(
             model=model,
             max_tokens=max_tokens,
@@ -95,30 +104,18 @@ class AnthropicProvider(AIProvider):
         )
         if temperature is not None:  # None = omit the parameter entirely
             kwargs["temperature"] = temperature
-        resp = self._client.messages.create(**kwargs)
-        text = "".join(
-            block.text for block in resp.content
-            if getattr(block, "type", None) == "text"
-        )
-        cache_read, cache_write = _cache_fields(resp.usage)
-        return RawResult(
-            text=text,
-            tokens_in=resp.usage.input_tokens,
-            tokens_out=resp.usage.output_tokens,
-            cached_input_tokens=cache_read,
-            cache_write_input_tokens=cache_write,
-        )
+        return kwargs
 
-    def _raw_vision(
+    def _build_vision_request(
         self, prompt: str, image_path: Path, model: str, max_tokens: int
-    ) -> RawResult:
+    ) -> dict:
         media_type = _MEDIA_TYPES.get(image_path.suffix.lower())
         if media_type is None:
             raise ValueError(
                 f"unsupported image type {image_path.suffix!r} for vision call"
             )
         b64 = base64.b64encode(image_path.read_bytes()).decode("ascii")
-        resp = self._client.messages.create(
+        return dict(
             model=model,
             max_tokens=max_tokens,
             messages=[
@@ -138,6 +135,9 @@ class AnthropicProvider(AIProvider):
                 }
             ],
         )
+
+    def _send(self, request: dict, *, kind: str) -> RawResult:
+        resp = self._client.messages.create(**request)
         text = "".join(
             block.text for block in resp.content
             if getattr(block, "type", None) == "text"

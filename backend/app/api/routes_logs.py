@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Query
 from sqlalchemy import select
 
-from app.core.budget import BudgetEnforcer
+from app.core.budget import BudgetEnforcer, bound_basis_for_display
 from app.core.config import load_config_bundle
 from app.db.database import get_default_db
 from app.db.models import AICallRow, BudgetEventRow, SessionRow
@@ -116,6 +116,8 @@ def budget_status() -> dict:
                 "status": r.status,
                 "reserved_usd": r.reserved_usd_micro / 1_000_000,
                 "note": r.note,
+                # D-28 (ADR-070): why the hold is the size it is.
+                "bound_basis": bound_basis_for_display(r.bound_basis),
             }
             for r in open_holds
         ],
@@ -147,6 +149,7 @@ def budget_status() -> dict:
                 "reconciled_usd": (r.settled_usd_micro or 0) / 1_000_000,
                 "ai_call_id": r.ai_call_id,
                 "note": r.note,
+                "bound_basis": bound_basis_for_display(r.bound_basis),
             }
             for r in reconciled
         ],

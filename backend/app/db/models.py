@@ -92,12 +92,15 @@ class SpendReservationRow(Base):
     settled_at: Mapped[str | None] = mapped_column(Text, nullable=True)
     ai_call_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # D-28 (ADR-070): JSON basis of reserved_usd_micro; NULL = pre-D-28.
+    bound_basis: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class SpendSafetyLockRow(Base):
     """A persisted spend safety lock (PR-2, ADR-061): bound_exceeded /
-    pricing_failure / ledger_mismatch. provider NULL = GLOBAL. Active locks
-    refuse every matching paid dispatch until audited operator resolution."""
+    pricing_failure / ledger_mismatch / ceiling_violated (D-28, ADR-070).
+    provider NULL = GLOBAL. Active locks refuse every matching paid
+    dispatch until audited operator resolution."""
 
     __tablename__ = "spend_safety_locks"
 

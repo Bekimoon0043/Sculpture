@@ -41,7 +41,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
-from app.ai.call_log import reserve_bound_usd_micro  # noqa: E402
+from app.ai.call_log import envelope_bound_usd_micro  # noqa: E402
 from app.core.budget import BudgetEnforcer, BudgetHalt  # noqa: E402
 from app.core.config import get_settings, load_config_bundle  # noqa: E402
 from app.db.database import Database  # noqa: E402
@@ -67,12 +67,16 @@ def main() -> int:
         scope_kind="verify",
     )
 
-    def metered(provider_name: str, model: str, max_tokens: int, fn):
-        """Reserve -> raw call -> settle/record, through the real ledger."""
-        bound = reserve_bound_usd_micro(bundle.pricing, provider_name, model,
-                                        max_tokens)
+    def metered(provider_name: str, model: str, max_tokens: int,
+                request: dict, fn):
+        """Reserve -> raw call -> settle/record, through the real ledger.
+
+        D-28 (ADR-070): the bound is priced from ``request`` — the exact
+        keyword dict the raw call below sends — never from the window."""
+        bound, basis = envelope_bound_usd_micro(
+            bundle.pricing, provider_name, model, "text", request, max_tokens)
         rid = budget.reserve(bound, provider=provider_name, model=model,
-                             kind="text", attempt_no=1)
+                             kind="text", attempt_no=1, bound_basis=basis)
         ts = datetime.now(timezone.utc).isoformat()
         t0 = time.perf_counter()
         try:
@@ -144,19 +148,21 @@ def main() -> int:
 
     # --- 2/3. minimal text calls, raw shape dump (metered via the ledger) --
     def dump_kimi() -> None:
+        request = dict(
+            model="kimi-k3",
+            max_completion_tokens=32,
+            messages=[{"role": "user", "content": "Reply with exactly: OK"}],
+        )
+
         def raw() -> dict:
             base = bundle.council.endpoints.get("kimi") or "https://api.moonshot.ai/v1"
             client = openai.OpenAI(
                 api_key=settings.moonshot_api_key, base_url=base, timeout=60.0
             )
-            resp = client.chat.completions.create(
-                model="kimi-k3",
-                max_completion_tokens=32,
-                messages=[{"role": "user", "content": "Reply with exactly: OK"}],
-            )
+            resp = client.chat.completions.create(**request)
             return resp.model_dump()
 
-        dump = metered("kimi", "kimi-k3", 32, raw)
+        dump = metered("kimi", "kimi-k3", 32, request, raw)
         report["text_calls"]["kimi"] = dump
         choice0 = dump["choices"][0]
         print("[kimi] text call shape: top-level keys =", sorted(dump))
@@ -165,32 +171,36 @@ def main() -> int:
         print("[kimi] content[:60] =", repr((choice0["message"].get("content") or "")[:60]))
 
     def dump_openai() -> None:
+        request = dict(
+            model="gpt-4o",
+            max_completion_tokens=32,
+            messages=[{"role": "user", "content": "Reply with exactly: OK"}],
+        )
+
         def raw() -> dict:
             client = openai.OpenAI(api_key=settings.openai_api_key, timeout=60.0)
-            resp = client.chat.completions.create(
-                model="gpt-4o",
-                max_completion_tokens=32,
-                messages=[{"role": "user", "content": "Reply with exactly: OK"}],
-            )
+            resp = client.chat.completions.create(**request)
             return resp.model_dump()
 
-        dump = metered("openai", "gpt-4o", 32, raw)
+        dump = metered("openai", "gpt-4o", 32, request, raw)
         report["text_calls"]["openai"] = dump
         print("[openai] choices[0].message keys =", sorted(dump["choices"][0]["message"]))
         print("[openai] usage keys =", sorted(dump.get("usage") or {}))
 
     def dump_anthropic() -> None:
+        request = dict(
+            model="claude-sonnet-4-5",
+            max_tokens=32,
+            messages=[{"role": "user", "content": "Reply with exactly: OK"}],
+        )
+
         def raw() -> dict:
             client = anthropic.Anthropic(api_key=settings.anthropic_api_key,
                                          timeout=60.0)
-            resp = client.messages.create(
-                model="claude-sonnet-4-5",
-                max_tokens=32,
-                messages=[{"role": "user", "content": "Reply with exactly: OK"}],
-            )
+            resp = client.messages.create(**request)
             return resp.model_dump()
 
-        dump = metered("anthropic", "claude-sonnet-4-5", 32, raw)
+        dump = metered("anthropic", "claude-sonnet-4-5", 32, request, raw)
         report["text_calls"]["anthropic"] = dump
         print("[anthropic] content block types =",
               [b.get("type") for b in dump["content"]])

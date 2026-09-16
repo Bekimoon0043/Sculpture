@@ -9,11 +9,27 @@ logging. There is no code path that talks to a provider unlogged.
 
 from __future__ import annotations
 
+import json
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+
+def request_envelope_bytes(request: dict) -> int:
+    """UTF-8 byte length of the serialized request envelope (D-28, ADR-070).
+
+    ``request`` is the EXACT keyword dict handed to the SDK's create call
+    (model, max tokens, messages, temperature ...). It is serialized with
+    ``ensure_ascii=False`` so multibyte characters count their real UTF-8
+    bytes — the bytes a tokenizer sees — and with compact separators, so
+    this is the MINIMUM wire size (an SDK escaping non-ASCII as ``\\uXXXX``
+    only sends more). Anything non-serializable raises: a bound is never
+    computed on a guess of the request.
+    """
+    return len(json.dumps(request, ensure_ascii=False, sort_keys=True,
+                          separators=(",", ":")).encode("utf-8"))
 
 
 #: Cache-break sentinel (ADR-024). Prompt builders place everything static
@@ -184,20 +200,48 @@ class AIProvider(ABC):
     def health(self) -> dict:
         """{configured: bool, reason: str} — never includes key material."""
 
-    # -- implemented by concrete providers: the real SDK call -----------------
+    # -- implemented by concrete providers: build the request, send it -------
+    #
+    # D-28 (ADR-070): the request is BUILT as a plain dict first, priced by
+    # call_log from that exact dict (the reservation bound), then SENT — the
+    # same object, so the priced envelope is the sent envelope by
+    # construction.
 
     @abstractmethod
-    def _raw_complete(
+    def _build_text_request(
         self, prompt: str, model: str, max_tokens: int, temperature: float | None
-    ) -> RawResult:
-        """One real text API call via the official SDK.
+    ) -> dict:
+        """The exact keyword dict for one text call via the official SDK.
 
         ``temperature=None`` means OMIT the parameter from the request —
         never substitute a number for a model that fixes its temperature.
         """
 
     @abstractmethod
+    def _build_vision_request(
+        self, prompt: str, image_path: Path, model: str, max_tokens: int
+    ) -> dict:
+        """The exact keyword dict for one vision call via the official SDK."""
+
+    @abstractmethod
+    def _send(self, request: dict, *, kind: str) -> RawResult:
+        """Hand ``request`` to the SDK's create call (``**request``) and
+        normalise the usage into a RawResult. ``kind`` is text | vision."""
+
+    # -- convenience wrappers (build + send), kept for callers and tests ------
+
+    def _raw_complete(
+        self, prompt: str, model: str, max_tokens: int, temperature: float | None
+    ) -> RawResult:
+        return self._send(
+            self._build_text_request(prompt, model, max_tokens, temperature),
+            kind="text",
+        )
+
     def _raw_vision(
         self, prompt: str, image_path: Path, model: str, max_tokens: int
     ) -> RawResult:
-        """One real vision API call via the official SDK."""
+        return self._send(
+            self._build_vision_request(prompt, image_path, model, max_tokens),
+            kind="vision",
+        )

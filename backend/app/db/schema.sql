@@ -294,7 +294,12 @@ CREATE TABLE IF NOT EXISTS spend_reservations (
     settled_at      TEXT,                    -- UTC ISO-8601 of the terminal classification
     ai_call_id      TEXT REFERENCES ai_calls(id),  -- exact-id correlation; NULL only for
                                              -- recovery-classified died-mid-flight holds
-    note            TEXT                     -- uncertainty/recovery/reconciliation reason
+    note            TEXT,                    -- uncertainty/recovery/reconciliation reason
+    bound_basis     TEXT                     -- D-28 (ADR-070): JSON record of the arithmetic
+                                             -- behind reserved_usd_micro (formula, envelope
+                                             -- bytes, 256-token framing margin, token bound,
+                                             -- ceiling, max_tokens, rates). NULL = a
+                                             -- pre-D-28 hold at the ADR-061 window ceiling.
 );
 
 CREATE TABLE IF NOT EXISTS spend_safety_locks (
@@ -303,6 +308,9 @@ CREATE TABLE IF NOT EXISTS spend_safety_locks (
     provider        TEXT,                    -- NULL = GLOBAL lock (all paid dispatch refuses)
     model           TEXT,                    -- NULL = every model of the provider
     reason          TEXT NOT NULL,           -- bound_exceeded | pricing_failure | ledger_mismatch
+                                             -- | ceiling_violated (D-28, ADR-070: billed tokens
+                                             --   above the recorded token bound / max_tokens,
+                                             --   or the startup census finds one in history)
     detail          TEXT NOT NULL,           -- JSON evidence (amounts, reservation/call ids)
     status          TEXT NOT NULL,           -- active | resolved
     resolved_at     TEXT,                    -- UTC ISO-8601
