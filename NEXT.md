@@ -5,7 +5,26 @@ the start of every session (`/lf-orient`) and rewritten at the end of every
 slice (`/lf-close`). If this file and a phase plan disagree, this file is
 stale and must be corrected in the same commit as the work.
 
-Last updated: 2026-09-15 — **D-28 SLICE CLOSED (ADR-070): the
+Last updated: 2026-09-16 — **MS-A1 CLOSED (ADR-071): `perforated_screen`,
+the first mesh-class (perforated-skin) primitive — registry 11 → 12.**
+Flat or single-curved 316L sheet with a deterministic circle/hex
+through-hole grid; ONE fused-compound boolean subtract; full FF-A1
+integrity stack; COMPLETE mass; two-process STEP determinism pinned
+(748-hole fixture; 1421-hole realistic panel builds in 17.8 s vs the
+120 s sandbox timeout); assembly-proven (plinth + stack_on; basalt seat
+refused honestly); export class PRE_FABRICATION with the honest
+rate-incomplete BOM. **NOT claimed: this is NOT an open wire lattice —
+B-11b stays OPEN and release-blocking until the owner supplies a real
+mesh/lattice reference.** New roster script 30 `gate_msa1_auto.py`
+(54/54); FF-A2/PR-5/FF-A1/FF-A3 re-run PASS; the exact-set census moved
+in gate_ffa2 §1 with a D-10-frozen reason; the FF-A2/FF-A3 jpg checks
+now fail on TRACKED jpgs only (host-honesty fix, security property
+preserved). Environment caveat unchanged: host Docker engine down —
+definitive in-container chain DEFERRED (recorded in ADR-071); host
+chain is the standing evidence, NOT claimed as definitive.
+Owner-delegated slice (ruling 2026-09-15: "approve and build everything
+yourself"), $0, no live calls. Before that:
+**D-28 SLICE CLOSED (ADR-070): the
 reservation bound is the REAL serialized request envelope
 (`min(context_window, utf8_bytes(request) + 256 framing margin)` × rates,
 ceiling µUSD), never the whole context window — text requests only;
@@ -175,6 +194,8 @@ workflow controls, folded into PR-7B) ruled 2026-08-28.
 | **PR-5 — AI contract and document repair (one story about lifting)** | **CLOSED 2026-09-08; visual signed 2026-09-08 (all six steps YES; real design `621d7497…` reads heaviest of 9 modules, 1,472.19 kg vs 11,346.1 kg)** | ADR-068; risk-based definitive chain on `753490ced0af`: 26 files host==container, 132 focused + `gate_pr5_auto` 49/49, suite **720 passed** worker-removed (PR-4's 707 two-state evidence retained as the unchanged baseline), all 28 roster gates green (25 hermetic worker-removed, 9B worker-up, PR-3 static+live, 4 host gates); scorer's silent 1,000 kg default removed; D-10 sweep is now a roster check |
 
 | **FF-A3 — a typed brief can ask for the ref-08 loop** | **CLOSED 2026-09-14 with the binding status "typed-brief/Council contract implemented and fixture-gated; live end-to-end selection blocked by D-28 and not claimed"; visual Steps 1–5 YES, Step 6 NOT ACHIEVED (never PASS)** | ADR-069; risk-based chain on `772e352a34ea`: 20/20 host==image, suite **737** worker-removed, **25/25** in-container gates incl. `gate_ffa3_auto` **55/55**, PR-3 static, 4 host gates; **`gate_phase9b_auto` FAILED TWICE — preserved as FAIL, accepted as unrelated infra debt D-29; NOT "all gates green"**; live Step 6 halted at the second call (kimi connection error → UNCERTAIN $3.268608 → retry refused by the $5 run cap), 0 specs, 0 decisions, $0.007725 spent |
+| **D-28 SLICE — honest reservation bound** | **CLOSED 2026-09-15** | ADR-070; 61 targeted tests + full suite green on host 3.12 venv (container engine down — in-container chain DEFERRED, recorded); `gate_pr2_auto` PASS |
+| **MS-A1 — `perforated_screen`, the first mesh-class (perforated-skin) primitive** | **CLOSED 2026-09-16 (owner-delegated slice); NOT an open lattice — B-11b stays OPEN** | ADR-071; `gate_msa1_auto` 54/54 (roster script 30); FF-A2/PR-5/FF-A1/FF-A3 re-run PASS on host venv; targeted pytest 119 passed; definitive container chain DEFERRED with the engine |
 
 **Suite and roster state:** after PR-2 the pytest suite (475) passed
 with the render worker UP and with it removed — both runs recorded

@@ -127,6 +127,32 @@ _ALIASES: dict[str, dict[str, str]] = {
         "bore_diameter": "bore_diameter_mm",
         "min_clearance": "min_clearance_mm",
     },
+    # MS-A1 (mesh-class slice A): the perforated 316L sheet screen.
+    # arc_width_mm is the DEVELOPED (flat-pattern) width — every spec-level
+    # width name maps to it. Ratios/counts: none — this primitive's grid is
+    # stated entirely in millimetres, so every {value, unit} object is a
+    # dimension and maps per the FF-A3 rules.
+    "perforated_screen": {
+        "height": "height_mm",
+        "arc_width": "arc_width_mm",
+        "width": "arc_width_mm",
+        "developed_width": "arc_width_mm",
+        "developed_length": "arc_width_mm",
+        "sheet_thickness": "sheet_thickness_mm",
+        "thickness": "sheet_thickness_mm",
+        "wall": "sheet_thickness_mm",
+        "wall_thickness": "sheet_thickness_mm",
+        "curvature_radius": "curvature_radius_mm",
+        "radius": "curvature_radius_mm",
+        "bend_radius": "curvature_radius_mm",
+        "hole_shape": "hole_shape",
+        "hole_pitch": "hole_pitch_mm",
+        "pitch": "hole_pitch_mm",
+        "hole_size": "hole_size_mm",
+        "hole_diameter": "hole_size_mm",
+        "edge_margin": "edge_margin_mm",
+        "margin": "edge_margin_mm",
+    },
     # FF-A3 (ADR-069): the ref-08 hollow lens. Every registry key is
     # reachable by at least one spec-level name (gate_ffa3 proves it from
     # the registry, never from this table). Ratio/fraction targets take a

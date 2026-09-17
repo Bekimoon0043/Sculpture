@@ -1002,7 +1002,13 @@ the changed acceptance gate. What remains missing, honestly:
   wire lattice, perforated skin or cellular structure, and the import
   probe's generated blob deliberately does not stand in for one.
   Nothing mesh/lattice is specified, promised or scored until the owner
-  supplies a real reference.
+  supplies a real reference. **Update 2026-09-16 (MS-A1, ADR-071): the
+  PERFORATED-SKIN class is now built and gated — `perforated_screen`
+  (316L only, flat or single-curved, circle/hex through-hole grid) is
+  a real, deterministic, integrity-gated primitive. B-11b stays OPEN
+  for the OPEN-LATTICE class (wire cages, cellular structures): the
+  owner reference is still required before that class is specified —
+  procedural meshes still have no boolean machinery (PR-2.5 probes).**
 - **GRC fabrication data is entirely FABRICATOR-INPUT-REQUIRED** —
   density, minimum shell thickness, reinforcement, panel size,
   connection details, mold limits. `config/materials.yaml` carries no

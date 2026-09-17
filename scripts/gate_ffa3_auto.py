@@ -300,7 +300,7 @@ def designer_boundary(pricing, council_cfg) -> None:
     good = copy.deepcopy(base)
     good["meta"]["spec_id"] = "0f0f0f0f-ffa3-4000-8000-00000000900d"
 
-    with tempfile.TemporaryDirectory() as td:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
         db = Database(Path(td) / "boundary.db")
         db.init_db()
 
@@ -518,7 +518,7 @@ fx = json.loads(Path(%r).read_text(encoding="utf-8"))
 payload = {k: v for k, v in fx.items() if not k.startswith("_")}
 solid, manifest = assemble(payload["elements"], seed=payload["seed"],
                            fabrication=payload["fabrication"], strict=True)
-with tempfile.TemporaryDirectory() as td:
+with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
     sha = export_step(solid, Path(td) / "ffa2.step",
                       step_timestamp_for(int(payload["seed"])))
 print(json.dumps({"pid": os.getpid(), "sha256": sha}))
@@ -634,8 +634,27 @@ def hermeticity_after(before: tuple) -> None:
         bad = [t for t in forbidden if t in code]
         ok("9", "%s provider-free" % path.name, not bad, ", ".join(bad))
     jpgs = list((REPO / "briefs").rglob("*.jpg")) if (REPO / "briefs").exists() else []
-    ok("9", "no reference JPG in this tree (operator-local only)", not jpgs,
-       "%d found" % len(jpgs))
+    # B-11 owner amendment 1 (2026-09-02, ADR-064): the reference set IS
+    # operator-local by policy — gitignored and dockerignored with a
+    # committed manifest. The security property is that none of it is
+    # TRACKED: a committed reference JPG would ship in the image. So the
+    # check fails on tracked files only (in the container the gitignored
+    # set is absent and this passes vacuously).
+    import shutil
+    tracked = []
+    if shutil.which("git") is None:
+        tracked = jpgs  # cannot prove uncommitted — fail closed
+    else:
+        for j in jpgs:
+            rel = j.relative_to(REPO).as_posix()
+            proc = subprocess.run(
+                ["git", "ls-files", "--error-unmatch", "--", rel],
+                cwd=REPO, capture_output=True)
+            if proc.returncode == 0:
+                tracked.append(j)
+    ok("9", "no TRACKED reference JPG (operator-local set stays "
+            "uncommitted)",
+       not tracked, "%d present, %d tracked" % (len(jpgs), len(tracked)))
 
 
 def main() -> int:
@@ -660,7 +679,10 @@ def main() -> int:
 
     old_db = os.environ.get("LUXURYFORM_DB")
     old_data = os.environ.get("LUXURYFORM_DATA_DIR")
-    with tempfile.TemporaryDirectory() as td:
+    # ignore_cleanup_errors: on Windows a SQLite connection from the API
+    # run can outlive the reset and hold the throwaway DB open for a
+    # moment; the directory is %TEMP% garbage either way.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
         os.environ["LUXURYFORM_DB"] = str(Path(td) / "gate_ffa3.db")
         os.environ["LUXURYFORM_DATA_DIR"] = str(Path(td) / "data")
         try:

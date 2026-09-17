@@ -101,17 +101,23 @@ def registry_and_parameters() -> None:
     from app.geometry.mass_model import LEGACY_COMPLETE_MASS_PRIMITIVES
     from app.geometry.primitives import PRIMITIVES, freeform_loop as fl
 
-    expected_eleven = {
+    # D-10-frozen: the registry's exact set lives in exactly
+    # ONE roster gate, so widening the library fails exactly one check by
+    # design; the slice that adds a primitive moves this set with its ADR.
+    # MS-A1 (mesh-class slice A, 2026-09-16) widened the
+    # library to twelve with perforated_screen and moved the set here.
+    expected_twelve = {
         "tiered_cascade", "basin_round", "plinth", "sculptural_column",
         "basin_rect", "stepped_monolith", "water_wall", "torus_ring",
         "blade_fin_array", "lotus_petal_array", "freeform_loop",
+        "perforated_screen",
     }
     print("  registered: %s" % ", ".join(sorted(PRIMITIVES)))
-    # D-10-frozen: ADR-066 ruling — the registry's exact set lives in exactly
-    # ONE roster gate, so widening the library fails exactly one check by
-    # design; the slice that adds a primitive moves this set with its ADR.
-    ok("1", "registry is exactly the eleven (exact set lives HERE)",
-       set(PRIMITIVES) == expected_eleven)
+    # D-10-frozen: the twelve-id exact set above is this gate's roster
+    # contract — MS-A1 (ADR-071) widened the library 11 -> 12 and moved
+    # the set here; the next widening slice moves it with its own ADR.
+    ok("1", "registry is exactly the twelve (exact set lives HERE)",
+       set(PRIMITIVES) == expected_twelve)
     # D-10-frozen: ADR-065 byte-compat seam — the legacy complete-mass set
     # names the primitives whose manifests predate the mass model; it is
     # frozen forever and can never grow, so its count is a permanent truth.
@@ -321,7 +327,10 @@ def fidelity(solid) -> None:
 def end_to_end() -> None:
     section("6 end-to-end mass/export truth (throwaway DB)")
     import importlib
-    with tempfile.TemporaryDirectory() as td:
+    # ignore_cleanup_errors: on Windows a SQLite connection from the API
+    # run can outlive the reset and hold the throwaway DB open for a
+    # moment; the directory is %TEMP% garbage either way.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
         old_db = os.environ.get("LUXURYFORM_DB")
         old_data = os.environ.get("LUXURYFORM_DATA_DIR")
         os.environ["LUXURYFORM_DB"] = str(Path(td) / "gate_ffa2.db")
@@ -527,8 +536,27 @@ def hermeticity(before: tuple) -> None:
            ", ".join(bad))
     jpgs = list((REPO / "briefs").rglob("*.jpg")) if \
         (REPO / "briefs").exists() else []
-    ok("8", "no reference JPG in this tree (operator-local only)",
-       not jpgs, "%d found" % len(jpgs))
+    # B-11 owner amendment 1 (2026-09-02, ADR-064): the reference set IS
+    # operator-local by policy — gitignored and dockerignored with a
+    # committed manifest. The security property is that none of it is
+    # TRACKED: a committed reference JPG would ship in the image. So the
+    # check fails on tracked files only (in the container the gitignored
+    # set is absent and this passes vacuously).
+    import shutil
+    tracked = []
+    if shutil.which("git") is None:
+        tracked = jpgs  # cannot prove uncommitted — fail closed
+    else:
+        for j in jpgs:
+            rel = j.relative_to(REPO).as_posix()
+            proc = subprocess.run(
+                ["git", "ls-files", "--error-unmatch", "--", rel],
+                cwd=REPO, capture_output=True)
+            if proc.returncode == 0:
+                tracked.append(j)
+    ok("8", "no TRACKED reference JPG (operator-local set stays "
+            "uncommitted)",
+       not tracked, "%d present, %d tracked" % (len(jpgs), len(tracked)))
 
 
 def main() -> int:

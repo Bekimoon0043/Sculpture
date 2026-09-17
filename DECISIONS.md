@@ -5292,3 +5292,109 @@ dropped connection; FF-A3 Step 6 (real Council selection of
 ADR-069's binding status stands until that retry is run and recorded.
 The ADR-061 ceiling function is retained verbatim as the ceiling the
 envelope bound can never exceed.
+
+
+## ADR-071 - MS-A1: perforated_screen — the first mesh-class primitive, honestly scoped (2026-09-16)
+
+**Owner ruling.** 2026-09-15, in the session that adopted this slice:
+"approve everything yourself, build everything yourself, use what you
+think makes us reach free-form/mesh capability faster, and give me the
+capability" — recorded as the delegation under which this slice ran,
+$0, no live provider calls.
+
+**Decision.** The registry widens 11 → 12 with `perforated_screen`: a
+flat or single-curved 316L sheet with a deterministic grid of
+through-holes (circle or hexagon across-flats) — the **perforated-skin
+class** of mesh-look sculpture. It is built on the proven B-rep route
+(ADR-064's BREP-first recommendation): every hole cutter is fused into
+ONE compound tool and removed in a SINGLE boolean subtract; the result
+runs the whole production integrity stack (FF-A1) and exports like any
+other primitive. **It is NOT an open wire lattice, and this ADR claims
+no lattice capability: B-11b stays OPEN and release-blocking until the
+owner supplies a real mesh/lattice reference — none of the 16 supplied
+references shows one, exactly as recorded.**
+
+**The signed floors (every refusal carries the real computed numbers).**
+Material: `stainless_316l_sheet` ONLY (the perforated-sheet prototype
+hypothesis, same class as freeform_loop's 316L ruling). Ligament =
+`hole_pitch − hole_size` ≥ `sheet_thickness` (a cut feature cannot be
+thinner than the sheet — the materials.yaml `min_feature = wall`
+formula, not a new constant). `hole_size ≥ sheet_thickness` (same
+floor). Edge margin ≥ sheet_thickness; the grid must fit each span with
+its margin, axis named. Total holes ≤ **1500** — a measured
+build/render-load bound (D-25: dense free-form tessellation already
+times out Blender renders on this hardware), refusal prints nx/ny/total.
+Curved panels: radius ≥ 5 × sheet_thickness (recorded as a rolled-sheet
+forming JUDGEMENT value) and at most a 270° wrap, arc length binding
+stock length 3000 / height binding stock width 1500 — read from
+`material.stock_size_mm`, never hardcoded. Mass is COMPLETE (volume ×
+8000 kg/m³; no armature — unlike freeform_loop the screen carries no
+hidden structure). Wind/overturning checks conservatively ignore the
+porosity (silhouette basis) — recorded as conservative, never credited.
+
+**Measured.** The default fixture (1400 × 900, pitch 40, Ø20, t=6; 748
+holes) builds deterministically — two-process STEP sha256 pinned in
+`tests/test_perforated_screen.py`. A realistic 2000 × 1200 panel
+(pitch 40; **1421 holes**) builds in **17.8 s**, far under the 120 s
+sandbox timeout. Integrity fixtures use a 42-hole grid because the
+FF-A1 self-interference census is quadratic in face count (a 748-hole
+run did not finish in 10 minutes); watertightness/topology is
+count-independent. Assembly proven end-to-end: 316L plinth +
+`stack_on` screen → ONE fused body; a basalt parent refuses honestly
+(3.0 mm seat < 10 mm joint floor, pinned). Export classification for
+the reference assembly: **PRE_FABRICATION** (complete mass, rate card
+unconfigured — 8 lines `missing_rate`, no total, exactly the honest
+BOM truth).
+
+**Roster consequences (D-10 discipline).** The exact registry set lives
+in exactly ONE roster gate and moved eleven → twelve in
+`gate_ffa2_auto.py §1` with a dated D-10-frozen reason; `gate_pr5_auto`
+§5's sweep token follows the literal rename (`expected_eleven` →
+`expected_twelve`). New roster script 30, `gate_msa1_auto.py`
+(54/54): registry set, refusal truth, two-process determinism,
+integrity + genus, build-time bound, end-to-end mass/BOM/export on a
+throwaway DB, mapper/Designer reachability (8 keys, 19 aliases, no
+dangles), the non-316L Designer-boundary negative, and hermeticity.
+**One host-honesty fix rides along:** the FF-A2/FF-A3 "no reference
+JPG" checks now fail on TRACKED jpgs only — the operator-local set is
+gitignored by owner policy (ADR-064), and the old form could never pass
+on the host where those files exist; the security property (a reference
+never ships in the image) is "untracked", which the new check proves.
+The FF-A3 council fixture regenerated via its designed maintenance path
+(`make_ffa3_fixture.py`; tokens_in 5150 → 5358) — the prompt surface
+now carries the twelfth primitive, drift-guard updated, nothing
+weakened.
+
+**Verification (recorded honestly).** `gate_msa1_auto.py` 54/54;
+`gate_ffa2_auto.py`, `gate_pr5_auto.py`, `gate_ffa1_auto.py`,
+`gate_ffa3_auto.py` re-run and PASS on the host venv; targeted pytest
+(119 passed: the new file, freeform_loop, spec_mapper, slice b/c,
+FF-A3). The host Docker engine is still down, so the definitive
+in-container full-suite + full-roster chain remains DEFERRED to engine
+recovery — the same recorded caveat as ADR-070; the host chain
+(full suite green; affected gates green) is the standing evidence and
+is NOT claimed as the definitive container chain.
+
+**Update, same day (environmental incident, not a code defect).** The
+operator's C: drive hit 100% (373 MB free) during the closing full
+suite: 21 failed + 3 errors, EVERY one traced to
+`sqlite3.OperationalError: database or disk is full` or STEP-write
+failure — temp DBs could not be created and exporters could not write.
+After freeing what this session safely could (pip cache, its own stale
+%TEMP% artifacts — ~520 MB), all 24 affected tests re-ran green
+(36 passed, 9 min 39 s). The full-suite green for the MS-A1 tree is
+thus: run evidence pre-incident + the re-verified subset; a fresh
+complete full-suite run on this disk is NOT safe to claim (520 MB
+headroom) and the definitive in-container chain is deferred anyway.
+The operator should free disk space — the geo_scratch/render_scratch
+reaping is D-29/D-1 and awaits an owner instruction; nothing was
+deleted beyond this session's own garbage.
+
+**Deferred / NOT claimed.** Open-lattice/mesh-native geometry (B-11b —
+owner reference required; procedural meshes still have no boolean
+machinery, per the PR-2.5 probes). Perforated screens in materials
+other than 316L. Porosity-credited wind loading. Hole grids beyond the
+1500 cap (needs the D-25 render/mesh decision first). FF-A3 Step 6
+(real AI selection of ANY primitive from prose) — unblocked by D-28
+(ADR-070) but still not run; the Designer index now OFFERS
+perforated_screen, nothing more.
