@@ -2,7 +2,9 @@
 
 The first mesh-class primitive: a flat or single-curved perforated 316L
 sheet screen (perforated-skin class, not an open wire lattice). What this
-file proves: exact twelfth registration (owner-ordered for MS-A1); 316L-only
+file proves: exact-set registry membership (twelfth at MS-A1, thirteenth
+after SC-A1 added crescent_ring — the roster duplicate moves with any
+widening); 316L-only
 refusals by name; every signed floor binds with real numbers in the message
 (ligament = min_feature=wall, hole size, margin, grid fit, the 1500-hole
 build cap, curvature floors, stock sheet); flat AND curved panels build ONE
@@ -93,21 +95,22 @@ def curved_solid():
 # registry
 # ---------------------------------------------------------------------------
 
-#: The exact twelve (owner-ordered for MS-A1 — the roster gate, per the
+#: The exact thirteen (owner-ordered for SC-A1 — the roster gate, per the
 #: D-10 convention, is gate_ffa2_auto; this duplicate is deliberate for
-#: the slice's contract test and moves with any future widening).
-EXPECTED_TWELVE = {
+#: the slice's contract test and moves with any future widening). MS-A1
+#: registered the twelfth (perforated_screen); SC-A1 added crescent_ring.
+EXPECTED_THIRTEEN = {
     "tiered_cascade", "basin_round", "plinth", "sculptural_column",
     "basin_rect", "stepped_monolith", "water_wall", "torus_ring",
     "blade_fin_array", "lotus_petal_array", "freeform_loop",
-    "perforated_screen",
+    "perforated_screen", "crescent_ring",
 }
 
 
 class TestRegistry:
-    def test_registered_as_the_twelfth(self):
+    def test_registered_as_the_thirteenth(self):
         assert "perforated_screen" in PRIMITIVES
-        assert set(PRIMITIVES) == EXPECTED_TWELVE
+        assert set(PRIMITIVES) == EXPECTED_THIRTEEN
 
     def test_declarations(self):
         assert perforated_screen.SUPPORTED_MATERIAL == "stainless_316l_sheet"

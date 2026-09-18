@@ -965,6 +965,12 @@ the changed acceptance gate. What remains missing, honestly:
   collapsed or split cavity corridor) and were replaced by sets that
   build — every refusal is loud and deterministic, never a corrupt
   solid, and the refused sets are recorded in ADR-069;**
+  **Update 2026-09-16 (SC-A1, ADR-072): the crescent-moon class IS now
+  built — `crescent_ring` (13th primitive, new `stainless_316l_cast`
+  material) reproduces the owner's 1.9 × 2.0 × 0.4 m reference
+  silhouette exactly; the reference's ORGANIC LIQUID FORMS (drip/pool)
+  remain UNBUILT — hand-sculpted organic free-form is a future slice,
+  not claimed;**
   ref-11/ref-13/ref-14/ref-15/ref-16 classes (blocked or unstarted per
   their recorded findings); a verified wall (the modeled shell's
   measured minimum sits at the truncated tips and

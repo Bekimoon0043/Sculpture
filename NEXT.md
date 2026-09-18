@@ -5,7 +5,23 @@ the start of every session (`/lf-orient`) and rewritten at the end of every
 slice (`/lf-close`). If this file and a phase plan disagree, this file is
 stale and must be corrected in the same commit as the work.
 
-Last updated: 2026-09-16 — **MS-A1 CLOSED (ADR-071): `perforated_screen`,
+Last updated: 2026-09-16 (2nd) — **SC-A1 CLOSED (ADR-072): `crescent_ring`,
+the crescent-moon sculpture primitive — registry 12 → 13.** Vertical
+partial-torus crescent (tube Ø80–500, span 90–330°, gap azimuth,
+optional oval section), NEW material `stainless_316l_cast` (welded &
+mirror-polished, PROVISIONAL fabricator-set envelope); photo replica
+measures 1950 × 1950 × 350 mm exactly matching the owner's reference
+dims; two-process STEP determinism pinned; assembly-proven (plinth +
+stack_on, 5938 kg, PRE_FABRICATION); `height` is derived, never a spec
+key (refused naming the relationship). **Scoped OUT honestly: the
+reference's ORGANIC LIQUID FORMS are not claimed — hand-sculpted
+free-form remains a future slice.** New roster script 31
+`gate_sca1_auto.py` (63/63); msa1 54/54, FF-A2 63/63, PR-5 PASS,
+FF-A1 36/36, FF-A3 55/55 (fixture regenerated via its designed path);
+40 new tests; 142 targeted passed. Environment caveat unchanged
+(host chain only; container chain + fresh full suite DEFERRED — disk
+and engine). Before that:
+**MS-A1 CLOSED (ADR-071): `perforated_screen`,
 the first mesh-class (perforated-skin) primitive — registry 11 → 12.**
 Flat or single-curved 316L sheet with a deterministic circle/hex
 through-hole grid; ONE fused-compound boolean subtract; full FF-A1
@@ -196,6 +212,7 @@ workflow controls, folded into PR-7B) ruled 2026-08-28.
 | **FF-A3 — a typed brief can ask for the ref-08 loop** | **CLOSED 2026-09-14 with the binding status "typed-brief/Council contract implemented and fixture-gated; live end-to-end selection blocked by D-28 and not claimed"; visual Steps 1–5 YES, Step 6 NOT ACHIEVED (never PASS)** | ADR-069; risk-based chain on `772e352a34ea`: 20/20 host==image, suite **737** worker-removed, **25/25** in-container gates incl. `gate_ffa3_auto` **55/55**, PR-3 static, 4 host gates; **`gate_phase9b_auto` FAILED TWICE — preserved as FAIL, accepted as unrelated infra debt D-29; NOT "all gates green"**; live Step 6 halted at the second call (kimi connection error → UNCERTAIN $3.268608 → retry refused by the $5 run cap), 0 specs, 0 decisions, $0.007725 spent |
 | **D-28 SLICE — honest reservation bound** | **CLOSED 2026-09-15** | ADR-070; 61 targeted tests + full suite green on host 3.12 venv (container engine down — in-container chain DEFERRED, recorded); `gate_pr2_auto` PASS |
 | **MS-A1 — `perforated_screen`, the first mesh-class (perforated-skin) primitive** | **CLOSED 2026-09-16 (owner-delegated slice); NOT an open lattice — B-11b stays OPEN** | ADR-071; `gate_msa1_auto` 54/54 (roster script 30); FF-A2/PR-5/FF-A1/FF-A3 re-run PASS on host venv; targeted pytest 119 passed; definitive container chain DEFERRED with the engine |
+| **SC-A1 — `crescent_ring`, the crescent-moon sculpture primitive** | **CLOSED 2026-09-16 (owner-referenced photo: mirror-polished crescent, 1.9×2.0×0.4 m); organic liquid forms NOT claimed** | ADR-072; `gate_sca1_auto` 63/63 (roster script 31); new material `stainless_316l_cast` (provisional); msa1/FF-A2/PR-5/FF-A1/FF-A3 all re-run PASS; 40 new tests, 142 targeted passed; container chain DEFERRED |
 
 **Suite and roster state:** after PR-2 the pytest suite (475) passed
 with the render worker UP and with it removed — both runs recorded

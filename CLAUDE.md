@@ -157,6 +157,10 @@ roster re-runs are DEFERRED to engine recovery (recorded in the ADRs and
 NEXT.md); MS-A1's gate is `gate_msa1_auto.py` (roster script 30, 54/54).
 B-11b stays OPEN: perforated_screen is a perforated SKIN, not an open
 lattice, and an owner mesh/lattice reference is still required.**
+**SC-A1 (`crescent_ring`, ADR-072) closed the same day: registry 13,
+new `stainless_316l_cast` material, `gate_sca1_auto.py` (roster script
+31, 63/63); the organic liquid forms of the owner's reference are NOT
+claimed. Same deferred in-container caveat.**
 Note `gate_phase9b_auto.py` and the Blender-tier sections of
 `gate_phase9a_auto.py` need the render-worker container running
 (`docker compose --profile render up -d render-worker`); both still cost $0 and

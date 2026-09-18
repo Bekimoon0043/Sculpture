@@ -179,6 +179,47 @@ _ALIASES: dict[str, dict[str, str]] = {
         "plate_diameter": "base_plate_diameter_mm",
         "base_plate_diameter": "base_plate_diameter_mm",
     },
+    # SC-A1 (slice SC-A1): the vertical partial-torus crescent. Every
+    # registry key is reachable by a spec-level name; material_id is
+    # excluded per the gate_ffa3 rule (it arrives as the element-level
+    # material of record). height is deliberately NOT an alias: it is a
+    # DERIVED quantity (height = 2 x centerline_radius_mm +
+    # tube_diameter_mm for spans reaching the zenith) — the mapper
+    # refuses it and names the relationship, see _DERIVED_REFUSALS.
+    "crescent_ring": {
+        "radius": "centerline_radius_mm",
+        "centerline_radius": "centerline_radius_mm",
+        "centerline": "centerline_radius_mm",
+        "ring_radius": "centerline_radius_mm",
+        "tube": "tube_diameter_mm",
+        "tube_diameter": "tube_diameter_mm",
+        "tube_size": "tube_diameter_mm",
+        "section_diameter": "tube_diameter_mm",
+        "span": "arc_span_deg",
+        "arc_span": "arc_span_deg",
+        "arc": "arc_span_deg",
+        "opening": "gap_azimuth_deg",
+        "gap": "gap_azimuth_deg",
+        "gap_azimuth": "gap_azimuth_deg",
+        "oval": "tube_depth_oval_mm",
+        "tube_depth_oval": "tube_depth_oval_mm",
+        "depth_oval": "tube_depth_oval_mm",
+    },
+}
+
+#: Spec-level names that are DERIVED quantities of a primitive, never
+#: parameters (SC-A1): the mapper refuses them and names the
+#: relationship, so a Designer spec learns what to state instead. Keyed
+#: primitive -> spec name -> the explanation appended to the refusal.
+_DERIVED_REFUSALS: dict[str, dict[str, str]] = {
+    "crescent_ring": {
+        "height": "height is DERIVED, never a parameter: "
+                  "height = 2 x centerline_radius_mm + tube_diameter_mm "
+                  "for spans whose swept arc includes the zenith (90 "
+                  "deg); otherwise it is the top of the higher end-cap "
+                  "ellipse. State centerline_radius_mm and "
+                  "tube_diameter_mm (and arc_span_deg), not height",
+    },
 }
 
 #: Parameter-name suffixes whose values are dimensionless. A Design Spec
@@ -241,7 +282,13 @@ def _map_parameters(primitive: str, raw: dict[str, Any], material_id: str) -> di
     mapped: dict[str, Any] = {}
     violations: list[str] = []
 
+    derived_refusals = _DERIVED_REFUSALS.get(primitive, {})
     for key, value in sorted((raw or {}).items()):
+        if key in derived_refusals:
+            violations.append(
+                f"{primitive}: parameter {key!r} refused — "
+                f"{derived_refusals[key]}")
+            continue
         target = aliases.get(key, key)
         if target not in primitive_params:
             violations.append(

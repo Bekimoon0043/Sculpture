@@ -129,3 +129,25 @@ materials:
     # Pattern-maker's fillet.
     min_internal_radius_mm: 3
     stock_size_mm: null   # cast — no stock sheet/slab size
+  # SC-A1 (slice SC-A1, the crescent_ring primitive): cast / welded &
+  # mirror-polished 316L stainless, the process behind monumental
+  # "moon crescent" sculpture. PROVISIONAL workshop envelope — the
+  # crescent's chunky tube is cast (or rolled-plate welded) and polished,
+  # NOT formed sheet, so the 316L SHEET envelope does not apply.
+  # FABRICATOR-INPUT like freeform_loop's prototype values: fabricator-set
+  # and tunable here, NOT a citation of an external standard. The 3 mm
+  # wall floor and the tolerances are carried from the 316L sheet process
+  # (same alloy, same workshop); the 500 mm ceiling is this primitive's
+  # own tube_diameter_mm range maximum (a thicker "wall" than 500 mm is
+  # not a crescent tube at all — arithmetic, not a citation).
+  stainless_316l_cast:
+    name: "Cast / welded & mirror-polished 316L stainless"
+    category: metal
+    density_kg_per_m3: 8000
+    min_wall_mm: 3
+    max_wall_mm: 500
+    min_clearance_mm: 20
+    joint_overlap_mm: 3
+    min_feature_mm: 3
+    min_internal_radius_mm: 5
+    stock_size_mm: null   # cast / welded built-up — no stock sheet/slab size

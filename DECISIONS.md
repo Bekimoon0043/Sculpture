@@ -5398,3 +5398,68 @@ other than 316L. Porosity-credited wind loading. Hole grids beyond the
 (real AI selection of ANY primitive from prose) — unblocked by D-28
 (ADR-070) but still not run; the Designer index now OFFERS
 perforated_screen, nothing more.
+
+
+## ADR-072 - SC-A1: crescent_ring — the crescent-moon sculpture primitive (2026-09-16)
+
+**Owner ruling.** 2026-09-16: the operator supplied a reference photo
+(mirror-polished stainless crescent, 1.9 m H × 2.0 m L × 0.4 m W, with
+organic liquid forms inside on a black base) and directed: "make it
+create this sculpture" — continuing the 2026-09-15 delegation to build
+autonomously.
+
+**Decision.** The registry widens 12 → 13 with `crescent_ring`: a
+vertical partial-torus crescent — a circular (or vertically elliptical)
+tube section revolved about the torus axis by `arc_span_deg`, oriented
+into the XZ plane, centreline centre at z = R + radial semi-axis so the
+tube's lowest point rests exactly at z = 0 (the locked origin
+convention; an arc that misses azimuth 270° would float and is REFUSED
+by the nadir rule, naming the arc numbers). Parameters:
+`centerline_radius_mm` (400–1500), `tube_diameter_mm` (80–500),
+`arc_span_deg` (90–330), `gap_azimuth_deg` (0–360, deterministic
+placement), optional `tube_depth_oval_mm` vertical squash, and
+`material_id` restricted to a NEW material — `stainless_316l_cast`
+(welded & mirror-polished 316L, density 8000, wall envelope 3–500 mm,
+PROVISIONAL fabricator-set values, commented FABRICATOR-INPUT like
+freeform_loop's) — or `stainless_316l_sheet`. The tube diameter binds
+the CHOSEN material's wall envelope with real numbers. `height` is
+DERIVED (2·R + tube), never a parameter: a spec carrying a `height` key
+is refused naming that relationship (`_DERIVED_REFUSALS` in the
+mapper).
+
+**Scoped OUT, honestly.** The reference's ORGANIC LIQUID FORMS (the
+drip column and the pool) are hand-sculpted free-form — that class does
+not exist in the kernel (beyond even freeform_loop) and is NOT claimed
+by this slice. The crescent + base plate reproduces the sculpture's
+silhouette; the interior organic forms remain a future free-form slice.
+
+**Measured (photo replica: R=800, tube=350, span=300, gap=0, cast).**
+1950 mm tall × 1950 mm long × 350 mm deep, min.Z = 0 — the reference's
+"2.0 m" is the same extent at photo precision. Volume agrees with
+analytic torus-segment theory to ~1e-15; two-process STEP sha256 pinned
+(`920d1caaa01a…`); warm build 0.03 s. Assembly proven: 316L-cast plinth
++ stack_on crescent → ONE fused watertight body, 5938 kg total,
+mass_model COMPLETE, export class PRE_FABRICATION with the honest
+rate-incomplete BOM (9 lines, 8 missing_rate). A basalt parent refuses
+at the 10 mm joint floor.
+
+**Roster consequences (D-10 discipline).** Exact set moved 12 → 13 in
+`gate_ffa2_auto §1` and `gate_msa1_auto §1` (dated D-10-frozen lines);
+`gate_pr5_auto` GROWTH_TOKENS follows `expected_twelve` →
+`expected_thirteen`; new roster script 31 `gate_sca1_auto.py` (63/63):
+registry set, refusal truth (material/envelope/oval/span/nadir),
+two-process determinism, integrity + theory volume, demo-dimension
+fidelity pins, end-to-end mass/BOM/export on a throwaway DB,
+mapper/Designer reachability + the derived-height negative, the
+non-316L boundary negative, hermeticity. The FF-A3 council fixture
+regenerated via its designed maintenance path (Designer tokens_in
+5358 → 5509 — the prompt surface now lists the thirteenth primitive).
+
+**Verification (host chain, container engine still down — deferred,
+same recorded caveat as ADR-070/071).** `gate_sca1_auto` 63/63;
+`gate_msa1_auto` 54/54; `gate_ffa2_auto` 63/63; `gate_pr5_auto` PASS
+(live backend); `gate_ffa1_auto` 36/36; `gate_ffa3_auto` 55/55 (after
+the fixture regen); 40 new tests in `tests/test_crescent_ring.py`;
+142 targeted tests passed. NOT claimed: a fresh full-suite run (C: disk
+headroom remains ~0.5 GB — see ADR-071's incident) and the definitive
+in-container chain.

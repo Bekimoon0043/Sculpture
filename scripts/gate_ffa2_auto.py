@@ -106,18 +106,19 @@ def registry_and_parameters() -> None:
     # design; the slice that adds a primitive moves this set with its ADR.
     # MS-A1 (mesh-class slice A, 2026-09-16) widened the
     # library to twelve with perforated_screen and moved the set here.
-    expected_twelve = {
+    # SC-A1 (ADR-072) widened the library 12 -> 13 with crescent_ring.
+    expected_thirteen = {
         "tiered_cascade", "basin_round", "plinth", "sculptural_column",
         "basin_rect", "stepped_monolith", "water_wall", "torus_ring",
         "blade_fin_array", "lotus_petal_array", "freeform_loop",
-        "perforated_screen",
+        "perforated_screen", "crescent_ring",
     }
     print("  registered: %s" % ", ".join(sorted(PRIMITIVES)))
-    # D-10-frozen: the twelve-id exact set above is this gate's roster
-    # contract — MS-A1 (ADR-071) widened the library 11 -> 12 and moved
-    # the set here; the next widening slice moves it with its own ADR.
-    ok("1", "registry is exactly the twelve (exact set lives HERE)",
-       set(PRIMITIVES) == expected_twelve)
+    # D-10-frozen: the thirteen-id exact set above is this gate's roster
+    # contract — SC-A1 (ADR-072) widened the library 12 -> 13 with
+    # crescent_ring; the next widening slice moves it with its own ADR.
+    ok("1", "registry is exactly the thirteen (exact set lives HERE)",
+       set(PRIMITIVES) == expected_thirteen)
     # D-10-frozen: ADR-065 byte-compat seam — the legacy complete-mass set
     # names the primitives whose manifests predate the mass model; it is
     # frozen forever and can never grow, so its count is a permanent truth.

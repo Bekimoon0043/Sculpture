@@ -60,12 +60,13 @@ RETIRED = ("checked per" + " element", "bind per" + " element",
 
 #: growth collections: literals about these expire as the platform grows.
 #: MS-A1 (2026-09-16, ADR-071): the roster census literal renamed
-#: expected_eleven -> expected_twelve in gate_ffa2_auto; the sweep token
-#: follows the literal so the census pin is caught by name in either form.
+#: expected_eleven -> expected_twelve in gate_ffa2_auto; SC-A1 (ADR-072)
+#: renamed it expected_twelve -> expected_thirteen. The sweep token
+#: follows the literal so the census pin is caught by name in any form.
 GROWTH_TOKENS = ("PRIMITIVES", "LEGACY_COMPLETE_MASS_PRIMITIVES",
                  "INCOMPLETE_MASS_INPUTS", "ALLOWED_IMPORT_ROOTS",
                  "missing_entries", "images", "jpgs", "roles",
-                 "expected_twelve", "EXPECTED_TOPOLOGY")
+                 "expected_thirteen", "EXPECTED_TOPOLOGY")
 MARKER = "D-10-frozen:"
 MIN_REASON_WORDS = 8
 GENERIC_REASONS = ("intentional", "on purpose", "by design", "ok", "fine")

@@ -65,6 +65,21 @@ materials:
       mold_pattern: { amount: null, currency: ETB, per: piece }
     finishing: { amount: null, currency: ETB, per: m2 }
     seam: { amount: null, currency: ETB, per: m }
+  # SC-A1: cast / welded & mirror-polished 316L (crescent_ring). Block must
+  # exist because materials.yaml carries the id (startup cross-check); rates
+  # stay null like the rest of the template — the operator fills real Addis
+  # Ababa numbers, a cost is never guessed.
+  stainless_316l_cast:
+    buy_price: { amount: null, currency: ETB, per: kg }
+    waste_factor_pct: null
+    fabrication:
+      method: null                        # cast (or welded built-up)
+      labor: { amount: null, currency: ETB, per: hour }
+      machine: { amount: null, currency: ETB, per: hour }
+      hours_per_m3: null
+      mold_pattern: { amount: null, currency: ETB, per: piece }
+    finishing: { amount: null, currency: ETB, per: m2 }
+    seam: { amount: null, currency: ETB, per: m }
 
 workshop:
   overhead_pct: null                      # power, consumables, space
