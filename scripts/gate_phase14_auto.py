@@ -264,14 +264,21 @@ def run_frontend_section(failures: list[str], ran: dict[str, bool]) -> None:
         print("Run on the host:  python scripts\\gate_phase14_auto.py --frontend-only")
         return
     ran["frontend"] = True
+    # Explicit UTF-8 (2026-09-28): `text=True` alone decodes with the HOST
+    # locale codec — on a zh-CN Windows host that is GBK, and Vite's UTF-8
+    # arrows/ellipses raised UnicodeDecodeError inside the reader thread,
+    # leaving proc.stdout None and crashing the gate before its verdict.
+    # npm/vite emit UTF-8 regardless of locale; undecodable bytes are
+    # replaced, never allowed to hide the build's real exit code.
     proc = subprocess.run(
         [npm, "run", "build"],
         cwd=REPO_ROOT / "frontend",
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=600,
     )
-    tail = (proc.stdout + proc.stderr).strip().splitlines()[-6:]
+    tail = ((proc.stdout or "") + (proc.stderr or "")).strip().splitlines()[-6:]
     for line in tail:
         print(f"  {line}")
     if proc.returncode != 0:

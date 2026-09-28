@@ -5395,6 +5395,99 @@ owner reference required; procedural meshes still have no boolean
 machinery, per the PR-2.5 probes). Perforated screens in materials
 other than 316L. Porosity-credited wind loading. Hole grids beyond the
 1500 cap (needs the D-25 render/mesh decision first). FF-A3 Step 6
+
+## ADR-073 - ENV-1: the build moves to a new machine; the deferred in-container chain runs and finds three expired gate literals (2026-09-28)
+
+**Context.** ADR-070/071/072 each closed with the same recorded caveat:
+"host Docker engine down — definitive in-container suite + roster
+re-run DEFERRED to engine recovery." On 2026-09-25 the repository was
+checked out on a DIFFERENT machine (Lenovo 83JJ, i7-13650HX, 24 GB,
+RTX 4060 laptop GPU, Windows 11 Pro zh-CN, user `Lenovo`; repo path
+`C:\Users\burook\luxuryform`, remote `Bekimoon0043/Sculpture`). The
+machine had Docker Desktop installed but no virtualization: Windows'
+`VirtualMachinePlatform` and `Microsoft-Windows-Subsystem-Linux`
+features were disabled and `HypervisorPresent=False`. A bare reinstall
+of Docker Desktop (2026-09-25 → 09-28) could not fix that.
+
+**Environment repairs (operator-approved via UAC, none touching the
+repo).** (1) `dism /online /enable-feature` for both features + restart
+→ `HypervisorPresent=True`, `wsl --status` "Default Version: 2", engine
+29.8.0 up. (2) `icacls … /grant Lenovo:(OI)(CI)F /T` on the repo (owned
+by Administrators; `compose up` failed `mkdir …\data: Access is denied`)
+→ 433 files, 0 failures. (3) Python 3.11.9 user-scope (winget) for the
+four host-side gate sections. (4) `frontend/npm ci` via the npmmirror
+registry for `gate_phase14 --frontend-only`.
+
+**Transport ruling (Dockerfile untouched).** pip against
+`files.pythonhosted.org` measured **31 kB/s** here; the 67.6 MB OCCT
+wheel timed out at pip's 120 s read-timeout on the first build. Three
+PyPI mirrors were probed for the EXACT pinned wheel: ustc 570 kB/s,
+tsinghua 1,060 kB/s, aliyun 512 kB/s. The build used the Dockerfile's
+own `PIP_INDEX_URL` build-arg (`https://pypi.tuna.tsinghua.edu.cn/simple`);
+every wheel is version-pinned and hash-checked by pip, so the mirror is
+pure transport (same reasoning as ADR-017's deb mirror). Layer 3/13
+completed in 53 s; `SMOKE OK: build123d 0.11.1`; 9 GL debs `sha256sum -c`
+PASS. Recorded as a machine-local operator fact, not a default.
+
+**Decision — what the chain found and what changed (four files, all
+gate/test scaffolding, zero production code, zero config, zero schema;
+canonical STEP `e1a59fa6…` untouched by construction):**
+
+1. `tests/test_costing_config.py::test_costing_material_keys_match_materials_yaml`
+   pinned the material registry as exactly four ids. SC-A1 (ADR-072)
+   added `stainless_316l_cast`; SC-A1's targeted host run never reached
+   this file. **D-10 instance eight.** Fixed: five ids with a
+   `D-10-frozen:` reason citing ADR-072.
+2. `scripts/gate_phase6c2_auto.py` — PR-5's own D-10 conversion still
+   asserted `len(c2_paths) == 6` (4 materials × seam + 2 install paths).
+   Five materials make seven. **D-10 instance nine.** Fixed to the
+   timeless form `len(raw["materials"]) + 2`, count printed.
+3. `scripts/gate_pr5_auto.py` §5 keyed its 6c2-conversion needle on the
+   label text "carries the six slice-C2 paths"; needle follows the new
+   label and a new check asserts `len(c2_paths) == 6` is absent.
+4. `scripts/gate_phase14_auto.py` frontend section: `subprocess.run(…,
+   text=True)` decodes with the HOST locale codec — GBK on this zh-CN
+   Windows — and Vite's UTF-8 output raised `UnicodeDecodeError` in the
+   reader thread, leaving `proc.stdout = None` and crashing the gate
+   before any verdict. Fixed: `encoding="utf-8", errors="replace"`,
+   None-safe tail. Not reachable on the previous en-US host.
+
+**Verification (definitive in-container chain, this machine).**
+Baseline on pristine `9e96582` image `f8abc47dc092`: suite **832 passed,
+1 failed** (item 1, verbatim in this ADR's evidence), 26:42. After the
+fixes, final image **`68fbab78e83c`** identical at roster start and end:
+**29/29 in-container roster gates exit 0** (`gate_costing`, `ffa1` 36/36,
+`ffa2` 63/63, `ffa3` 55/55, `lf103a`, `msa1` 54/54, `phase11`, `13a`,
+`14` geometry, `15`, `2`, `3`, `4`, `5`, `6a1`, `6a2`, `6b`, `6c`, `6c2`,
+`8`, `8b`, `9a`, `pr1`, `pr2`, `pr25_discovery` 63/63, `pr4`, `pr5`,
+`sca1` 63/63, `scope_audit`) + `gate_pr3 --static --stdin`; host gates
+`gate_pr3 --live` PASS, `gate_scope_audit` PASS, `gate_pr25_discovery
+--host-drift` 66/66 (artifact + reference sections skipped loudly — the
+operator-local set is NOT on this machine), `gate_phase14
+--frontend-only` PASS. **Recorded honestly:** in the first post-fix
+roster pass `gate_ffa3_auto` §9 FAILED (health `ReadTimeout` 11 polls,
+WAL never quiesced in 60 s) while the backend sat at 151 % CPU / 3 GB
+directly after `gate_ffa2`'s 334 s run; the identical gate on the
+identical image PASSED 55/55 minutes later (0 polls, 1 poll). This is
+D-26's hazard family (a fixed duration standing in for a condition),
+recorded as **D-26b** in NEXT.md, not silently re-run away. Full suite
+on the final image `68fbab78e83c`, worker-REMOVED (no render-worker
+image exists on this machine), image identical before and after:
+**`833 passed, 4 warnings in 4154.05s (1:09:14)`, exit 0** — the 1:09
+against the baseline's 0:26 is the suite sharing the backend's CPU with
+the roster pass that ran ahead of it in the same chain; no test timed
+out. `gate_phase9b_auto` NOT run (render worker not built on this machine —
+its Blender image is a deliberate deferred download; D-29 unchanged).
+
+**Not claimed.** No new capability. `data/` on this machine is EMPTY:
+the previous machine's designs, the 1,902 preserved scratch directories
+(D-29), the uncertain reservation `9077e77a…`, and the 16 operator-local
+reference images exist only there until the operator copies them.
+`CLAUDE.md`'s environment section is corrected in this commit; the old
+laptop's constraints stand as history.
+
+**Spend.** $0. No provider call.
+
 (real AI selection of ANY primitive from prose) — unblocked by D-28
 (ADR-070) but still not run; the Designer index now OFFERS
 perforated_screen, nothing more.

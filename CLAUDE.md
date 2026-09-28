@@ -42,9 +42,31 @@ LLMs do not generate geometry. They generate text. **They write the program that
 ## The operator's environment — plan around these
 
 - Windows, PowerShell. `curl` is aliased to `Invoke-WebRequest`; give PowerShell-native commands, not cmd syntax.
-- Docker Desktop, WSL2, 6 GB cap. i7-8550U, 12 GB RAM, integrated graphics, **no dedicated GPU**.
-- **The connection is slow and drops.** ~320 kB/s, frequent resets. Anything that downloads must retry, resume, and be cached in its own Docker layer. This has cost more time than any code defect.
-- Repo: `C:\Users\buroo\luxuryform` → `github.com/burook-Luxury/luxuryform`
+- **Build machine since 2026-09-25 (ADR-073):** Lenovo 83JJ, i7-13650HX
+  (20 threads), 24 GB RAM, RTX 4060 laptop GPU, Windows 11 Pro with a
+  **zh-CN system locale** (host-side subprocess decoding must say UTF-8
+  explicitly — GBK is the default), Docker Desktop 4.92 on WSL 2
+  (engine sees 20 CPUs / ~11.5 GB). The GPU is present but the rule
+  stands: **GPU optional, never required** (LIMITATIONS §3) until an
+  ADR says otherwise. Windows user is `Lenovo`; the repo folder is
+  owned by Administrators — `icacls` granted `Lenovo` full control.
+  Historical (2026-08-01 → 09-16): i7-8550U, 12 GB, no GPU, 6 GB Docker
+  cap — the constraints the phase reports were measured under.
+- **The connection is slow and drops.** Measured 2026-09-28 on this
+  machine: **~31 kB/s to files.pythonhosted.org** (the old line was
+  ~320 kB/s), frequent resets. Anything that downloads must retry,
+  resume, and be cached in its own Docker layer. This has cost more
+  time than any code defect. The Dockerfile's `PIP_INDEX_URL` build
+  arg exists for exactly this: `https://pypi.tuna.tsinghua.edu.cn/simple`
+  served the pinned OCCT wheel at ~1 MB/s here (mirror = transport only;
+  pip hash-checks every pinned wheel). Mirrors are location-dependent —
+  re-measure before relying on one (ADR-017 caveat).
+- Repo: `C:\Users\burook\luxuryform` → `github.com/Bekimoon0043/Sculpture`
+  (historical: `C:\Users\buroo\luxuryform` → `burook-Luxury/luxuryform`).
+- **`data/` on this machine started EMPTY (2026-09-28).** The previous
+  machine's designs, the preserved scratch backlog (D-29), the
+  uncertain reservation `9077e77a…` and the 16 operator-local free-form
+  reference images are NOT here until the operator copies them.
 
 ## The loop
 

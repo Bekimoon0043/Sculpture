@@ -435,7 +435,10 @@ def main() -> int:
     conv = {
         "gate_phase6a2_auto.py": ("not_a_primitive_", "derived unknown name"),
         "gate_scope_audit_auto.py": ("queue entries scanned", "## 2. THE WORK QUEUE"),
-        "gate_phase6c2_auto.py": ("carries the six slice-C2 paths", "_has_path"),
+        # 2026-09-28: the label itself carried a frozen "six" (D-10 instance
+        # nine — SC-A1's fifth material made it seven); needle follows the
+        # timeless label and `== 6` is asserted absent below.
+        "gate_phase6c2_auto.py": ("carries every slice-C2 path", "_has_path"),
     }
     for name, needles in conv.items():
         text = (REPO_ROOT / "scripts" / name).read_text(encoding="utf-8")
@@ -447,6 +450,8 @@ def main() -> int:
         if not l.lstrip().startswith("#"))
     _check(failures, "gate_phase6c2 no longer pins missing_entries() == 39",
            "== 39" not in c2_code)
+    _check(failures, "gate_phase6c2 no longer pins the C2 path count == 6",
+           "len(c2_paths) == 6" not in c2_code)
     unknown = "not_a_primitive_" + hashlib.sha256(
         ",".join(sorted(PRIMITIVES)).encode()).hexdigest()[:8]
     _check(failures, "6a2's derived unknown name is outside the live registry",

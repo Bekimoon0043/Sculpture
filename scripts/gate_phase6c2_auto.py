@@ -452,9 +452,17 @@ def main() -> int:  # noqa: C901 — a gate is a transcript, not a design
         return True
 
     missing_paths = [p for p in c2_paths if not _has_path(p)]
-    _check(failures, "the rate card carries the six slice-C2 paths",
-           len(c2_paths) == 6 and not missing_paths,
-           f"{len(c2_paths)} paths, missing {missing_paths}; "
+    # 2026-09-28 (D-10 instance nine, first in-container chain on the new
+    # build machine): "six" was itself a frozen growth count — 4 materials
+    # x seam + 2 install paths — and SC-A1 (ADR-072) made it 5 x seam + 2.
+    # Timeless form: one seam path per REGISTERED material plus the two
+    # install paths, every one present; the count is printed, not pinned.
+    expected_c2 = len(raw["materials"]) + 2
+    _check(failures, "the rate card carries every slice-C2 path "
+                     "(one seam per material + truck payload + modules/trip)",
+           len(c2_paths) == expected_c2 and not missing_paths,
+           f"{len(c2_paths)} paths for {len(raw['materials'])} materials, "
+           f"missing {missing_paths}; "
            f"{len(bundle.costing.missing_entries())} entries still null")
     del yaml  # imported for parity with the other gates; not needed here
 

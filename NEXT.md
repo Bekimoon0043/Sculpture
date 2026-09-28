@@ -5,7 +5,28 @@ the start of every session (`/lf-orient`) and rewritten at the end of every
 slice (`/lf-close`). If this file and a phase plan disagree, this file is
 stale and must be corrected in the same commit as the work.
 
-Last updated: 2026-09-16 (2nd) — **SC-A1 CLOSED (ADR-072): `crescent_ring`,
+Last updated: 2026-09-28 — **ENV-1 CLOSED (ADR-073): the build moved to a
+new machine and the DEFERRED in-container chain finally ran.** Docker
+engine recovered (Virtual Machine Platform + WSL enabled, restart, repo
+ACL granted), images built with the Dockerfile's `PIP_INDEX_URL` arg
+(pypi.org measured 31 kB/s here; tsinghua ~1 MB/s; pins hash-checked),
+stack up and healthy. **Baseline on pristine `9e96582`: suite 832
+passed / 1 FAILED** — the ADR-070/071/072 host-only caveat was hiding
+real drift: three expired D-10 literals (instances eight and nine —
+material set pinned at four; C2 path count pinned at six — plus
+`gate_pr5`'s needle on that label) and one host-locale defect
+(`gate_phase14 --frontend-only` decoded npm output as GBK and crashed
+before its verdict). Four scaffolding files fixed, **zero production
+code, config or schema**. Final image `68fbab78e83c` identical at roster
+start/end: **29/29 in-container gates PASS + PR-3 static; 4/4 host gates
+PASS** (PR-3 live, scope audit, PR-2.5 host-drift 66/66 with the
+operator-local sections skipped loudly, Phase 14 frontend). `gate_ffa3`
+§9 FAILED once on health/WAL timing right after `gate_ffa2`'s 334 s run,
+then PASSED 55/55 on the identical image — recorded as **D-26b**, not
+smoothed over. `gate_phase9b` NOT run (no render-worker image here yet).
+**`data/` is EMPTY on this machine** — see the blocker B-12 below. $0.
+Before that:
+**SC-A1 CLOSED (ADR-072): `crescent_ring`,
 the crescent-moon sculpture primitive — registry 12 → 13.** Vertical
 partial-torus crescent (tube Ø80–500, span 90–330°, gap azimuth,
 optional oval section), NEW material `stainless_316l_cast` (welded &
@@ -228,7 +249,12 @@ PR-4's 707 two-state run is retained as the unchanged baseline; chain
 evidence in ADR-068 and `PRODUCTION_V1_REPORT.md`; after the FF-A3
 BUILD (not yet closed) the suite is **737 passed, worker up, on image
 `0d4180d2b8d7` (2026-09-09, 6202.65 s)** — the definitive two-state or
-risk-based chain is `/lf-gate`'s. The auto-gate
+risk-based chain is `/lf-gate`'s. **After ENV-1 (ADR-073, 2026-09-28,
+new build machine) the suite is 833 passed worker-REMOVED on final
+image `68fbab78e83c` (4154.05 s, image identical before and after;
+baseline on the pristine tree was 832 passed / 1 FAILED — D-10 instance
+eight). Worker-UP state NOT run: no render-worker image exists on this
+machine yet (B-12).** The auto-gate
 roster is 29 scripts as of 2026-09-09 (FF-A3 added `gate_ffa3_auto.py`,
 hermetic, in the backend container, D-26-safe DB fingerprinting, builds
 the rank-1 fixture lens in-process and the FF-A2 fixture in a second
@@ -318,6 +344,18 @@ Those marked **[release]** block calling the project Production v1.
       still owed by fabricators: GRC datasheet (density, min shell,
       reinforcement, panel size, connections, mold limits), 316L
       forming radius + armature design basis.
+- [ ] **B-12 [operational] — Bring the previous machine's `data/` to the
+      new one (ADR-073, 2026-09-28).** This machine's `data/` was created
+      empty at the first `compose up`. Copy `C:\Users\buroo\luxuryform\data\`
+      (DB, exports, `geo_scratch/`, `render_scratch/`) from the old
+      laptop with the stack STOPPED on both, plus the 16 operator-local
+      reference JPGs (ADR-064; gitignored). Until then: the two
+      preserved live-data designs, the 1,902 scratch directories (D-29),
+      the uncertain reservation `9077e77a…` and every past design are
+      unreachable here, and `gate_pr25_discovery` skips its
+      artifact/reference sections (loudly, as designed). Also decide
+      whether the render-worker image (Blender, large download) gets
+      built on this machine — `gate_phase9b_auto` cannot run until it is.
 - [ ] **B-9 — Confirm or deny the four unattributed render-worker starts**
       (12:12:30 / 12:17:29 / 12:25:36 UTC on 2026-08-27, after each
       deliberate stop; the earlier ~06:59/~07:19 pair you already
@@ -829,6 +867,17 @@ Pick one up when a slice finishes early. Each is one commit.
       literal unknown name, the scope audit's first-occurrence order
       and 6c2's `== 39` converted to timeless forms. Re-runs on every
       chain; slice D will trip `gate_ffa2`'s exact-eleven by design.
+      **Instances EIGHT and NINE fired 2026-09-28 (ADR-073)** on the first
+      in-container chain after three host-only closes:
+      `tests/test_costing_config.py` pinned the material set at exactly
+      four ids (SC-A1 made it five — a TEST, outside the roster sweep's
+      `scripts/` glob), and `gate_phase6c2_auto.py`'s PR-5 conversion
+      still carried `len(c2_paths) == 6` (4 materials × seam + 2; five
+      materials make seven) with `gate_pr5`'s needle keyed on the label
+      word "six". Both corrected to timeless forms with `D-10-frozen:`
+      reasons. Lesson recorded: a "targeted" host run that never reaches
+      the affected file is not a chain; and the sweep does not scan
+      `tests/` — extending it there is a candidate one-commit debt.
 - [ ] **D-11 — Radial segmentation for round vessels.** Needs the
       operator's `gate_phase6c2_visual.md` §2 ruling first. PR-2.5
       discovery CANDIDATE (ADR-060) — promote only when a reference
@@ -869,6 +918,18 @@ Pick one up when a slice finishes early. Each is one commit.
       `/api/health` + a quiesced WAL before fingerprinting, or exclude
       the startup transaction), chain scripts must not run gate_ffa1
       first after a rebuild. Recorded, not resolved.
+- [ ] **D-26b — `gate_ffa3_auto.py` §9's 60 s health+quiesce window is
+      a fixed DURATION standing in for a CONDITION (measured 2026-09-28,
+      ADR-073 chain).** Run directly after `gate_ffa2_auto`'s 334 s
+      kernel-heavy pass, with the backend at 151 % CPU / 3 GB, §9's
+      health poll hit `ReadTimeout` 11 times and the DB/WAL fingerprint
+      never read identical twice in 60 s → 2/55 FAIL; the identical gate
+      on the identical image `68fbab78e83c` PASSED 55/55 minutes later
+      (0 polls / 1 poll). Same family as D-26 and D-29: the correction is
+      to wait for a real quiescence condition (health 200 AND `/api/ops`
+      idle AND WAL checkpoint settled) with a generous ceiling, not to
+      lengthen 60 s. Recorded, not resolved; chain scripts should not
+      run `gate_ffa3` immediately after `gate_ffa2`.
 - [ ] **D-29 [operational, linked to D-1] — render-worker job pickup
       scales with the historical scratch backlog, so fixed gate waits
       starve (MEASURED 2026-09-14, FF-A3 definitive chain; the reason

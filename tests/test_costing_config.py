@@ -36,8 +36,13 @@ def test_costing_template_loads_and_versions(config):
 
 def test_costing_material_keys_match_materials_yaml(config):
     assert set(config.costing.materials) == set(config.materials.materials)
+    # D-10-frozen: the material registry grew four -> five when SC-A1
+    # (ADR-072, 2026-09-16) added stainless_316l_cast for crescent_ring;
+    # found by the first in-container full-suite run 2026-09-28 (D-10
+    # instance eight — SC-A1's targeted host run never reached this file).
     assert set(config.materials.materials) == {
         "stainless_316l_sheet", "basalt_slab", "cast_concrete_c35_45", "bronze_cast",
+        "stainless_316l_cast",
     }
 
 
