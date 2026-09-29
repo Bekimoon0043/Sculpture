@@ -59,6 +59,13 @@ starts arriving as numbered modules.
 | mixed material | HTTP **409** naming `basalt_slab`, `bronze_cast` |
 | segmentation cost | 187 ms (9 modules), 324–713 ms (16 modules); ceiling 256 cells |
 
+> **Superseded 2026-09-28 by PR-6 / ADR-074:** the rows above about the
+> rate-card count and mixed-material refusal remain the verbatim C2 evidence.
+> Current truth: `costing.yaml` is `2026-09-v3` with 47 required null
+> entries, and a mixed-material assembly returns HTTP 200 with per-element
+> costing, one-owned joints and shared install once. `gate_phase6c2_auto.py`
+> now enforces that current contract.
+
 ### Three defects this slice had to fix, none of them planned
 
 1. **`GET /api/costing/bom/{id}` returned HTTP 500 for every assembly ever

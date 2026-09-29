@@ -24,6 +24,124 @@ verbatim gate evidence — the same contract as the phase reports.
 
 ---
 
+## PR-6 — per-element costing, one-owned joints, confirmed budgets bind (BUILT 2026-09-28, ADR-074: auto gate PASS + definitive in-container chain PASS; visual gate PENDING; NOT closed)
+
+### What it makes true
+
+A design made of two materials used to be **unpriceable by construction**:
+`GET /api/costing/bom/{id}` answered **HTTP 409 `mixed_material_assembly`**.
+It now answers **HTTP 200** with a per-element BOM. Every element is measured
+once, in its own material, from the manifest the assembler already persisted
+(`mass_kg`, `volume_mm3`, and — new in PR-6 — `surface_area_mm2`, summed from
+that element's own BREP while it is still in memory in `assembly.py`). One
+measurement path per element; costing never reopens or reconstructs geometry.
+
+- **Finishing is that element's own skin minus the joint faces touching it**
+  (gate: `p1 exposed = 6.0 - 0.5 = 5.5000 m2`, `b1 exposed = 10.0 - 0.5 =
+  9.5000 m2`), never a proportional share of the fused total. A manifest with
+  no per-element skin reports `NOT_COMPUTABLE` and produces **no total**,
+  naming the one rebuild action.
+- **Split seams stay with the element that owns the cut.** Conservation is
+  asserted, not assumed: `split 4.000000 + joint 3.000000 = 7.000000 m`;
+  `manifest 7.000000 m`; `sum(seam lines) == split + joint` to 1e-6.
+- **A cross-material seam is billed exactly once** — to one owner chosen by one
+  recorded rule, or to nobody. With the shipped card's
+  `joints.cross_material_owner: null` the line is `missing_rate` naming that
+  path and **neither side is charged**. The gate pins the disproof:
+  `both sides = 1200.00 ETB; once = 300.00 ETB` — overstating is impossible.
+  Allowed values are `parent` (the element joined onto), `child` (the joined-on
+  element) and `stronger_rate` (higher seam rate, only when both rates share
+  currency/unit; ties go to parent and say so). This is a LuxuryCon commercial
+  decision, so it ships **null and refuses** rather than guessing.
+- **Shared costs occur once, at assembly level.** `install_crane`,
+  `install_crew` and `install_transport` each appear exactly once, and the crane
+  pick is the **heaviest module**, not the assembly mass:
+  `pick=2700.0 total=7800.0`.
+- **A confirmed brief's budget binds.** `budget.amount_max` is evaluated with
+  no query parameter; an explicit parameter overrides it and both paths print
+  their source; a **draft never binds** (`editing the intake reopens it as
+  draft` → `a draft intake no longer binds the BOM`). A **complete** BOM above
+  the confirmed ceiling raises **HTTP 422 before** a JobRow, a geometry
+  rebuild, an export file, an ExportRow or a package byte is written. An
+  **incomplete** BOM is `not_performed`, never PASS.
+- **No total, no quote, while anything is missing.** Unchanged and preserved:
+  with the real card the API reports `complete=False total=None` and the
+  rendered text prints no TOTAL.
+
+### The refusal this retires, and what REPLACES it in the permanent gate
+
+The retired contract was asserted by the **permanent Phase 6C2 gate**, section
+10, titled *"MIXED MATERIAL — refused, never mispriced"*, whose two checks were
+`a mixed-material assembly is refused with 409` and `and the refusal names both
+materials`. PR-6 replaced that section **in place** — it now reads *"MIXED
+MATERIAL — per-element, never mispriced (PR-6)"* and asserts the opposite
+facts: **HTTP 200, not 409**; `drivers.materials` equal to both real materials;
+`elements` covering both; fabrication lines prefixed `p1/` and `b1/`; and the
+real unfilled card still yielding `complete: False` with `total_usd: None`.
+`tests/test_costing.py` never asserted the refusal and was not touched. The
+string `mixed_material` now appears nowhere in production code, tests or gates
+except as history in the new gate's own docstring — checked by grep, not
+asserted from memory.
+
+### Evidence — image `e5e5b4ecfa22`, identical at roster start and end
+
+| Run | Result |
+|---|---|
+| `gate_pr6_auto.py` (roster script 32, in-container, throwaway DB) | **PASS — all 43 checks**, 10 sections, $0, no provider; `config/costing.yaml` sha256 `0f21cc458cb4…` byte-identical before/after; real DB/exports fingerprint `ee84c97fa5ee…` byte-identical |
+| Full in-container roster on the pinned image, one gate at a time | **29/29 in-container gates PASS, 0 failures** (`gate_phase9b_auto.py` NOT RUN — the render-worker image is not built here; see the render-worker note under B-12) |
+| Host-side gate modes | **PR-3 `--static` PASS, PR-3 `--live` PASS (LAN + loopback), `gate_scope_audit_auto` PASS, `gate_pr25_discovery_auto --host-drift` 66/66 PASS, `gate_phase14_auto --frontend-only` PASS** |
+| Full pytest suite, `geo-worker` UP, same image | **860 passed, 4 warnings in 1589.18s (0:26:29), exit 0** |
+| Full pytest suite, `geo-worker` REMOVED, same image | **860 passed, 4 warnings in 1642.17s (0:27:22)** — the same 860 as the `geo-worker`-UP run. Summary line verbatim; see the exit-code note below |
+
+**Exit-code note, stated rather than glossed.** The `geo-worker`-UP run
+captured its code: `SUITE_EXIT=0 ELAPSED_S=1591`. The `geo-worker`-REMOVED run
+did **not**: the wrapper script that appends `SUITE_EXIT` deadlocked on stdin
+(a hung `docker` client at 0 % CPU) and was killed; the run was relaunched with
+plain file redirection, so nothing recorded the code. What IS verbatim is the
+pytest summary — `860 passed, 4 warnings in 1642.17s (0:27:22)` — which carries
+no failure and no error count. Recorded as a tooling wart of this session, not
+as a product defect, and not upgraded into a claim it cannot support.
+
+The focused evidence that preceded the final chain (recorded in ADR-074): 115
+costing/mass/transport tests, 95 assembly/API/segmentation tests and 76 PR-6 +
+export-boundary tests, all PASS.
+
+**Measured operational note (D-1 family — recorded, not a new debt).** The
+suite and the gates write real render-job scratch directories under
+`data/render_scratch/`: **220 exist on this machine, 36 of them created during
+today's chain.** The production database and exports are untouched (both
+fingerprints above are byte-identical before and after), and D-1/D-29 already
+record that these trees are never reaped and what that costs; nothing here is
+deleted without an operator instruction.
+
+The live API row in the gate is the one that matters most, because it is the
+whole slice in one line: `mixed-material BOM returns HTTP 200, not 409 —
+HTTP 200`, with `assembler persists each element's real skin area —
+b1=4565362.444196689, p1=4838052.686528281` on a real two-material build.
+
+### Cost
+
+**$0.** Offline, no provider call, no AI-written code executed, no production
+data touched (both fingerprints above).
+
+### Not claimed
+
+- **No client-ready quote.** `costing_version` is `2026-09-v3` and the real
+  card has **47 required null entries** — verified against the running API, not
+  from memory: `missing_count = 47`, and entry 45 of 47 is exactly
+  `joints.cross_material_owner` (35 = 5 materials × 7 fields, plus 12
+  shared/install/commercial/FX). B-3 stays release-blocking; the operator
+  checklist is `docs/operator/12_rate_card_checklist.md`.
+- **No frontend costing screen** (D-23 remains; PR-7B/B-10).
+- **No live spend beyond what is already recorded**; the B-4 provider-price
+  worksheet is delivered as a worksheet, not as fetched prices.
+- **`gate_phase9b_auto.py` was NOT run** — the render-worker (Blender) image has
+  not been built on this machine (a large download, deferred pending the
+  operator's decision recorded under B-12) — and must never be reported as
+  PASS until that image exists here.
+
+---
+
 ## FF-A3 — a typed brief can ask for the ref-08 loop (BUILT 2026-09-09, ADR-069: auto gate PASS; visual gate PENDING; NOT closed)
 
 **Claim, exactly.** A brief typed into the Brief tab and confirmed can

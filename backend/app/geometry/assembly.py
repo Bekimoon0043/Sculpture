@@ -783,6 +783,11 @@ def assemble(
             "placement_mm": {"x": x, "y": y, "z": z},
             "volume_mm3": vol,
             "mass_kg": mass,
+            # PR-6 (ADR-074): one trusted per-element finishing-area path.
+            # This is measured while the element's real BREP is already in
+            # memory, then persisted for costing. Costing never reopens or
+            # reconstructs geometry and never apportions the fused skin.
+            "surface_area_mm2": sum(float(face.area) for face in s.faces()),
             "bbox_mm": dims,
             "bbox_min_mm": bb_min,
             "bbox_max_mm": bb_max,

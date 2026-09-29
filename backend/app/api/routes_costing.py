@@ -14,16 +14,22 @@ import json
 from fastapi import APIRouter, HTTPException, Response
 
 from app.core.config import load_config_bundle
-from app.costing.bom import build_bom
-from app.costing.budget import BudgetViolation, check_budget
+from app.costing.bom import build_assembly_bom, build_bom
+from app.costing.budget import (
+    BUDGET_SOURCE_QUERY,
+    BudgetViolation,
+    budget_from_intake,
+    check_budget,
+)
 from app.costing.drivers import (
     IncompleteMassError,
     drivers_for_assembly,
     drivers_from_validation,
+    drivers_per_element,
 )
 from app.costing.report import render_bom
 from app.db.database import get_default_db
-from app.db.models import DesignRow, ValidationReportRow
+from app.db.models import DesignRow, IntakeRow, ValidationReportRow
 from app.geometry.validate import AssemblyValidationReport, ValidationReport
 
 # main.py mounts every router under /api, so the prefix here must NOT repeat it.
@@ -84,42 +90,21 @@ def _load(design_id: str):
         return design.spec_hash or "", params, report, design.created_at
 
 
-def _material_of(params: dict, report) -> str:
-    """The one material this BOM is priced in.
+def _materials_of(params: dict, report) -> list[str]:
+    """Every material this design is made of, sorted.
 
-    An assembly may carry several. Costing keys on a single material_id
-    (build_bom), so a mixed-material design is REFUSED by name rather than
-    quoted at whichever material happened to reach the report first — a
-    bronze sculpture priced as basalt is a wrong number that looks right.
-    Per-element costing is the costing tie-off (NEXT.md W-7).
+    One entry -> the single-material BOM (build_bom, bytes unchanged since
+    ADR-056). Several -> the per-element BOM (PR-6, ADR-074), which replaced
+    the HTTP 409 "mixed_material_assembly" refusal: a bronze figure on a
+    basalt basin is now priced element by element, each in its own
+    material, with every joint billed once to its owner.
     """
     manifest = params.get("manifest") or {}
     elements = manifest.get("elements") or []
     if elements:
-        by_material: dict[str, list[str]] = {}
-        for element in elements:
-            by_material.setdefault(
-                str(element.get("material_id")), []
-            ).append(str(element.get("element_id")))
-        if len(by_material) > 1:
-            detail = "; ".join(
-                f"{mid}: {', '.join(sorted(eids))}"
-                for mid, eids in sorted(by_material.items())
-            )
-            raise HTTPException(409, {
-                "error": "mixed_material_assembly",
-                "message": (
-                    f"design {params.get('schema', 'assembly')} uses "
-                    f"{len(by_material)} materials and the BOM prices one. "
-                    f"Refusing rather than quoting every element at one "
-                    f"material's rate ({detail}). Per-element costing is the "
-                    f"costing tie-off, NEXT.md W-7"),
-                "materials": sorted(by_material),
-                "elements_by_material": {k: sorted(v)
-                                         for k, v in by_material.items()},
-            })
-        return next(iter(by_material))
-    return getattr(report, "material_id", "") or params.get("material_id", "")
+        return sorted({str(e.get("material_id")) for e in elements})
+    single = getattr(report, "material_id", "") or params.get("material_id", "")
+    return [single] if single else []
 
 
 def _bom_for(design_id: str, *, reproducible: bool = False):
@@ -134,17 +119,36 @@ def _bom_for(design_id: str, *, reproducible: bool = False):
     """
     bundle = load_config_bundle()
     spec_hash, params, report, created_at = _load(design_id)
-    material_id = _material_of(params, report)
-    material = bundle.materials.materials.get(material_id)
-    if material is None:
-        raise HTTPException(
-            409, f"design material {material_id!r} is not in materials.yaml")
+    material_ids = _materials_of(params, report)
+    for mid in material_ids:
+        if mid not in bundle.materials.materials:
+            raise HTTPException(
+                409, f"design material {mid!r} is not in materials.yaml")
+    manifest = params.get("manifest")
+    now_iso = created_at if reproducible else None
     try:
-        drivers = (
-            drivers_for_assembly(report, params.get("manifest"))
-            if isinstance(report, AssemblyValidationReport)
-            else drivers_from_validation(report)
-        )
+        if isinstance(report, AssemblyValidationReport):
+            drivers = drivers_for_assembly(report, manifest)
+        else:
+            drivers = drivers_from_validation(report)
+        if len(material_ids) > 1:
+            # PR-6 (ADR-074): per-element, each in its own material; joints
+            # once to their owner; install once at assembly level.
+            elements, joints = drivers_per_element(report, manifest)
+            bom = build_assembly_bom(
+                bundle.costing, drivers, elements, joints,
+                bundle.materials.materials, design_id=design_id,
+                spec_hash=spec_hash, now_iso=now_iso)
+        else:
+            material_id = material_ids[0] if material_ids else ""
+            material = bundle.materials.materials.get(material_id)
+            if material is None:
+                raise HTTPException(
+                    409, f"design material {material_id!r} is not in "
+                         f"materials.yaml")
+            bom = build_bom(bundle.costing, drivers,
+                            material_id, material, design_id=design_id,
+                            spec_hash=spec_hash, now_iso=now_iso)
     except IncompleteMassError as exc:
         # FF-A1 (ADR-065): an incomplete mass can never price anything —
         # material, transport and crane lines all derive from it. The BOM
@@ -157,11 +161,40 @@ def _bom_for(design_id: str, *, reproducible: bool = False):
             "known_geometry_mass_kg": exc.known_geometry_mass_kg,
             "missing_mass_inputs": list(exc.missing_mass_inputs),
         }) from exc
-    bom = build_bom(bundle.costing, drivers,
-                    material_id, material, design_id=design_id,
-                    spec_hash=spec_hash,
-                    now_iso=created_at if reproducible else None)
     return bundle, bom, params
+
+
+def _budget_for(params: dict, budget_amount: float | None,
+                budget_currency: str, budget_fx_date: str | None
+                ) -> dict | None:
+    """Which ceiling binds this BOM (PR-6, ADR-074).
+
+    Precedence, stated: an EXPLICIT request parameter wins; otherwise the
+    design's CONFIRMED intake supplies ``budget.amount_max``; otherwise
+    none and no BUDGET row is produced. Both channels are printed as the
+    row's source so the operator knows which number bound.
+    """
+    if budget_amount is not None:
+        return {"amount": budget_amount, "currency": budget_currency,
+                "fx_date": budget_fx_date, "source": BUDGET_SOURCE_QUERY,
+                # Use normal decimal text, not :g: a large ceiling such as
+                # 9,999,999 otherwise becomes 1e+07 and the audit trail no
+                # longer preserves the value the operator typed.
+                "source_detail": (f"?budget_amount={budget_amount}"
+                                  f"&budget_currency={budget_currency}")}
+    # Assembly designs persist the original request under `request`; the
+    # direct top-level form is retained for older/single-primitive records.
+    intake_id = (params.get("intake_id")
+                 or (params.get("request") or {}).get("intake_id"))
+    if not intake_id:
+        return None
+    db = get_default_db()
+    with db.get_session() as s:
+        row = s.get(IntakeRow, intake_id)
+        if row is None:
+            return None
+        return budget_from_intake(json.loads(row.normalized_json),
+                                  row.status, intake_id)
 
 
 # ROUTE ORDER IS LOAD-BEARING (found 2026-08-27, ADR-056). FastAPI matches
@@ -174,17 +207,20 @@ def bom_text(design_id: str, budget_amount: float | None = None,
              budget_currency: str = "ETB",
              budget_fx_date: str | None = None) -> Response:
     """The rendered document — the thing handed to a client."""
-    bundle, bom, _ = _bom_for(design_id)
+    bundle, bom, params = _bom_for(design_id)
     check = None
-    if budget_amount is not None:
+    budget = _budget_for(params, budget_amount, budget_currency,
+                         budget_fx_date)
+    if budget is not None:
         try:
-            check = check_budget(
-                bom, {"amount": budget_amount, "currency": budget_currency,
-                      "fx_date": budget_fx_date}, bundle.costing)
+            check = check_budget(bom, budget, bundle.costing)
         except BudgetViolation as exc:
+            source = (f"  ceiling from: {budget.get('source')} — "
+                      f"{budget.get('source_detail')}\n")
             return Response(
                 render_bom(bom) + "\n" + "=" * 78
-                + f"\nBUDGET CONSTRAINT: FAIL\n{'=' * 78}\n  {exc.message}\n",
+                + f"\nBUDGET CONSTRAINT: FAIL\n{'=' * 78}\n"
+                + source + f"  {exc.message}\n",
                 media_type="text/plain", status_code=422)
     return Response(render_bom(bom, check), media_type="text/plain")
 
@@ -193,11 +229,11 @@ def bom_text(design_id: str, budget_amount: float | None = None,
 def bom_json(design_id: str, budget_amount: float | None = None,
              budget_currency: str = "ETB",
              budget_fx_date: str | None = None) -> dict:
-    bundle, bom, _ = _bom_for(design_id)
+    bundle, bom, params = _bom_for(design_id)
     payload = bom.as_dict()
-    if budget_amount is not None:
-        budget = {"amount": budget_amount, "currency": budget_currency,
-                  "fx_date": budget_fx_date}
+    budget = _budget_for(params, budget_amount, budget_currency,
+                         budget_fx_date)
+    if budget is not None:
         try:
             payload["budget"] = check_budget(bom, budget,
                                              bundle.costing).as_dict()
@@ -208,5 +244,7 @@ def bom_json(design_id: str, budget_amount: float | None = None,
                 "error": "budget_exceeded", "message": exc.message,
                 "total_usd": exc.total_usd, "ceiling_usd": exc.ceiling_usd,
                 "over_usd": exc.over_usd, "over_pct": exc.over_pct,
+                "source": budget.get("source"),
+                "source_detail": budget.get("source_detail"),
             }) from exc
     return payload

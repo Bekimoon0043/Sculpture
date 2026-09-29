@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from app.costing.bom import (
     COMPUTED,
+    ELEMENT_SEP,
     MISSING_RATE,
     NOT_APPLICABLE,
     NOT_COMPUTABLE,
@@ -23,6 +24,10 @@ _W = 78
 
 def _rule(ch: str = "-") -> str:
     return ch * _W
+
+
+def _fmt_area(v: object) -> str:
+    return f"{float(v):,.4f} m2" if isinstance(v, (int, float)) else "not measured"
 
 
 def render_bom(bom: Bom, budget: BudgetCheck | None = None) -> str:
@@ -68,8 +73,35 @@ def render_bom(bom: Bom, budget: BudgetCheck | None = None) -> str:
         for fx in bom.fx_used:
             a(f"  {fx}")
 
-    for group, title in (("fabrication", "FABRICATION"), ("install", "INSTALL")):
-        rows = [ln for ln in bom.lines if ln.group == group]
+    # PR-6 (ADR-074): a multi-material BOM prints one FABRICATION block per
+    # element (headed by ITS material), then the joints with their owner,
+    # then INSTALL exactly once. A single-material BOM renders as before.
+    if bom.elements:
+        a("")
+        a("ELEMENTS (each priced in its OWN material; nothing apportioned)")
+        for e in bom.elements:
+            a(f"  {e['element_id']:12} {e['material_id']:22} "
+              f"{e['mass_kg']:>12,.3f} kg  exposed skin "
+              f"{_fmt_area(e.get('exposed_area_m2'))}")
+        sections: list[tuple[str, list]] = []
+        for e in bom.elements:
+            prefix = f"{e['element_id']}{ELEMENT_SEP}"
+            rows = [ln for ln in bom.lines if ln.line_id.startswith(prefix)]
+            sections.append((f"FABRICATION — {e['element_id']} "
+                             f"({e['material_id']})", rows))
+        joint_rows = [ln for ln in bom.lines
+                      if ln.line_id.startswith(f"joint{ELEMENT_SEP}")]
+        sections.append(("JOINTS (each billed ONCE, to the owner named on "
+                         "the line)", joint_rows))
+        sections.append(("INSTALL (shared — once for the whole assembly)",
+                         [ln for ln in bom.lines if ln.group == "install"]))
+    else:
+        sections = [
+            ("FABRICATION", [ln for ln in bom.lines if ln.group == "fabrication"]),
+            ("INSTALL", [ln for ln in bom.lines if ln.group == "install"]),
+        ]
+
+    for title, rows in sections:
         if not rows:
             continue
         a("")
@@ -140,6 +172,10 @@ def render_bom(bom: Bom, budget: BudgetCheck | None = None) -> str:
         a(_rule("="))
         a(f"BUDGET CONSTRAINT: {budget.status.upper()}")
         a(_rule("="))
+        if budget.source:
+            # PR-6 (ADR-074): say which channel supplied the ceiling.
+            a(f"  ceiling from: {budget.source}"
+              + (f" — {budget.source_detail}" if budget.source_detail else ""))
         a(f"  {budget.formula}")
         if budget.status == "pass":
             a(f"  headroom: {budget.headroom_usd:,.2f} USD")

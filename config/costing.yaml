@@ -13,7 +13,7 @@
 #   - material keys under `materials:` must match config/materials.yaml ids;
 #   - one dated fx_rates block converts to USD for USD-normalized reporting.
 
-costing_version: "2026-08-v2"
+costing_version: "2026-09-v3"
 meta:
   default_currency: USD
   notes: "operator-provided rates, Addis Ababa 2026"
@@ -97,6 +97,19 @@ install:
 
 contingency_pct: null
 markup_pct: null
+
+# PR-6 (ADR-074): who bears the seam where TWO DIFFERENT materials meet
+# (a basalt basin bedded onto a concrete plinth). This is a commercial rule
+# of the workshop, not arithmetic, so it is null until you set it — and
+# while it is null a cross-material joint is reported RATE MISSING, never
+# billed on both sides and never silently on one. Same-material joints are
+# unaffected (they bill on that material's own seam rate).
+#   parent        - the element the child is joined ONTO bears the seam
+#   child         - the joined-on element bears it
+#   stronger_rate - whichever material's seam rate is higher per unit
+#                   (a tie goes to the parent, and the line says so)
+joints:
+  cross_material_owner: null
 
 # FX: one dated block converts local-currency entries to USD for reporting.
 # rate = units of `currency` per 1 USD (e.g. 140 means 140 ETB = 1 USD).

@@ -5556,3 +5556,128 @@ the fixture regen); 40 new tests in `tests/test_crescent_ring.py`;
 142 targeted tests passed. NOT claimed: a fresh full-suite run (C: disk
 headroom remains ~0.5 GB — see ADR-071's incident) and the definitive
 in-container chain.
+
+## ADR-074 - PR-6: per-element costing, one-owned joints, confirmed budgets bind (2026-09-28)
+
+**Owner approval.** The operator approved the `/lf-next` PR-6 plan on
+2026-09-28. Binding requirements: one trusted measurement path per
+material for volume/mass/exposed finishing area/fabrication/purchase/split
+seams; cross-material joints billed once to an explicit owner; shared
+crane/transport/install once at assembly level; confirmed intake budget
+bound to the BOM; incomplete costing structurally unable to render a total
+or quote; operator rate-card and provider-price worksheets delivered. $0.
+
+**Decision 1 — the manifest is the single measurement boundary.** Existing
+assembly manifests already carried each element's BREP volume/mass and each
+split/joint seam's measured run/face. They did NOT carry per-element skin
+area; only the fused mesh report carried total surface area. Proportional
+allocation would silently spread one element's area over another material,
+and re-measuring inside costing would create a second geometry path. PR-6
+therefore adds deterministic `surface_area_mm2 = sum(face.area)` while the
+element's real BREP is already in memory in `assembly.py`. Costing only
+reads the persisted number. Exposed finishing area is that element's skin
+minus every measured joint-contact face touching it. A historical manifest
+without the new key reports finishing `not_computable` with one rebuild
+action; it never apportions the fused total.
+
+**Byte/determinism consequence.** Canonical STEP geometry and the Phase 2
+hash `e1a59fa6…` are untouched: no primitive, parameter, placement, fusion
+or exporter arithmetic changed. Manifests and LUXEXCHANGE packages for
+designs REBUILT after PR-6 gain deterministic per-element
+`surface_area_mm2`, so their package digest may change for that stated
+reason. Sealed old packages are never rewritten. The single-material route
+continues to call the existing `build_bom`; its serialized BOM emits no
+PR-6 `elements`/`joints` keys, preserving its pre-PR-6 shape.
+
+**Decision 2 — fabrication per element, installation once.**
+`drivers_per_element()` returns typed `ElementDrivers` and `JointDrivers`
+from the persisted manifest. `build_assembly_bom()` runs the existing
+material-purchase/fabrication/mould/split-seam arithmetic independently for
+each element, with line ids `<element>/<line>`, then adds joint lines and
+one shared install block. Crane uses the assembly's measured heaviest
+module; crew uses total assembly mass; transport uses the complete measured
+module-mass tuple. No shared line is emitted per element.
+
+**Decision 3 — cross-material joints have one owner or no money.**
+`config/costing.yaml` v3 adds `joints.cross_material_owner`, deliberately
+null in the shipped card because this is a LuxuryCon commercial rule, not
+engineering arithmetic. Allowed values:
+
+- `parent` — the element joined onto owns the seam;
+- `child` — the joined-on child owns it;
+- `stronger_rate` — the higher seam rate owns it, but only when both rates
+  have the same currency/unit; ties go to parent and say so.
+
+Null or incomparable inputs produce one `missing_rate` line naming the
+exact path and bill NEITHER side. Same-material joints always use that
+material's seam rate without consulting the cross-material rule. The gate
+pins the disproof: a 3 m joint at 300 + 100 ETB/m would be 1,200 ETB if both
+sides were charged; parent ownership correctly bills 300 ETB once.
+
+**Decision 4 — confirmed intake budget precedence and export boundary.** A
+confirmed intake's `budget.amount_max` + currency binds automatically when
+the design's persisted request carries its `intake_id`. A draft never
+binds. An explicit BOM query parameter overrides the intake and both paths
+print their source/detail. An incomplete BOM returns `not_performed`, never
+PASS. A completed BOM over the confirmed ceiling raises HTTP 422 at the
+export/package route BEFORE a JobRow, geometry rebuild, export file,
+ExportRow or package is written. The sealed BOM carries the budget result.
+This closes D-19; `test_confirmed_over_budget_design_writes_no_export_or_package`
+proves the no-write boundary with a real persisted design and arbitrary
+in-memory test rates.
+
+**Rate-card truth.** `costing_version` is `2026-09-v3`. The required-null
+census is **47**, not the queued 39 or planned 46: five materials × seven
+required fields = 35, plus 12 shared/install/commercial/FX entries including
+the new owner rule. Conditional machine/mould/crane nulls are not counted
+when genuinely not applicable. The exact list and B-4 first-party pricing
+worksheet ship in `docs/operator/12_rate_card_checklist.md`; no rate or
+provider price is invented. With the real card blank, no client-ready total
+exists (B-3 remains release-blocking).
+
+**API/report/package surfaces.** Mixed-material `/api/costing/bom/{id}` now
+returns HTTP 200, `drivers.materials`, typed element/joint evidence and
+element-prefixed lines; the retired 409 contract in the permanent Phase 6C2
+gate is replaced. Text output groups each element/material, then JOINTS,
+then `INSTALL (shared — once for the whole assembly)`. The package seals the
+same BOM; DesignDNA's read-only costing path remains non-enforcing so it can
+record an honest unavailable reason rather than throwing a workflow error.
+
+**Gates/tests.** New roster script 32 `gate_pr6_auto.py`: 10 sections / 43
+checks, real kernel + API on a throwaway DB, real rate card/DB/exports
+fingerprinted, $0, no provider. `gate_pr6_visual.md` closes D-20 but remains
+operator-pending. New `tests/test_costing_per_element.py`: 24 focused tests;
+export-boundary regression in `tests/test_export_boundary.py`. Focused
+evidence before final chain: 115 costing/mass/transport tests PASS; 95
+assembly/API/segmentation tests PASS; 76 PR-6 + export-boundary tests PASS;
+affected permanent gates PASS on image `e5e5b4ecfa22`: PR-6 43/43, costing,
+Phase 6C2, PR-4, PR-5, LF-103A, Phase 9A and scope audit.
+
+**Definitive chain (2026-09-28/29), pinned image `e5e5b4ecfa22`, identical at
+roster start and end, every command at $0 offline with no provider call and no
+AI-written code executed:** full in-container roster **29/29 gates PASS, 0
+failures**, run one gate at a time on the running stack (FF-A3 ordered before
+FF-A2 because D-26b records that `gate_ffa3` §9 can fail on a 60 s health/WAL
+wait immediately after `gate_ffa2`'s 334 s run — a fixed duration guarding a
+condition; hazard recorded, not fixed); host modes **PR-3 `--static` PASS,
+PR-3 `--live` PASS (loopback + LAN), `gate_scope_audit_auto` PASS,
+`gate_pr25_discovery_auto --host-drift` 66/66 PASS,
+`gate_phase14_auto --frontend-only` PASS**; full pytest suite **860 passed, 4
+warnings in 1589.18 s (0:26:29), exit 0 with `geo-worker` UP** and **860
+passed in 1642.17 s (0:27:22) with `geo-worker` REMOVED** (that run's exit
+code was not captured — see the PR-6 section of `PRODUCTION_V1_REPORT.md`). The `geo-worker`-UP run is deliberately NOT
+labelled the project's "worker-UP" state: that state includes the render
+worker, whose (large) Blender image has not been built on this machine, so
+`gate_phase9b_auto.py` is **NOT RUN** and must never be recorded as PASS.
+Verbatim evidence, the retired-409 contract story and the rate-card census:
+the PR-6 section of `PRODUCTION_V1_REPORT.md`.
+
+**Status / not claimed.** BUILT + AUTO-GATED, visual PENDING — PR-6 is not
+closed until the operator walks `gate_pr6_visual.md`. No client-ready quote
+is claimed while B-3's 47 entries are null. No frontend costing screen is
+claimed (D-23 remains for PR-7B/B-10). `gate_phase9b_auto.py` is not part of
+this slice and remains **NOT RUN** on this machine: the render-worker
+(Blender) image has not been built here — a large download deliberately
+deferred pending the operator's decision recorded under B-12 — and an unrun
+gate is never reported as PASS. B-12 itself is a separate item: this
+machine's `data/` directory is still empty.

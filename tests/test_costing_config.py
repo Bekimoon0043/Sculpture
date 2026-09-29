@@ -29,8 +29,9 @@ from app.core.config import (
 def test_costing_template_loads_and_versions(config):
     costing = config.costing
     # bumped to v2 by slice C2 (ADR-056): the card gained a per-material
-    # seam rate and the two truck capacities a trip count needs.
-    assert costing.costing_version == "2026-08-v2"
+    # seam rate and the two truck capacities a trip count needs; to v3 by
+    # PR-6 (ADR-074): the joints.cross_material_owner rule.
+    assert costing.costing_version == "2026-09-v3"
     assert costing.meta["default_currency"] == "USD"
 
 
@@ -91,6 +92,7 @@ def test_filled_copy_passes_require_filled(config):
     data["contingency_pct"] = 10.0
     data["markup_pct"] = 25.0
     data["fx_rates"]["ETB"] = {"rate": 140.0, "as_of": "2026-08-04"}
+    data["joints"] = {"cross_material_owner": "parent"}   # PR-6 (ADR-074)
 
     costing = CostingConfig.model_validate(data)
     assert costing.missing_entries() == []

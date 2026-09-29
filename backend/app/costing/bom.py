@@ -27,7 +27,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from app.core.config import CostingConfig, Material
-from app.costing.drivers import NEEDS_SEGMENTATION, CostDrivers
+from app.costing.drivers import (
+    NEEDS_ELEMENT_AREA,
+    NEEDS_SEGMENTATION,
+    CostDrivers,
+    ElementDrivers,
+    JointDrivers,
+)
 from app.costing.transport import (
     MODULE_MASS_AGREEMENT_PCT,
     AllocationInputError,
@@ -108,9 +114,15 @@ class Bom:
     markup_usd: float | None = None
     total_usd: float | None = None
     total_formula: list[str] = field(default_factory=list)
+    #: PR-6 (ADR-074): a multi-material BOM carries its per-element and
+    #: per-joint drivers. Both stay OUT of as_dict() when empty so every
+    #: single-material BOM serialises byte-for-byte as before — the sealed
+    #: LUXEXCHANGE digest of existing single-material designs must not move.
+    elements: list[dict[str, object]] = field(default_factory=list)
+    joints: list[dict[str, object]] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, object]:
-        return {
+        out: dict[str, object] = {
             "design_id": self.design_id, "spec_hash": self.spec_hash,
             "material_id": self.material_id,
             "costing_version": self.costing_version,
@@ -132,6 +144,10 @@ class Bom:
             },
             "total_formula": self.total_formula,
         }
+        if self.elements or self.joints:
+            out["elements"] = self.elements
+            out["joints"] = self.joints
+        return out
 
 
 # ---------------------------------------------------------------------------
@@ -629,7 +645,18 @@ def build_bom(costing: CostingConfig, drivers: CostDrivers, material_id: str,
     b.finishing()
     b.install()
 
-    lines = b.lines
+    return _finish_totals(
+        costing, b.lines, drivers.as_dict(), material_id,
+        design_id=design_id, spec_hash=spec_hash, now_iso=now_iso)
+
+
+def _finish_totals(costing: CostingConfig, lines: list[CostLine],
+                   drivers_dict: dict[str, object], material_id: str, *,
+                   design_id: str, spec_hash: str, now_iso: str | None,
+                   elements: list[dict[str, object]] | None = None,
+                   joints: list[dict[str, object]] | None = None) -> Bom:
+    """Shared tail of every BOM: missing/blocked census, then totals ONLY
+    when every line is computed or not_applicable (unchanged rule)."""
     missing = sorted({ln.rate_path for ln in lines
                       if ln.status == MISSING_RATE and ln.rate_path})
     blocked = sorted({ln.line_id for ln in lines if ln.status == NOT_COMPUTABLE})
@@ -651,9 +678,10 @@ def build_bom(costing: CostingConfig, drivers: CostDrivers, material_id: str,
         design_id=design_id, spec_hash=spec_hash, material_id=material_id,
         costing_version=costing.costing_version,
         generated_at=now_iso or datetime.now(timezone.utc).isoformat(),
-        drivers=drivers.as_dict(), lines=lines,
+        drivers=drivers_dict, lines=lines,
         complete=False, missing_rates=missing, not_computable=blocked,
         fx_used=fx_used,
+        elements=list(elements or []), joints=list(joints or []),
     )
 
     if missing or blocked or fx_broken:
@@ -690,3 +718,170 @@ def build_bom(costing: CostingConfig, drivers: CostDrivers, material_id: str,
         f"{bom.total_usd:,.2f} USD",
     ]
     return bom
+
+
+# ---------------------------------------------------------------------------
+# PR-6 (ADR-074): the multi-material assembly BOM
+# ---------------------------------------------------------------------------
+
+#: Line-id separator between an element and its line: "b1/finishing".
+ELEMENT_SEP = "/"
+
+
+def _element_scope(e: ElementDrivers) -> CostDrivers:
+    """Element-scoped CostDrivers so the per-material fabrication lines
+    reuse the SAME _Builder arithmetic as a single-material design.
+
+    Seams here are the element's own segmentation cuts only — joints are
+    billed separately, once, by their owner. Finishing is NOT taken from
+    this object (build_assembly_bom bills the EXPOSED skin itself), and
+    the install-group fields are irrelevant at element scope: install
+    runs ONCE at assembly level and never through this object.
+    """
+    return CostDrivers(
+        mass_kg=e.mass_kg, volume_m3=e.volume_m3,
+        surface_area_m2=e.surface_area_m2 or 0.0,
+        crane_pick_kg=e.mass_kg, monolithic=(e.module_count == 1),
+        module_count=e.module_count,
+        seam_length_m=e.split_seam_length_m,
+        seam_area_m2=e.split_seam_area_m2,
+        joint_seam_length_m=0.0 if e.split_seam_length_m is not None else None,
+        module_masses_kg=None,
+        unavailable=dict(e.unavailable or {}) or None,
+    )
+
+
+def _element_lines(costing: CostingConfig, e: ElementDrivers,
+                   material: Material) -> list[CostLine]:
+    """This element's fabrication lines, in ITS material, ids prefixed."""
+    b = _Builder(costing, _element_scope(e), e.material_id, material)
+    b.material_purchase()
+    b.fabrication()
+    b.mold_pattern()
+    b.seams()           # this element's segmentation cuts only
+    fin_path = f"materials.{e.material_id}.finishing"
+    if e.exposed_area_m2 is None:
+        reason = (e.unavailable or {}).get(
+            "exposed_area_m2",
+            (e.unavailable or {}).get("surface_area_m2", NEEDS_ELEMENT_AREA))
+        b._blocked("finishing", "Finishing", "fabrication", NOT_COMPUTABLE,
+                   formula="<exposed area m2> x rate", blocker=reason,
+                   rate_path=fin_path)
+    else:
+        full = e.surface_area_m2 or 0.0
+        b._money("finishing", "Finishing", "fabrication", e.exposed_area_m2,
+                 (f"exposed skin {e.exposed_area_m2:,.4f} m2 (element "
+                  f"{full:,.4f} m2 minus {full - e.exposed_area_m2:,.4f} m2 "
+                  f"of joint contact faces)"),
+                 resolve(fin_path, costing.materials[e.material_id].finishing),
+                 {"exposed_area_m2": round(e.exposed_area_m2, 4),
+                  "surface_area_m2": round(full, 4)})
+    for ln in b.lines:
+        if ln.line_id == "seam_welding":
+            ln.label = "Fabrication — seams (segmentation cuts)"
+        ln.line_id = f"{e.element_id}{ELEMENT_SEP}{ln.line_id}"
+        ln.label = f"{e.element_id} ({e.material_id}) — {ln.label}"
+        ln.drivers_used = {"element_id": e.element_id,
+                           "material_id": e.material_id,
+                           **(ln.drivers_used or {})}
+    return b.lines
+
+
+def _joint_line(costing: CostingConfig, shared: _Builder,
+                j: JointDrivers) -> None:
+    """One joint, billed ONCE to its owner — or an honest MISSING_RATE."""
+    from app.costing.joints import UnownedJoint, joint_owner
+
+    lid = f"joint{ELEMENT_SEP}{j.child_id}->{j.parent_id}"
+    label = (f"Joint {j.child_id} ({j.child_material}) onto "
+             f"{j.parent_id} ({j.parent_material})")
+    owner = joint_owner(costing, j.parent_material, j.child_material)
+    if isinstance(owner, UnownedJoint):
+        shared._blocked(lid, label, "fabrication", MISSING_RATE,
+                        formula=(f"joint {j.length_m:,.3f} m run / "
+                                 f"{j.area_m2:,.4f} m2 face x <owner unset>"),
+                        blocker=owner.reason, rate_path=owner.missing_path)
+        return
+    seam = costing.materials[owner.material_id].seam
+    if seam is None:
+        shared._blocked(lid, label, "fabrication", MISSING_RATE,
+                        formula="<joint> x rate",
+                        blocker=(f"costing.yaml has no {owner.rate_path} "
+                                 f"entry ({owner.reason})"),
+                        rate_path=owner.rate_path)
+        return
+    rate = resolve(owner.rate_path, seam)
+    if seam.per == "m":
+        qty, qty_text = j.length_m, f"joint run {j.length_m:,.3f} m"
+        used: dict[str, object] = {"length_m": round(j.length_m, 3)}
+    elif seam.per == "m2":
+        qty, qty_text = j.area_m2, f"joint contact face {j.area_m2:,.4f} m2"
+        used = {"area_m2": round(j.area_m2, 4)}
+    else:
+        shared._blocked(lid, label, "fabrication", NOT_COMPUTABLE,
+                        formula=f"<unsupported seam unit {seam.per!r}>",
+                        blocker=(f"a seam is quoted per m or per m2; "
+                                 f"costing.yaml {owner.rate_path} says per "
+                                 f"{seam.per!r}"),
+                        rate_path=owner.rate_path)
+        return
+    ln = shared._money(lid, label, "fabrication", qty, qty_text, rate,
+                       {"owner_material": owner.material_id,
+                        "owner_reason": owner.reason,
+                        "joint_type": j.joint_type, **used})
+    ln.formula += f"  [owner: {owner.material_id} — {owner.reason}]"
+
+
+def build_assembly_bom(costing: CostingConfig,
+                       assembly: CostDrivers,
+                       elements: list[ElementDrivers],
+                       joints: list[JointDrivers],
+                       materials: dict[str, Material],
+                       design_id: str = "", spec_hash: str = "",
+                       now_iso: str | None = None) -> Bom:
+    """One BOM for an assembly whose elements may differ in material.
+
+    Amendment 4 (PR-6, ADR-074), enforced by construction:
+      * one trusted measurement path per element — the manifest the
+        assembler persisted; nothing is re-measured or apportioned;
+      * finishing on EXPOSED area (element skin minus joint contact);
+      * every joint billed ONCE, to the material ``joints.joint_owner``
+        names, with the reason on the line; an unowned joint is a
+        MISSING_RATE naming the path, never a silent side;
+      * crane / crew / transport added ONCE at assembly level from the
+        assembly drivers (heaviest module, total mass, module masses).
+    Never raises on missing rates — it REPORTS, exactly like build_bom.
+    """
+    if not elements:
+        raise ValueError("an assembly BOM needs at least one element")
+    material_ids = sorted({e.material_id for e in elements})
+    for mid in material_ids:
+        if mid not in costing.materials:
+            raise ValueError(
+                f"costing.yaml has no rates block for material {mid!r} "
+                f"(has: {', '.join(sorted(costing.materials))})")
+        if mid not in materials:
+            raise ValueError(f"materials.yaml has no material {mid!r}")
+
+    lines: list[CostLine] = []
+    for e in elements:
+        lines.extend(_element_lines(costing, e, materials[e.material_id]))
+
+    # Joints and the shared install block live on ONE builder over the
+    # ASSEMBLY drivers; its material_id is only a label for _Builder.
+    shared = _Builder(costing, assembly, material_ids[0],
+                      materials[material_ids[0]])
+    for j in joints:
+        _joint_line(costing, shared, j)
+    shared.install()
+    lines.extend(shared.lines)
+
+    drivers_dict = dict(assembly.as_dict())
+    drivers_dict["materials"] = material_ids
+    drivers_dict["element_count"] = len(elements)
+    return _finish_totals(
+        costing, lines, drivers_dict,
+        material_id="+".join(material_ids),
+        design_id=design_id, spec_hash=spec_hash, now_iso=now_iso,
+        elements=[e.as_dict() for e in elements],
+        joints=[j.as_dict() for j in joints])

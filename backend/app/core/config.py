@@ -339,6 +339,31 @@ class FxRate(BaseModel):
         return value
 
 
+#: PR-6 (ADR-074): who owns a seam between two DIFFERENT materials. A
+#: business rule, not arithmetic, so it ships null and the operator sets it.
+#:   parent        — the element the child is joined ONTO bears the seam
+#:   child         — the joined-on element bears it
+#:   stronger_rate — whichever material's seam rate is higher per unit
+#:                   (conservative; a tie goes to the parent, stated)
+_JOINT_OWNER_RULES = ("parent", "child", "stronger_rate")
+
+
+class JointsConfig(BaseModel):
+    """Cross-material joint ownership (PR-6, ADR-074). Null = unset: a
+    seam between two materials is then a MISSING_RATE naming this path —
+    never billed on both sides, never silently on one."""
+    cross_material_owner: str | None = None
+
+    @field_validator("cross_material_owner")
+    @classmethod
+    def _known_rule(cls, value: str | None) -> str | None:
+        if value is not None and value not in _JOINT_OWNER_RULES:
+            raise ValueError(
+                f"joints.cross_material_owner must be one of "
+                f"{_JOINT_OWNER_RULES} or null, got {value!r}")
+        return value
+
+
 class CostingConfig(BaseModel):
     """Operator-provided rate card. LOADS with nulls (template state); any
     cost computation must call require_filled() first — a cost is never
@@ -352,6 +377,9 @@ class CostingConfig(BaseModel):
     contingency_pct: float | None = Field(default=None, ge=0)
     markup_pct: float | None = Field(default=None, ge=0)
     fx_rates: dict[str, FxRate]
+    #: PR-6 (ADR-074). Defaulted so a pre-v3 card still LOADS; the missing
+    #: entry is then reported like every other null.
+    joints: JointsConfig = Field(default_factory=JointsConfig)
 
     def missing_entries(self) -> list[str]:
         """Dotted paths of every rate that is still null (template state)."""
@@ -392,6 +420,8 @@ class CostingConfig(BaseModel):
             missing.append("contingency_pct")
         if self.markup_pct is None:
             missing.append("markup_pct")
+        if self.joints.cross_material_owner is None:
+            missing.append("joints.cross_material_owner")
         for cur, fx in self.fx_rates.items():
             if fx.rate is None:
                 missing.append(f"fx_rates.{cur}.rate")

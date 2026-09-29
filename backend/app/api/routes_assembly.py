@@ -1064,7 +1064,8 @@ def _upsert_export_rows(
             row.tool_versions_json = versions
 
 
-def _costing_for(design_id: str) -> tuple[dict[str, Any] | None, str | None]:
+def _costing_for(design_id: str, *, enforce_budget: bool = False
+                 ) -> tuple[dict[str, Any] | None, str | None]:
     """BOM for the package, or an honest reason it could not be computed.
 
     reproducible=True: the sealed BOM is stamped with the design's own
@@ -1072,11 +1073,34 @@ def _costing_for(design_id: str) -> tuple[dict[str, Any] | None, str | None]:
     produce the same package digest (ADR-035/037, hole found in ADR-056).
     """
     try:
-        from app.api.routes_costing import _bom_for
+        from app.api.routes_costing import _bom_for, _budget_for
+        from app.costing.budget import BudgetViolation, check_budget
 
-        _, bom, _params = _bom_for(design_id, reproducible=True)
-        return bom.as_dict(), None
+        bundle, bom, params = _bom_for(design_id, reproducible=True)
+        payload = bom.as_dict()
+        budget = _budget_for(params, None, "ETB", None)
+        if budget is not None:
+            try:
+                payload["budget"] = check_budget(
+                    bom, budget, bundle.costing).as_dict()
+            except BudgetViolation as exc:
+                if enforce_budget:
+                    # PR-6 (ADR-074): the package/quote boundary is binding,
+                    # not advisory. No exports or zip are written after this.
+                    raise HTTPException(422, {
+                        "error": "budget_exceeded", "message": exc.message,
+                        "total_usd": exc.total_usd,
+                        "ceiling_usd": exc.ceiling_usd,
+                        "over_usd": exc.over_usd, "over_pct": exc.over_pct,
+                        "source": budget.get("source"),
+                        "source_detail": budget.get("source_detail"),
+                    }) from exc
+                return None, ("costing unavailable: budget exceeded — "
+                              + exc.message)
+        return payload, None
     except HTTPException as exc:
+        if enforce_budget and exc.status_code == 422:
+            raise
         return None, f"costing unavailable: {exc.detail}"
     except Exception as exc:
         return None, f"costing unavailable: {type(exc).__name__}: {exc}"
@@ -1117,6 +1141,13 @@ def post_design_exports(design_id: str) -> dict[str, Any]:
     manifest = stored["manifest"]
     request_payload = stored["request"]
     seed = int(row.seed or 0)
+
+    # PR-6 (ADR-074): evaluate the confirmed intake ceiling BEFORE creating
+    # a job, rebuilding geometry, or writing any export/package bytes. A
+    # complete BOM above budget is a binding HTTP 422. An incomplete BOM
+    # carries budget.status=not_performed (never PASS) into the marked
+    # PRE-FABRICATION package.
+    costing, costing_reason = _costing_for(design_id, enforce_budget=True)
 
     job_id = str(uuid.uuid4())
     started = datetime.now(timezone.utc).isoformat()
@@ -1175,7 +1206,6 @@ def post_design_exports(design_id: str) -> dict[str, Any]:
         prefab_notice=classification.package_class == "pre_fabrication",
     )
 
-    costing, costing_reason = _costing_for(design_id)
     validation_reports = _validation_rows(design_id)
     package_path = out_dir / PACKAGE_NAME
     versions = _tool_versions()

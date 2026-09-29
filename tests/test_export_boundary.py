@@ -21,6 +21,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from sqlalchemy import select
 
 build123d = pytest.importorskip("build123d", reason="build123d not installed")
 trimesh = pytest.importorskip("trimesh", reason="trimesh not installed")
@@ -28,6 +29,8 @@ trimesh = pytest.importorskip("trimesh", reason="trimesh not installed")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.db.database import reset_default_db  # noqa: E402
+from app.db.database import get_default_db  # noqa: E402
+from app.db.models import ExportRow, JobRow  # noqa: E402
 from app.main import app  # noqa: E402
 
 
@@ -91,6 +94,41 @@ def failing_payload() -> dict:
     return payload
 
 
+def _filled_bundle_for_budget_test():
+    """Arbitrary in-memory TEST rates: prove the budget boundary only.
+
+    No value here has engineering/commercial meaning and nothing is written
+    to config/costing.yaml.
+    """
+    from app.core.config import CostingConfig, load_config_bundle
+
+    bundle = load_config_bundle()
+    raw = bundle.costing.model_dump()
+    for m in raw["materials"].values():
+        m["buy_price"] = {"amount": 100.0, "currency": "ETB", "per": "kg"}
+        m["waste_factor_pct"] = 10.0
+        m["fabrication"]["method"] = "hand_carve"
+        m["fabrication"]["labor"] = {
+            "amount": 200.0, "currency": "ETB", "per": "hour"}
+        m["fabrication"]["hours_per_m3"] = 40.0
+        m["finishing"] = {"amount": 500.0, "currency": "ETB", "per": "m2"}
+        m["seam"] = {"amount": 300.0, "currency": "ETB", "per": "m"}
+    raw["workshop"]["overhead_pct"] = 15.0
+    raw["install"]["crew_day_rate"] = {
+        "amount": 1000.0, "currency": "ETB", "per": "crew_day"}
+    raw["install"]["crew_size"] = 4
+    raw["install"]["days_per_tonne"] = 0.5
+    raw["install"]["transport"] = {
+        "amount": 8000.0, "currency": "ETB", "per": "trip"}
+    raw["install"]["truck_payload_kg"] = 12000.0
+    raw["install"]["modules_per_trip"] = 4
+    raw["contingency_pct"] = 10.0
+    raw["markup_pct"] = 20.0
+    raw["joints"] = {"cross_material_owner": "parent"}
+    raw["fx_rates"]["ETB"] = {"rate": 140.0, "as_of": "2026-09-28"}
+    return bundle.model_copy(update={"costing": CostingConfig(**raw)})
+
+
 # ---------------------------------------------------------------------------
 # REFUSED
 # ---------------------------------------------------------------------------
@@ -142,6 +180,63 @@ def test_failed_design_keeps_diagnostic_viewing(client):
 # ---------------------------------------------------------------------------
 # PRE-FABRICATION
 # ---------------------------------------------------------------------------
+
+def test_confirmed_over_budget_design_writes_no_export_or_package(
+        client, monkeypatch):
+    """PR-6/D-19: budget binds BEFORE job, geometry rebuild or file writes."""
+    intake = client.post("/api/intake", json={
+        "brief_text": "Fountain with a deliberately tiny budget ceiling.",
+        "fields": {
+            "project.project_type": "fountain",
+            "dimensions.height_m": 2.4,
+            "dimensions.footprint_m": 3.0,
+            "site.indoor": False,
+            "site.design_wind_speed_m_s": 30.0,
+            "water.has_water": True,
+            "budget.amount_max": 1.0,
+            "budget.currency": "ETB",
+        },
+    })
+    assert intake.status_code == 201, intake.text
+    intake_id = intake.json()["id"]
+    confirmed = client.post(f"/api/intake/{intake_id}/confirm")
+    assert confirmed.status_code == 200, confirmed.text
+
+    payload = valid_assembly_payload()
+    payload["intake_id"] = intake_id
+    built = _build(client, payload)
+    design_id = built["design_id"]
+
+    import app.api.routes_costing as costing_routes
+    monkeypatch.setattr(costing_routes, "load_config_bundle",
+                        _filled_bundle_for_budget_test)
+
+    db = get_default_db()
+    with db.get_session() as session:
+        assert session.execute(select(ExportRow).where(
+            ExportRow.design_id == design_id)).scalars().all() == []
+        assert session.execute(select(JobRow).where(
+            JobRow.session_id == design_id,
+            JobRow.job_type == "export")).scalars().all() == []
+
+    from app.api.routes_assembly import PACKAGE_NAME, _package_dir
+    package_path = _package_dir(design_id) / PACKAGE_NAME
+    assert not package_path.exists()
+
+    resp = client.post(f"/api/geometry/assembly/{design_id}/exports")
+    assert resp.status_code == 422, resp.text
+    detail = resp.json()["detail"]
+    assert detail["error"] == "budget_exceeded"
+    assert detail["source"] == "confirmed brief intake"
+    assert detail["total_usd"] > detail["ceiling_usd"]
+
+    with db.get_session() as session:
+        assert session.execute(select(ExportRow).where(
+            ExportRow.design_id == design_id)).scalars().all() == []
+        assert session.execute(select(JobRow).where(
+            JobRow.session_id == design_id,
+            JobRow.job_type == "export")).scalars().all() == []
+    assert not package_path.exists()
 
 def test_pre_fabrication_package_is_marked_warranted_and_verifiable(
         client, tmp_path):

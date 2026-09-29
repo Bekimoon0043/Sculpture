@@ -501,7 +501,7 @@ def main() -> int:  # noqa: C901 — a gate is a transcript, not a design
                    txt.status_code == 200 and "WHAT SHIPS" in txt.text)
 
     # ------------------------------------------------------------------
-    _section(10, "MIXED MATERIAL — refused, never mispriced")
+    _section(10, "MIXED MATERIAL — per-element, never mispriced (PR-6)")
     mixed_plan = [
         {"element_id": "p1", "primitive": "plinth",
          "parameters": {"top_diameter_mm": 1400, "height_mm": 400,
@@ -518,17 +518,25 @@ def main() -> int:  # noqa: C901 — a gate is a transcript, not a design
                json.dumps(mixed.json())[:200])
     else:
         mid_resp = client.get(f"/api/costing/bom/{mixed.json()['design_id']}")
-        detail = mid_resp.json().get("detail", {})
-        print(f"-> {mid_resp.status_code} {str(detail.get('error'))}: "
-              f"{str(detail.get('message'))[:140]}")
-        _check(failures, "a mixed-material assembly is refused with 409",
-               mid_resp.status_code == 409
-               and detail.get("error") == "mixed_material_assembly",
-               str(mid_resp.status_code))
-        _check(failures, "and the refusal names both materials",
-               set(detail.get("materials") or []) ==
-               {"basalt_slab", "bronze_cast"},
-               str(detail.get("materials")))
+        body = mid_resp.json()
+        print(f"-> {mid_resp.status_code} material_id={body.get('material_id')} "
+              f"complete={body.get('complete')} total="
+              f"{(body.get('totals') or {}).get('total_usd')}")
+        _check(failures, "the mixed-material assembly returns a BOM, not 409",
+               mid_resp.status_code == 200, str(mid_resp.status_code))
+        _check(failures, "the BOM carries both materials and per-element lines",
+               set((body.get("drivers") or {}).get("materials") or []) ==
+               {"basalt_slab", "bronze_cast"}
+               and {e.get("material_id") for e in body.get("elements") or []} ==
+               {"basalt_slab", "bronze_cast"}
+               and any(str(ln.get("line_id", "")).startswith("p1/")
+                       for ln in body.get("lines") or [])
+               and any(str(ln.get("line_id", "")).startswith("b1/")
+                       for ln in body.get("lines") or []),
+               str((body.get("drivers") or {}).get("materials")))
+        _check(failures, "the real unfilled card still produces no total",
+               body.get("complete") is False
+               and (body.get("totals") or {}).get("total_usd") is None)
 
     # ------------------------------------------------------------------
     _section(11, "BUDGET — segmentation is cheap enough to sit on the build")

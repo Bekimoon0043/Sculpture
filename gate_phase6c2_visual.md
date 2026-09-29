@@ -144,9 +144,10 @@ Open <http://localhost:5173>, build the 5 m basin from step 1, and open the
 
 ## Known and deliberate, so they are not defects
 
-- **Mixed-material assemblies are refused for costing** with HTTP 409
-  naming every material. Per-element costing is the costing tie-off
-  (`NEXT.md` W-7).
+- ~~**Mixed-material assemblies are refused for costing** with HTTP 409.~~
+  **Superseded 2026-09-28 by PR-6 / ADR-074:** they now return a
+  per-element BOM. Walk `gate_pr6_visual.md` for visual acceptance of
+  element grouping, one-owned joints, shared install and confirmed budgets.
 - **Designs built before 2026-08-27 have no segmentation.** Their BOM asks
   you to rebuild them once rather than guessing a module count. Rebuild any
   older assembly before quoting it.

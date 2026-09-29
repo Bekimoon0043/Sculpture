@@ -295,3 +295,202 @@ def drivers_for_assembly(report: AssemblyValidationReport,
         module_masses_kg=masses,
         unavailable=unavailable,
     )
+
+
+# ---------------------------------------------------------------------------
+# PR-6 (ADR-074): per-element drivers for a multi-material assembly
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ElementDrivers:
+    """One element's own quantities, read STRAIGHT off the persisted
+    manifest the assembler wrote — never re-measured here.
+
+    ``exposed_area_m2`` is the element's full skin MINUS the contact faces
+    of the joints it takes part in (both recorded by the assembler). It is
+    never a proportional share of the fused total: that would spread one
+    element's area over another's material. When a joint the element is
+    in has no recorded contact area, ``exposed_area_m2`` is None with the
+    reason in ``unavailable``.
+    """
+
+    element_id: str
+    primitive: str
+    material_id: str
+    mass_kg: float
+    volume_m3: float
+    #: full element skin as measured by the mesh of THIS element alone
+    surface_area_m2: float | None
+    exposed_area_m2: float | None
+    #: segmentation cuts INSIDE this element (never the joints)
+    module_count: int | None
+    split_seam_length_m: float | None
+    split_seam_area_m2: float | None
+    unavailable: dict[str, str] | None = None
+
+    def as_dict(self) -> dict[str, object]:
+        def _r(v: float | None, dp: int) -> float | None:
+            return round(v, dp) if v is not None else None
+        return {
+            "element_id": self.element_id,
+            "primitive": self.primitive,
+            "material_id": self.material_id,
+            "mass_kg": round(self.mass_kg, 3),
+            "volume_m3": round(self.volume_m3, 6),
+            "surface_area_m2": _r(self.surface_area_m2, 4),
+            "exposed_area_m2": _r(self.exposed_area_m2, 4),
+            "module_count": self.module_count,
+            "split_seam_length_m": _r(self.split_seam_length_m, 3),
+            "split_seam_area_m2": _r(self.split_seam_area_m2, 4),
+            "unavailable": self.unavailable,
+        }
+
+
+@dataclass(frozen=True)
+class JointDrivers:
+    """One element-to-element joint as the assembler measured it."""
+
+    parent_id: str
+    child_id: str
+    parent_material: str
+    child_material: str
+    joint_type: str
+    length_m: float
+    area_m2: float
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "parent_id": self.parent_id, "child_id": self.child_id,
+            "parent_material": self.parent_material,
+            "child_material": self.child_material,
+            "joint_type": self.joint_type,
+            "length_m": round(self.length_m, 3),
+            "area_m2": round(self.area_m2, 4),
+        }
+
+
+#: Reason an element's skin area is unknown: the assembler did not persist
+#: a per-element surface. Manifests written before PR-6 carry none.
+NEEDS_ELEMENT_AREA = (
+    "this element's own surface area was not recorded in the manifest "
+    "(designs built before 2026-09-28 carry none). Rebuild the design once "
+    "and the assembler records every element's skin; nothing is "
+    "apportioned from the fused total"
+)
+
+
+def drivers_per_element(
+    report: AssemblyValidationReport, manifest: dict | None,
+) -> tuple[list[ElementDrivers], list[JointDrivers]]:
+    """Per-element and per-joint drivers for a multi-material BOM.
+
+    Refuses (same exceptions as ``drivers_for_assembly``) when validation
+    failed or the mass is incomplete: a per-element price on a refused or
+    half-known design is still a wrong number.
+    """
+    if not report.passed:
+        raise ValueError(
+            "refusing to cost an assembly whose validation FAILED — "
+            "fix the geometry before pricing it "
+            f"(watertight={report.watertight}, body_count={report.body_count}, "
+            f"total_mass_kg={report.total_mass_kg})"
+        )
+    elements = list((manifest or {}).get("elements") or [])
+    if not elements:
+        raise ValueError(
+            "per-element costing needs the assembly manifest's element list "
+            "and this design's manifest has none")
+    truth = assembly_mass_truth({"elements": elements})
+    if report.total_mass_kg is None or not truth.mass_complete:
+        raise IncompleteMassError(truth.known_geometry_mass_kg,
+                                  truth.missing_mass_inputs)
+
+    seg = (manifest or {}).get("segmentation") or {}
+    seg_elements = seg.get("elements") or {}
+    joint_records = ((seg.get("seams") or {}).get("joint") or {}).get(
+        "joints") or []
+    joints_declared = (manifest or {}).get("joints") or []
+    by_child = {str(j.get("child")): j for j in joints_declared}
+    material_of = {str(e["element_id"]): str(e["material_id"])
+                   for e in elements}
+
+    # Joint contact area charged against each element it touches — the
+    # subtraction that turns a full skin into an EXPOSED skin.
+    contact_by_element: dict[str, float] = {}
+    contact_known: dict[str, bool] = {eid: True for eid in material_of}
+    joints: list[JointDrivers] = []
+    for rec in joint_records:
+        child = str(rec.get("child"))
+        parent = str(rec.get("parent"))
+        area_mm2 = rec.get("area_mm2")
+        length_mm = rec.get("length_mm")
+        if area_mm2 is None or length_mm is None:
+            contact_known[child] = False
+            contact_known[parent] = False
+            continue
+        area_m2 = float(area_mm2) / _MM2_PER_M2
+        contact_by_element[child] = contact_by_element.get(child, 0.0) + area_m2
+        contact_by_element[parent] = contact_by_element.get(parent, 0.0) + area_m2
+        joints.append(JointDrivers(
+            parent_id=parent, child_id=child,
+            parent_material=material_of.get(parent, ""),
+            child_material=material_of.get(child, ""),
+            joint_type=str(rec.get("type") or
+                           (by_child.get(child) or {}).get("type") or ""),
+            length_m=float(length_mm) / 1000.0,
+            area_m2=area_m2,
+        ))
+    # A declared joint the segmentation block never measured (pre-C2
+    # manifest) leaves both its elements' exposed area unknown.
+    measured_children = {j.child_id for j in joints}
+    for child, j in by_child.items():
+        if child not in measured_children:
+            contact_known[child] = False
+            contact_known[str(j.get("parent"))] = False
+
+    out: list[ElementDrivers] = []
+    for e in elements:
+        eid = str(e["element_id"])
+        unavailable: dict[str, str] = {}
+        area_mm2 = e.get("surface_area_mm2")
+        surface_m2 = (float(area_mm2) / _MM2_PER_M2
+                      if area_mm2 is not None else None)
+        if surface_m2 is None:
+            unavailable["surface_area_m2"] = NEEDS_ELEMENT_AREA
+            exposed = None
+        elif not contact_known.get(eid, True):
+            exposed = None
+            unavailable["exposed_area_m2"] = (
+                f"a joint on {eid} has no measured contact face in the "
+                f"manifest, so its exposed skin cannot be separated from "
+                f"the bedded face. Rebuild the design once")
+        else:
+            exposed = max(surface_m2 - contact_by_element.get(eid, 0.0), 0.0)
+
+        seg_e = seg_elements.get(eid) or {}
+        if seg_e and "refusal" not in seg_e:
+            module_count: int | None = int(seg_e.get("module_count") or 0)
+            split_len: float | None = float(
+                seg_e.get("seam_length_mm") or 0.0) / 1000.0
+            split_area: float | None = float(
+                seg_e.get("seam_area_mm2") or 0.0) / _MM2_PER_M2
+        else:
+            module_count, split_len, split_area = None, None, None
+            unavailable["module_count"] = (
+                (f"segmentation refused {eid}: " + str(seg_e.get("refusal")))
+                if seg_e else (NEEDS_REBUILD if seg else NEEDS_SEGMENTATION))
+        out.append(ElementDrivers(
+            element_id=eid,
+            primitive=str(e.get("primitive") or ""),
+            material_id=material_of[eid],
+            mass_kg=float(e["mass_kg"]),
+            volume_m3=float(e["volume_mm3"]) / _MM3_PER_M3,
+            surface_area_m2=surface_m2,
+            exposed_area_m2=exposed,
+            module_count=module_count,
+            split_seam_length_m=split_len,
+            split_seam_area_m2=split_area,
+            unavailable=unavailable or None,
+        ))
+    return out, joints

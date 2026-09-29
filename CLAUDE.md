@@ -183,6 +183,16 @@ lattice, and an owner mesh/lattice reference is still required.**
 new `stainless_316l_cast` material, `gate_sca1_auto.py` (roster script
 31, 63/63); the organic liquid forms of the owner's reference are NOT
 claimed. Same deferred in-container caveat.**
+**PR-6 (costing tie-off, ADR-074) is BUILT, auto-gated and definitively
+chained 2026-09-28/29, visual pending: `gate_pr6_auto.py` is roster script 32
+(43/43); on pinned image `e5e5b4ecfa22` the in-container roster is 29/29 gates
+PASS with 0 failures, the host gate modes are PASS, the full suite is 860
+passed with `geo-worker` UP and 860 passed with it REMOVED, and
+`gate_phase9b_auto` is NOT RUN because no render-worker image exists on this
+machine — an unrun gate is never reported as PASS. Mixed
+materials cost per element; cross-material joints own exactly one rate;
+confirmed intake budgets bind at BOM/export; the real card has 47 required
+null entries, so no client-ready total exists until B-3 closes.**
 Note `gate_phase9b_auto.py` and the Blender-tier sections of
 `gate_phase9a_auto.py` need the render-worker container running
 (`docker compose --profile render up -d render-worker`); both still cost $0 and

@@ -69,6 +69,10 @@ class BudgetCheck:
     fx_text: str | None = None
     headroom_usd: float | None = None
     reason: str | None = None
+    #: PR-6 (ADR-074): which channel supplied the ceiling, and the detail
+    #: (intake id + field sources) — so the BUDGET row is traceable.
+    source: str | None = None
+    source_detail: str | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -78,7 +82,44 @@ class BudgetCheck:
             "ceiling_currency": self.ceiling_currency,
             "fx": self.fx_text, "headroom_usd": self.headroom_usd,
             "reason": self.reason,
+            "source": self.source, "source_detail": self.source_detail,
         }
+
+
+#: Where a budget ceiling came from — printed on the BUDGET row so the
+#: operator knows which number bound (PR-6, ADR-074).
+BUDGET_SOURCE_QUERY = "explicit request parameter"
+BUDGET_SOURCE_INTAKE = "confirmed brief intake"
+
+
+def budget_from_intake(intake_normalized: dict, intake_status: str,
+                       intake_id: str) -> dict | None:
+    """The budget ceiling a CONFIRMED intake supplies, or None.
+
+    PR-6 (ADR-074) closes LIMITATIONS §15 "budget fields are captured but
+    not bound to costing". Only a confirmed intake binds — a draft's
+    figure is still being edited — and only ``amount_max`` is a ceiling:
+    ``amount_min`` is a floor, meaningless as a constraint here. Both the
+    currency and the amount must be KNOWN (not source=unknown); a ceiling
+    with no currency cannot be compared against anything.
+    """
+    if intake_status != "confirmed":
+        return None
+    budget = (intake_normalized or {}).get("budget") or {}
+    amount = (budget.get("amount_max") or {})
+    currency = (budget.get("currency") or {})
+    if amount.get("value") is None or currency.get("value") is None:
+        return None
+    return {
+        "amount": float(amount["value"]),
+        "currency": str(currency["value"]),
+        "fx_date": None,
+        "source": BUDGET_SOURCE_INTAKE,
+        "source_detail": (
+            f"intake {intake_id} budget.amount_max "
+            f"(source={amount.get('source')}), currency "
+            f"(source={currency.get('source')})"),
+    }
 
 
 def check_budget(bom: Bom, budget: dict, costing) -> BudgetCheck:
@@ -89,6 +130,13 @@ def check_budget(bom: Bom, budget: dict, costing) -> BudgetCheck:
     than no check: it would tell the operator a design is affordable on the
     strength of costs nobody has computed.
     """
+    check = _check_budget(bom, budget, costing)
+    check.source = budget.get("source")
+    check.source_detail = budget.get("source_detail")
+    return check
+
+
+def _check_budget(bom: Bom, budget: dict, costing) -> BudgetCheck:
     if not bom.complete or bom.total_usd is None:
         blockers = []
         if bom.missing_rates:

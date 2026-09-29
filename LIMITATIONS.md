@@ -230,7 +230,15 @@ per-material `seam` rate (4) plus `install.truck_payload_kg` and
 `install.modules_per_trip`. That growth is the price of two lines moving
 from "ours to build" to "yours to supply".
 
-- **The rate card is empty.** 39 null entries in `config/costing.yaml`. Every
+**Update 2026-09-28 (PR-6, ADR-074):** mixed-material costing and the
+confirmed-intake budget tie-off are BUILT and auto-gated. The rate card is
+now `2026-09-v3` with **47 required null entries**: SC-A1's fifth material
+added seven after the C2 count, and PR-6 added the explicit
+`joints.cross_material_owner` rule. The exact operator checklist is
+`docs/operator/12_rate_card_checklist.md`.
+
+- **The rate card is empty.** 47 required null entries in
+  `config/costing.yaml`. Every
   one is named by `GET /api/costing/rate-card` and by the BOM itself. No cost
   is computed from a null rate and none is defaulted to zero, so **no real
   design can produce a total today** — the gate proves the machinery is
@@ -264,10 +272,16 @@ from "ours to build" to "yours to supply".
   pick. On the single-solid Phase 2 path it is still the whole mass, which
   is correct — one fused solid is lifted as one piece — and the driver
   still records `monolithic` so which case you are in stays visible.
-- **Costing keys on ONE material.** A mixed-material assembly is refused
-  with HTTP 409 naming every material and its elements, rather than priced
-  at whichever material reached the report first. Per-element costing is
-  the costing tie-off (NEXT.md W-7).
+- ~~**Costing keys on ONE material.**~~ **CLOSED 2026-09-28 (PR-6,
+  ADR-074).** A mixed-material assembly now prices every element in its own
+  material from persisted per-element mass, volume and skin area. Finishing
+  uses that element's skin minus its measured joint-contact faces—never a
+  proportional share of the fused total. Split seams stay with their
+  element; each cross-material joint is billed exactly once to the owner
+  selected by `joints.cross_material_owner`. Shared crane, crew and
+  transport lines occur once at assembly level. Old manifests with no
+  per-element skin remain honestly `not_computable` for finishing until
+  rebuilt once.
 - **Two latent defects were found by making the assembly path work, both
   now fixed and regression-tested** (ADR-056): `GET /api/costing/bom/{id}`
   returned HTTP 500 for every assembly ever built, because an assembly
@@ -584,10 +598,12 @@ is NOT there:
 - **Mesh-tier files are triangulated approximations.** OBJ, PLY and GLB
   carry `derived_from: assembly.glb`. Never machine or measure from them.
 
-- **The BOM is included only when it can be computed.** Costing keys on a
-  single `material_id`; a mixed-material assembly still cannot be costed
-  correctly (§11), so the package records `costing_included: false` with the
-  reason rather than shipping a wrong number.
+- **The BOM remains incomplete until every applicable rate exists.** PR-6
+  closed the mixed-material refusal: the sealed package now carries the
+  per-element BOM and one-owned-joint evidence. With the real 47-entry card
+  still blank it carries `complete: false`, `total_usd: null`, and a
+  confirmed-intake budget status of `not_performed`—never a partial total or
+  a false budget PASS.
 
 - **Reproducibility is per (design, seed, image).** It holds across
   processes and across export runs on this machine and this image. Two
@@ -648,9 +664,13 @@ gates. What it does NOT do:
   them; they are recorded for the Council and for later phases. Recorded
   honestly, not claimed as validated inputs.
 
-- **Budget fields are captured but not bound to costing.** The costing layer
-  still takes its budget separately; wiring the intake budget into the
-  binding budget check is not done.
+- ~~**Budget fields are captured but not bound to costing.**~~ **CLOSED
+  2026-09-28 (PR-6, ADR-074).** A confirmed intake's `budget.amount_max`
+  and currency now bind automatically at the BOM and export/package
+  boundaries. An explicit BOM query parameter overrides it and is labelled
+  as the source. A draft intake never binds. An incomplete BOM reports
+  `not_performed`, never PASS; a complete over-budget BOM returns HTTP 422
+  before an export job, geometry rebuild, export file or package is written.
 
 - **Only three site facts reach the gates** — altitude, design wind speed,
   allowable bearing. Everything else in the site section is context for the
@@ -894,9 +914,10 @@ visual gate personally walked and signed PASS 2026-09-02, verbatim in
 
 - Validation rows still carry no cryptographic run identity (D-24) —
   the reason CLEAN stays builder-only.
-- The budget check still binds only on the BOM route with
-  `?budget_amount=`, and the sealed BOM is not budget-gated (D-19's
-  remaining half; PR-6).
+- ~~The budget check binds only on `?budget_amount=` and export bypasses
+  it.~~ **CLOSED by PR-6 (2026-09-28, ADR-074).** Confirmed intake ceilings
+  bind without a query parameter, are sealed with the BOM, and a complete
+  over-budget BOM stops export before any bytes are written.
 - The Phase 2 cascade path and build-time GLB/scene streams remain
   reachable without a package — cascade designs classify
   PRE-FABRICATION and their downloads are marked, but no gate refuses
