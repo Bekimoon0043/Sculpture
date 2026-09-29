@@ -5,8 +5,10 @@ the start of every session (`/lf-orient`) and rewritten at the end of every
 slice (`/lf-close`). If this file and a phase plan disagree, this file is
 stale and must be corrected in the same commit as the work.
 
-Last updated: 2026-09-29 (3rd) — **PR-6 BUILT + AUTO-GATED + DEFINITIVELY
-CHAINED (ADR-074), visual gate PENDING — not closed.** Mixed-material
+Last updated: 2026-09-29 (4th) — **PR-6 BUILT + AUTO-GATED + DEFINITIVELY
+CHAINED (ADR-074); a false client-facing sentence found while preparing the
+visual walk is FIXED and re-verified; visual gate PENDING — not closed.**
+Mixed-material
 assemblies now return a
 per-element BOM instead of HTTP 409: each element uses its own persisted
 mass, volume and BREP skin; finishing subtracts measured joint contacts,
@@ -19,14 +21,27 @@ The real card is `2026-09-v3`, **47 required null entries** (verified against
 the running API: `missing_count = 47`, entry 45 =
 `joints.cross_material_owner`), so real BOMs
 still carry NO total; checklist: `docs/operator/12_rate_card_checklist.md`.
-`gate_pr6_auto.py` (roster script 32) PASS 43/43 at $0; 24 new focused
+`gate_pr6_auto.py` (roster script 32) PASS **44/44** at $0; 25 new focused
 tests + export-boundary regression; visual: `gate_pr6_visual.md`. D-19 and
-D-20 closed. **Definitive chain on pinned image `e5e5b4ecfa22`, identical at
-roster start and end: 29/29 in-container gates PASS with 0 failures; host
+D-20 closed. **Definitive chain on commit `0cb2bee`, pinned image
+`e5e5b4ecfa22`, identical at roster start and end: 29/29 in-container gates
+PASS with 0 failures; host
 modes PR-3 static + PR-3 live, scope audit, PR-2.5 host-drift 66/66 and
 Phase 14 frontend-only all PASS; full pytest suite 860 passed (1589.18 s)
-with `geo-worker` UP and 860 passed (1642.17 s) with `geo-worker`
-REMOVED.** The
+with `geo-worker` UP and 860 passed (1642.17 s) with `geo-worker` REMOVED.**
+**Then, later on 2026-09-29, preparing the visual walk found a FALSE sentence
+in the rendered BOM:** an uncut element's seam line claimed "no element
+joints" on a design whose JOINTS section bills a joint (pre-existing
+single-material wording, reused at element scope by PR-6). Fixed in-slice by
+branching that blocker on scope — element scope names the element and points
+at JOINTS — with no arithmetic, id, status or amount changed; guarded by a new
+gate check (43 → 44) and
+`test_uncut_element_seam_explanation_is_element_scoped`; re-verified on the
+rebuilt image `a778b8534230` (identical at roster start and end) with roster
+**29/29 PASS / 0 failures**, PR-6 **44/44**, focused costing tests **70
+passed**, full suite **861 passed in 1588.93 s (0:26:28)** with `geo-worker` UP. The
+`geo-worker`-REMOVED state was NOT re-run for a one-string explanation change —
+stated, not implied. The
 `geo-worker`-UP run is NOT the project's full "worker-UP" state: no
 render-worker (Blender) image exists on this machine, so `gate_phase9b_auto`
 stays NOT RUN — never PASS. Canonical STEP `e1a59fa6…` untouched; rebuilt

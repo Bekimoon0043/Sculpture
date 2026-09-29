@@ -17,7 +17,9 @@ What it proves, with real numbers on both sides of every check:
      line is priced at a material the design does not contain.
   2. JOINT ONCE — exactly one joint line; its rate_path names ONE
      material; the seam identity  sum(seam qty) == split + joint  holds
-     to 1e-6; b1's own seam line is its cuts only.
+     to 1e-6; b1's own seam line is its cuts only; an UNCUT element's
+     "nothing to join" line is element-scoped and never denies joints
+     that the same BOM bills under JOINTS.
   3. SHARED ONCE — exactly one crane, one crew, one transport line, all
      on ASSEMBLY numbers; crane pick == heaviest MODULE.
   4. HAND ARITHMETIC — the total on a filled test card equals the paper
@@ -371,7 +373,8 @@ def _live_api_sections(failures: list[str], bundle) -> None:
 
 def main() -> int:
     from app.core.config import load_config_bundle
-    from app.costing.bom import COMPUTED, MISSING_RATE, NOT_COMPUTABLE
+    from app.costing.bom import (COMPUTED, MISSING_RATE, NOT_APPLICABLE,
+                             NOT_COMPUTABLE)
     from app.costing.budget import budget_from_intake, check_budget
     from app.costing.drivers import drivers_for_assembly, drivers_per_element
     from app.costing.joints import OWNER_RULE_PATH
@@ -435,6 +438,17 @@ def main() -> int:
     _check(failures, "b1 seam line is cuts only, never the joint",
            abs(_line(bom, "b1/seam_welding").drivers_used["seam_length_m"]
                - B1_SPLIT_LEN / 1000.0) <= 1e-9)
+    # Wording guard (found while preparing the PR-6 visual walk): p1 has no
+    # cut, so its seam line is not_applicable — but this design HAS an element
+    # joint, and the design-scope sentence ("no element joints") contradicts the
+    # JOINTS section printed on the same page. Element scope must say so.
+    p1_seam = _line(bom, "p1/seam_welding")
+    _check(failures,
+           "an uncut element's 'nothing to join' line is element-scoped",
+           p1_seam.status == NOT_APPLICABLE and p1_seam.blocker is not None
+           and "no element joints" not in p1_seam.blocker
+           and "p1" in p1_seam.blocker and "JOINTS" in p1_seam.blocker,
+           f"{p1_seam.status}: {str(p1_seam.blocker)[:90]}")
 
     # ------------------------------------------------------------------
     _section(3, "SHARED ONCE — crane, crew, transport at assembly level")

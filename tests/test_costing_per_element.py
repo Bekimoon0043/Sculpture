@@ -29,6 +29,7 @@ from app.costing.bom import (
     COMPUTED,
     ELEMENT_SEP,
     MISSING_RATE,
+    NOT_APPLICABLE,
     NOT_COMPUTABLE,
     build_assembly_bom,
     build_bom,
@@ -282,6 +283,26 @@ def test_joint_is_billed_exactly_once_and_seam_identity_holds(filled, materials)
     # b1's own seam line is its 4 m of cuts only — not the joint
     b1_seam = _line(bom, "b1/seam_welding")
     assert b1_seam.drivers_used["seam_length_m"] == pytest.approx(4.0)
+
+
+def test_uncut_element_seam_explanation_is_element_scoped(empty_costing,
+                                                          materials):
+    """The 'nothing to join' sentence must not deny joints that DO exist.
+
+    p1 is one module with no cut, so its seam line is correctly not_applicable
+    — but the design HAS an element joint (b1 bedded onto p1), billed once
+    under JOINTS. Reusing the design-scope sentence here would tell the client
+    the opposite of the JOINTS section printed on the same page.
+    """
+    bom = _build(empty_costing, materials)
+    p1_seam = _line(bom, f"p1{ELEMENT_SEP}seam_welding")
+    assert p1_seam.status == NOT_APPLICABLE
+    assert p1_seam.blocker is not None
+    assert "no element joints" not in p1_seam.blocker
+    assert "p1" in p1_seam.blocker
+    assert "JOINTS" in p1_seam.blocker
+    # the element that IS cut still bills its own cuts
+    assert _line(bom, f"b1{ELEMENT_SEP}seam_welding").status != NOT_APPLICABLE
 
 
 def test_shared_install_block_appears_once_on_assembly_numbers(filled, materials):

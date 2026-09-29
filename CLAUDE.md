@@ -184,12 +184,18 @@ new `stainless_316l_cast` material, `gate_sca1_auto.py` (roster script
 31, 63/63); the organic liquid forms of the owner's reference are NOT
 claimed. Same deferred in-container caveat.**
 **PR-6 (costing tie-off, ADR-074) is BUILT, auto-gated and definitively
-chained 2026-09-28/29, visual pending: `gate_pr6_auto.py` is roster script 32
-(43/43); on pinned image `e5e5b4ecfa22` the in-container roster is 29/29 gates
+chained 2026-09-28/29, visual pending: `gate_pr6_auto.py` is roster script 32,
+now 44/44 after a false client-facing sentence found during visual preparation
+was fixed and guarded; on pinned image `e5e5b4ecfa22` the in-container roster
+is 29/29 gates
 PASS with 0 failures, the host gate modes are PASS, the full suite is 860
 passed with `geo-worker` UP and 860 passed with it REMOVED, and
 `gate_phase9b_auto` is NOT RUN because no render-worker image exists on this
-machine — an unrun gate is never reported as PASS. Mixed
+machine — an unrun gate is never reported as PASS. The client-text fix was
+re-verified on rebuilt image `a778b8534230` (roster 29/29, PR-6 44/44, focused
+costing tests 70 passed, full suite 861 passed in 1588.93 s with `geo-worker`
+UP; the
+worker-REMOVED state was not re-run for a one-string change). Mixed
 materials cost per element; cross-material joints own exactly one rate;
 confirmed intake budgets bind at BOM/export; the real card has 47 required
 null entries, so no client-ready total exists until B-3 closes.**

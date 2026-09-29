@@ -5672,6 +5672,36 @@ worker, whose (large) Blender image has not been built on this machine, so
 Verbatim evidence, the retired-409 contract story and the rate-card census:
 the PR-6 section of `PRODUCTION_V1_REPORT.md`.
 
+**Addendum 2026-09-29 — a false client-facing sentence, found by reading the
+BOM instead of trusting it, fixed in-slice.** Building the two-material fixture
+for the operator's visual walk exposed a sentence that is **wrong on a design
+that has a joint**: an uncut element's seam line read *"this design has no
+seams: one module and no element joints, so there is nothing to join"*, while
+the same BOM billed `joint/b1->p1` under JOINTS and reported `module_count 2`.
+It is pre-existing single-material wording (present at `HEAD~1`) that PR-6
+reused at element scope — which is how it reached a client on a multi-element
+design. Decision: element scope gets its own sentence (*"element <id> is one
+module with no segmentation cut, so there is nothing to join inside it; any
+element JOINT it takes part in is billed once under JOINTS"*) and design scope
+keeps the original, where it is true. No arithmetic, id, label, status or
+amount changed. Guards: a new check in `gate_pr6_auto.py` §2 (43 → **44
+checks**) and the new test
+`test_uncut_element_seam_explanation_is_element_scoped`. Re-verified on the
+rebuilt image `a778b8534230`, identical at roster start and end: roster
+**29/29 gates PASS, 0 failures** with PR-6 at 44/44, focused costing tests
+**70 passed**, full suite **861 passed in 1588.93 s (0:26:28)** with `geo-worker` UP. The
+`geo-worker`-REMOVED state was **not** re-run for a one-string explanation
+change, and the record says so instead of implying symmetry. Two further
+observations from the same walk are reported, not silently accepted: (1)
+`install.crane_day_rate: null` renders as *"no crane on this job"* — a
+convention the rate-card checklist states — so a job whose crane rate is merely
+unfilled would be totalled without crane; whether to keep that convention or
+require an explicit "no crane" marker is an operator commercial decision,
+flagged for the visual gate; (2) the suite and the gates leave render-job
+scratch directories under `data/render_scratch/` (220 present, 36 created
+during this chain) — D-1/D-29 already record that these trees are never
+reaped, and nothing is deleted without an operator instruction.
+
 **Status / not claimed.** BUILT + AUTO-GATED, visual PENDING — PR-6 is not
 closed until the operator walks `gate_pr6_visual.md`. No client-ready quote
 is claimed while B-3's 47 entries are null. No frontend costing screen is

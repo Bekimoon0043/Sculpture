@@ -24,7 +24,7 @@ verbatim gate evidence — the same contract as the phase reports.
 
 ---
 
-## PR-6 — per-element costing, one-owned joints, confirmed budgets bind (BUILT 2026-09-28, ADR-074: auto gate PASS + definitive in-container chain PASS; visual gate PENDING; NOT closed)
+## PR-6 — per-element costing, one-owned joints, confirmed budgets bind (BUILT 2026-09-28, client-text fix 2026-09-29, ADR-074: auto gate PASS + definitive in-container chain PASS; visual gate PENDING; NOT closed)
 
 ### What it makes true
 
@@ -83,7 +83,7 @@ string `mixed_material` now appears nowhere in production code, tests or gates
 except as history in the new gate's own docstring — checked by grep, not
 asserted from memory.
 
-### Evidence — image `e5e5b4ecfa22`, identical at roster start and end
+### Evidence — commit `0cb2bee`, image `e5e5b4ecfa22`, identical at roster start and end
 
 | Run | Result |
 |---|---|
@@ -118,6 +118,56 @@ The live API row in the gate is the one that matters most, because it is the
 whole slice in one line: `mixed-material BOM returns HTTP 200, not 409 —
 HTTP 200`, with `assembler persists each element's real skin area —
 b1=4565362.444196689, p1=4838052.686528281` on a real two-material build.
+
+### Follow-up defect found while preparing the visual walk (same slice, image `a778b8534230`)
+
+The operator's walk needs a real two-material design, so the fixture was built
+on the live stack and its rendered BOM was read line by line. One sentence was
+**false**, and it is printed to the client:
+
+```
+b1 (bronze_cast) — Fabrication — seams (segmentation cuts): not applicable —
+    this design has no seams: one module and no element joints, so there is
+    nothing to join
+```
+
+The conclusion is right — element `b1` is one module and is not cut, so there
+is nothing to join *inside it* — but the justification denies the joint the same
+BOM bills three sections later under `JOINTS`, and `module_count` is 2, not
+one. The sentence was **pre-existing single-material wording** (present at
+`HEAD~1`), reused at element scope by PR-6, so PR-6 is what put it in front of
+a client on a multi-element design.
+
+**Fixed in-slice**, smallest correct change: the "nothing to join" blocker is
+now branched by scope. Element scope says
+
+```
+element p1 is one module with no segmentation cut, so there is nothing to join
+    inside it; any element JOINT it takes part in is billed once under JOINTS
+```
+
+and design scope keeps the original sentence, where it is true. Arithmetic,
+line ids, labels, statuses and amounts are untouched — only the explanation of
+a `not_applicable` line changed.
+
+**Guards, so it cannot silently return.** A new permanent check in
+`gate_pr6_auto.py` §2 (the gate is now **44 checks**) and a new focused test
+`test_uncut_element_seam_explanation_is_element_scoped`:
+
+```
+ok   an uncut element's 'nothing to join' line is element-scoped --
+     not_applicable: element p1 is one module with no segmentation cut, so
+     there is nothing to join inside it;
+```
+
+**Re-verification on the new image `a778b8534230`, identical at roster start
+and end:** full in-container roster **29/29 gates PASS, 0 failures** (PR-6
+`gate_pr6_auto.py` 44/44); focused costing suite **70 passed**; full pytest
+suite **861 passed in 1588.93 s (0:26:28)** with `geo-worker` UP. The `geo-worker`-REMOVED state was
+**not** re-run for this change and that is stated rather than glossed: the
+change is one string in an explanation branch, in a module the sandbox never
+executes, and the two-state evidence on `0cb2bee` (image `e5e5b4ecfa22`) stands
+as the two-state record for this slice.
 
 ### Cost
 

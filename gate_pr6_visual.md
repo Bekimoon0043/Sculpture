@@ -74,6 +74,19 @@ Open `docs/operator/12_rate_card_checklist.md`.
 - [ ] The cross-material owner choices are understandable.
 - [ ] The B-4 provider-price worksheet contains no invented price.
 
+## 5. Two conventions to judge (found while preparing this walk)
+
+- [ ] The uncut-element seam line reads `element <id> is one module with no
+      segmentation cut, so there is nothing to join inside it; any element
+      JOINT it takes part in is billed once under JOINTS` — and never claims
+      the design has no element joints. (Before 2026-09-29 it said the
+      false thing; it is now guarded by a gate check and a test.)
+- [ ] `install.crane_day_rate: null` renders as `no crane on this job`. This
+      is a stated convention, but a job whose crane rate is merely unfilled
+      would then be totalled **without crane**. Keep it, or make `null` mean
+      "rate missing — ask me"? Your call; if you change it, it becomes its own
+      small slice.
+
 ## Sign-off
 
 - [ ] **PASS** — both materials are understandable, joints cannot be mistaken

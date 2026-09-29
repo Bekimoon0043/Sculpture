@@ -155,11 +155,19 @@ class Bom:
 
 class _Builder:
     def __init__(self, costing: CostingConfig, drivers: CostDrivers,
-                 material_id: str, material: Material) -> None:
+                 material_id: str, material: Material,
+                 element_id: str | None = None) -> None:
         self.c = costing
         self.d = drivers
         self.material_id = material_id
         self.material = material
+        # PR-6 (ADR-074): set when this builder prices ONE element of an
+        # assembly. Only the wording of the "nothing to join" explanation
+        # depends on it — the arithmetic is identical either way — but the
+        # design-scope sentence ("no element joints") is FALSE for an element
+        # of a design that does have element joints, and this text is shown to
+        # the client in the rendered BOM.
+        self.element_id = element_id
         self.rates = costing.materials.get(material_id)
         self.lines: list[CostLine] = []
         self._fx_cache: dict[str, FxConversion | MissingFx] = {}
@@ -616,12 +624,19 @@ class _Builder:
             return
 
         if self.d.seam_length_m == 0.0:
+            if self.element_id is None:
+                blocker = ("this design has no seams: one module and no "
+                           "element joints, so there is nothing to join")
+            else:
+                blocker = (f"element {self.element_id} is one module with no "
+                           f"segmentation cut, so there is nothing to join "
+                           f"inside it; any element JOINT it takes part in is "
+                           f"billed once under JOINTS")
             self._blocked(
                 "seam_welding", "Fabrication — seams", "fabrication",
                 NOT_APPLICABLE,
                 formula=f"{qty_text} x rate",
-                blocker=("this design has no seams: one module and no "
-                         "element joints, so there is nothing to join"),
+                blocker=blocker,
                 rate_path=path)
             return
         self._money("seam_welding", "Fabrication — seams", "fabrication",
@@ -754,7 +769,8 @@ def _element_scope(e: ElementDrivers) -> CostDrivers:
 def _element_lines(costing: CostingConfig, e: ElementDrivers,
                    material: Material) -> list[CostLine]:
     """This element's fabrication lines, in ITS material, ids prefixed."""
-    b = _Builder(costing, _element_scope(e), e.material_id, material)
+    b = _Builder(costing, _element_scope(e), e.material_id, material,
+                 element_id=e.element_id)
     b.material_purchase()
     b.fabrication()
     b.mold_pattern()
