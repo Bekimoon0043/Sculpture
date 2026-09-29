@@ -5687,7 +5687,8 @@ keeps the original, where it is true. No arithmetic, id, label, status or
 amount changed. Guards: a new check in `gate_pr6_auto.py` §2 (43 → **44
 checks**) and the new test
 `test_uncut_element_seam_explanation_is_element_scoped`. Re-verified on the
-rebuilt image `a778b8534230`, identical at roster start and end: roster
+rebuilt image `a778b8534230` (commit `6230133`), identical at roster start
+and end: roster
 **29/29 gates PASS, 0 failures** with PR-6 at 44/44, focused costing tests
 **70 passed**, full suite **861 passed in 1588.93 s (0:26:28)** with `geo-worker` UP. The
 `geo-worker`-REMOVED state was **not** re-run for a one-string explanation

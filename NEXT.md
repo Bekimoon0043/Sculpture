@@ -29,7 +29,8 @@ PASS with 0 failures; host
 modes PR-3 static + PR-3 live, scope audit, PR-2.5 host-drift 66/66 and
 Phase 14 frontend-only all PASS; full pytest suite 860 passed (1589.18 s)
 with `geo-worker` UP and 860 passed (1642.17 s) with `geo-worker` REMOVED.**
-**Then, later on 2026-09-29, preparing the visual walk found a FALSE sentence
+**Then, later on 2026-09-29 (commit `6230133`), preparing the visual walk found
+a FALSE sentence
 in the rendered BOM:** an uncut element's seam line claimed "no element
 joints" on a design whose JOINTS section bills a joint (pre-existing
 single-material wording, reused at element scope by PR-6). Fixed in-slice by

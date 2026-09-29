@@ -119,7 +119,7 @@ whole slice in one line: `mixed-material BOM returns HTTP 200, not 409 —
 HTTP 200`, with `assembler persists each element's real skin area —
 b1=4565362.444196689, p1=4838052.686528281` on a real two-material build.
 
-### Follow-up defect found while preparing the visual walk (same slice, image `a778b8534230`)
+### Follow-up defect found while preparing the visual walk (same slice, commit `6230133`, image `a778b8534230`)
 
 The operator's walk needs a real two-material design, so the fixture was built
 on the live stack and its rendered BOM was read line by line. One sentence was
