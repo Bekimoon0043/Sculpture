@@ -19,6 +19,15 @@ plinth plus bronze basin) and copy its `design_id` from the URL/status.
 
 ## 1. JSON BOM — both materials, no 409
 
+A ready-made two-material design already exists on this machine if you do not
+want to build one: `620543b0-dd0f-40ed-aa1c-bf0719a9118e` (plinth `p1` in
+basalt, basin `b1` in bronze, one `stack_on` joint). Use its id in the
+commands below.
+
+**Use `curl.exe`, not `Invoke-WebRequest`, for the `.txt` route (step 2).**
+`Invoke-WebRequest` tries to parse the response as a web page and stops to ask
+for permission — it waits forever for an answer and looks like a hang.
+
 ```powershell
 $id = "PASTE-DESIGN-ID-HERE"
 $bom = Invoke-RestMethod "http://localhost:8000/api/costing/bom/$id"
@@ -38,7 +47,7 @@ $bom | ConvertTo-Json -Depth 12
 ## 2. Text BOM — readable ownership and grouping
 
 ```powershell
-(Invoke-WebRequest "http://localhost:8000/api/costing/bom/$id.txt").Content
+curl.exe -s "http://localhost:8000/api/costing/bom/$id.txt"
 ```
 
 - [ ] Each element has its own `FABRICATION — <id> (<material>)` heading.
