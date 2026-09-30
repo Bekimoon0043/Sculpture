@@ -5,9 +5,16 @@ the start of every session (`/lf-orient`) and rewritten at the end of every
 slice (`/lf-close`). If this file and a phase plan disagree, this file is
 stale and must be corrected in the same commit as the work.
 
-Last updated: 2026-09-29 (4th) — **PR-6 BUILT + AUTO-GATED + DEFINITIVELY
+Last updated: 2026-09-30 — **PR-6 CLOSED.** The operator walked and signed
+`gate_pr6_visual.md`: all 23 boxes PASS, and both §5 conventions were rolled
+from questions into rulings (box 1 stands as the corrected element-scope
+sentence; box 2 KEEPS `null` = "no crane on this job"), with the second
+ruling's measured consequence carried as **D-30** below. The sign-off and the
+evidence measured during the walk are in that gate file, and
+`PRODUCTION_V1_REPORT.md` records the same run. **The current slice is PR-7A.**
+Up to the walk, PR-6 had been BUILT + AUTO-GATED + DEFINITIVELY
 CHAINED (ADR-074); a false client-facing sentence found while preparing the
-visual walk is FIXED and re-verified; visual gate PENDING — not closed.**
+visual walk was FIXED and re-verified in the same slice.
 Mixed-material
 assemblies now return a
 per-element BOM instead of HTTP 409: each element uses its own persisted
@@ -252,7 +259,7 @@ workflow controls, folded into PR-7B) ruled 2026-08-28.
 | 2 — geometry kernel, STEP/GLB, determinism | **CLOSED** | gate PASS 2026-08-04, canonical hash `e1a59fa6…` |
 | 3 — the AI Council | **CLOSED** | gate PASS 2026-08-07, live $0.843842 |
 | 4 — fabrication loop (AI writes CAD, sandbox runs) | **CLOSED** | gate PASS 2026-08-17, live $0.046777 |
-| costing engine | **PR-6 BUILT + auto-gated; visual pending; starved by real rates** | ADR-031/056/074; mixed-material per-element BOM + confirmed budget binding; B-3 = 47 nulls |
+| costing engine | **PR-6 CLOSED 2026-09-30 (auto gate 44/44 + signed visual gate); starved by real rates** | ADR-031/056/074; mixed-material per-element BOM + confirmed budget binding; B-3 = 47 nulls; `gate_pr6_visual.md` SIGNED 2026-09-30 |
 | 6 — primitive library | **A1 CLOSED; A2 + B + C1 + C2 BUILT (10 primitives, segmentation); D RELEASE-BLOCKING (ADR-060, owner ruling 2026-08-28 — see PR-2.5)** | auto gates PASS (ADR-052–056); pending: live gate `gate_phase6_visual.md`, eye gates 6b + 6c + 6c2 |
 | 7A — assembly surface (API, manifest persistence) | **BUILT** | implemented 2026-08-21, `PHASE_7_COMPLETION_PLAN.md` §7A |
 | 8 — L5 validation gates (structure/fabrication/hydraulics) | **BUILT, auto-gated** | auto PASS 2026-08-21 + 8b re-gate; visual pending |
@@ -265,7 +272,7 @@ workflow controls, folded into PR-7B) ruled 2026-08-28.
 | 13 — recovery + hardening | **Slice A only; B+ queued as PR-7A/B/C** | auto PASS 2026-08-22, ADR-040 |
 | 14 + 14b — Designer Workspace, Blender-style controls | **BUILT, auto-gated** | auto PASS 2026-08-24, ADR-044/046; visual pending |
 | 15 A–E — designer UX, draft preview, projects/variants | **BUILT, auto-gated** | auto PASS 2026-08-24, ADR-047–051; visual pending |
-| **PR program (PR-0 … PR-9) — delivers Milestone B, not Production v1 (ADR-062)** | **PR-0, PR-3, PR-1, PR-2, PR-4, PR-5 CLOSED; PR-6 BUILT/AUTO-GATED, visual pending** | `PRODUCTION_V1_REPORT.md` (historical filename), ADR-057/058/059/061/067/068/074 |
+| **PR program (PR-0 … PR-9) — delivers Milestone B, not Production v1 (ADR-062)** | **PR-0, PR-3, PR-1, PR-2, PR-4, PR-5, PR-6 CLOSED; PR-7A is the current slice** | `PRODUCTION_V1_REPORT.md` (historical filename), ADR-057/058/059/061/067/068/074 |
 | **Master Scope audit vs owner's 30-system scope** | **31.6/100 at `bfa5a77` — approximately one-third complete; only Geometry Integrity ≥4/5 among safety-critical systems** | `SCOPE.md`, `DEVELOPMENT_AUDIT.md`, ADR-062 |
 | **LF-103A — export boundary enforces the gate verdict** | **CLOSED 2026-09-02** | ADR-063; auto gate + 23-script roster PASS on `9fe4c4328116`, 514 both worker states; visual gate signed 2026-09-02 |
 | **PR-2.5 free-form DISCOVERY (not capability)** | **CLOSED 2026-09-03; visual Step 2 = NO — probe forms not reference-faithful; capability UNBUILT** | ADR-064; 540 both worker states + 24-script roster on `52209e4a6eea`; BREP-first approved with conditions; STEP canonical confirmed |
@@ -278,7 +285,7 @@ workflow controls, folded into PR-7B) ruled 2026-08-28.
 | **D-28 SLICE — honest reservation bound** | **CLOSED 2026-09-15** | ADR-070; 61 targeted tests + full suite green on host 3.12 venv (container engine down — in-container chain DEFERRED, recorded); `gate_pr2_auto` PASS |
 | **MS-A1 — `perforated_screen`, the first mesh-class (perforated-skin) primitive** | **CLOSED 2026-09-16 (owner-delegated slice); NOT an open lattice — B-11b stays OPEN** | ADR-071; `gate_msa1_auto` 54/54 (roster script 30); FF-A2/PR-5/FF-A1/FF-A3 re-run PASS on host venv; targeted pytest 119 passed; definitive container chain DEFERRED with the engine |
 | **SC-A1 — `crescent_ring`, the crescent-moon sculpture primitive** | **CLOSED 2026-09-16 (owner-referenced photo: mirror-polished crescent, 1.9×2.0×0.4 m); organic liquid forms NOT claimed** | ADR-072; `gate_sca1_auto` 63/63 (roster script 31); new material `stainless_316l_cast` (provisional); msa1/FF-A2/PR-5/FF-A1/FF-A3 all re-run PASS; 40 new tests, 142 targeted passed; container chain DEFERRED |
-| **PR-6 — costing tie-off** | **BUILT + AUTO-GATED 2026-09-28; visual PENDING, not closed** | ADR-074; `gate_pr6_auto.py` 43/43 (roster script 32); mixed materials, joint ownership, exposed finishing area, shared install once, confirmed budget + export block; real card 47 nulls |
+| **PR-6 — costing tie-off** | **CLOSED 2026-09-30 (auto gate 44/44 + operator visual gate SIGNED)** | ADR-074; `gate_pr6_auto.py` 44/44 (roster script 32); mixed materials, joint ownership, exposed finishing area, shared install once, confirmed budget + export block; real card 47 nulls; the visual walk added D-30 |
 
 **Suite and roster state:** after PR-2 the pytest suite (475) passed
 with the render worker UP and with it removed — both runs recorded
@@ -340,7 +347,7 @@ incident exposure (B-2).
 
 Those marked **[release]** block calling the project Production v1.
 
-- [ ] **B-1 [release] — Walk the visual gates.** Thirteen checklists are
+- [ ] **B-1 [release] — Walk the visual gates.** Twelve checklists are
       outstanding: `gate_phase5_visual.md`, `gate_phase8_visual.md`,
       `gate_phase9a_visual.md`, `gate_phase9b_visual.md`,
       `gate_phase11_13a_visual.md`, `gate_phase14_visual.md`,
@@ -348,12 +355,13 @@ Those marked **[release]** block calling the project Production v1.
       `gate_phase6b_visual.md`, `gate_phase6c_visual.md`,
       `gate_phase6c2_visual.md` (carries the grid-vs-radial cutting
       question and your real crane/truck limits) — all $0 — and
-      `gate_pr6_visual.md` (mixed-material costing + confirmed budget) —
-      also $0 — and `gate_phase6_visual.md`, the LIVE gate
+      `gate_phase6_visual.md`, the LIVE gate
       (≈$0.90–1.10, the only one that costs money). PR-9 will hand you one
-      PowerShell walkthrough document ordering all thirteen. Coordinate
+      PowerShell walkthrough document ordering all twelve. Coordinate
       with any live session
-      before touching containers.
+      before touching containers. **`gate_pr6_visual.md` was walked and
+      SIGNED 2026-09-30 — all 23 boxes PASS, both §5 conventions ruled (see
+      PR-6 below).**
 - [ ] **B-2 [release] — ADR-033 incident: check the three provider
       consoles** for a possible ~$0.84 test-leak spend on 2026-08-20. The
       local audit rows died with the test temp DB; only the consoles hold
@@ -787,8 +795,10 @@ binding; the slice notes below carry the ones that bite.
       basis. **Deferred:** the definitive in-container suite + roster
       re-run (host Docker engine down) — first action when the engine is
       back. Reservation `9077e77a…` remains owner-pending, unreconciled.
-- [ ] **PR-6 — Costing tie-off machinery — BUILT + AUTO-GATED 2026-09-28,
-      ADR-074; VISUAL PENDING, not closed.** **Amendment 4 first:** one
+- [x] **PR-6 — Costing tie-off machinery — CLOSED 2026-09-30 (ADR-074:
+      auto gate 44/44 + operator visual gate SIGNED PASS 2026-09-30;
+      BUILT + AUTO-GATED 2026-09-28, client-text fix 2026-09-29).**
+      **Amendment 4 first:** one
       trusted measurement path per material for volume/mass, exposed
       finishing area (never proportional allocation of total surface),
       fabrication hours, purchase, split seams, and cross-material joints
@@ -800,6 +810,18 @@ binding; the slice notes below carry the ones that bite.
       costing structurally unable to render a total or a quote;
       client-ready quote only as a test fixture until B-3 lands. Delivered
       the operator's 47-entry rate-card checklist + B-4 worksheet.
+      **Visual walk 2026-09-30, all 23 boxes PASS on the live stack at
+      $0.00** — the mixed-material 409 is gone (HTTP 200), every line is
+      prefixed by its element, the shared install group appears once, no
+      client total is produced, and a confirmed intake's budget binds with no
+      query parameter and unbinds the moment the intake is edited back to
+      draft. Both §5 conventions were ruled: the corrected element-scope seam
+      sentence stands, and `install.crane_day_rate: null` **keeps** its "no
+      crane on this job" reading, with the ruling's measured consequence
+      recorded as **D-30** rather than fixed here. The walk created one
+      intake and one design on the live DB (stated in the gate, deliberately
+      not cleaned up). Sign-off, verbatim ruling and evidence:
+      `gate_pr6_visual.md`.
 - [ ] **PR-7A — Checkpoint/resume engine.** Artifact-boundary checkpoints
       on the hardened `JobRow`; kill-and-resume gate at every boundary
       asserting an identical final `content_digest`.
@@ -1087,8 +1109,22 @@ Pick one up when a slice finishes early. Each is one commit.
       boundaries; explicit query overrides are labelled; draft intake does
       not bind; incomplete BOM = `not_performed`, never PASS; complete
       over-budget export returns 422 before job/rebuild/files/package.
-- [x] **D-20 — CLOSED by PR-6 (2026-09-28).** `gate_pr6_visual.md` now
-      covers the costing surface. Operator walkthrough is pending under B-1.
+- [x] **D-20 — CLOSED by PR-6 (2026-09-28; walked and signed 2026-09-30).**
+      `gate_pr6_visual.md` covers the costing surface and is now SIGNED —
+      all 23 boxes PASS under B-1.
+- [ ] **D-30 — A null crane rate is read as "no crane on this job", not as a
+      missing rate** (found by the PR-6 visual walk 2026-09-30; the operator
+      ruled to KEEP the convention and carry the risk as debt).
+      `backend/app/costing/bom.py:398-401` turns
+      `install.crane_day_rate: null` into `NOT_APPLICABLE` unconditionally,
+      while `bom.py:416-417` prints the pick weight the line would bill
+      against, and that rate is deliberately outside the 47-entry required
+      census (`docs/operator/12_rate_card_checklist.md:92-94`). Consequence:
+      a card filled in every other respect can reach a `complete` BOM whose
+      total silently carries no crane cost on a job that needs one. The
+      alternative — `null` meaning "rate missing, ask me" — is a commercial
+      ruling with its own slice. Stated meanwhile in `LIMITATIONS.md` §10 and
+      the ADR-074 addendum.
 - [ ] **D-21 — Segmentation planes know nothing about internal
       services** — a saw plane can bisect a nozzle bore. Needs
       service-aware cutting or a loud refusal when a plane crosses a

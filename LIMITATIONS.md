@@ -282,6 +282,19 @@ added seven after the C2 count, and PR-6 added the explicit
   transport lines occur once at assembly level. Old manifests with no
   per-element skin remain honestly `not_computable` for finishing until
   rebuilt once.
+- **A null crane rate is read as a fact about the job, not as a missing
+  rate** (found by the PR-6 visual walk 2026-09-30; the operator ruled KEEP
+  and carries the risk as D-30 rather than opening a slice).
+  `install.crane_day_rate` is the one cost input whose `null` is turned into
+  `not applicable — no crane on this job` by
+  `backend/app/costing/bom.py:398-401`, and it is deliberately outside the
+  47-entry required census
+  (`docs/operator/12_rate_card_checklist.md:92-94`). Consequence, stated
+  plainly: a card with all 47 entries filled but no crane rate can produce a
+  **`complete`** BOM whose total silently carries **no crane cost** on a job
+  that needs one. The line does print the pick weight it would bill against.
+  Making `null` mean "rate missing — ask me" is the alternative and needs its
+  own slice (D-30).
 - **Two latent defects were found by making the assembly path work, both
   now fixed and regression-tested** (ADR-056): `GET /api/costing/bom/{id}`
   returned HTTP 500 for every assembly ever built, because an assembly

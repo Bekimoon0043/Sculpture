@@ -24,7 +24,7 @@ verbatim gate evidence — the same contract as the phase reports.
 
 ---
 
-## PR-6 — per-element costing, one-owned joints, confirmed budgets bind (BUILT 2026-09-28, client-text fix 2026-09-29, ADR-074: auto gate PASS + definitive in-container chain PASS; visual gate PENDING; NOT closed)
+## PR-6 — per-element costing, one-owned joints, confirmed budgets bind (CLOSED 2026-09-30, ADR-074: BUILT 2026-09-28, client-text fix 2026-09-29, auto gate PASS 44/44 + definitive in-container chain PASS + operator visual gate SIGNED PASS 2026-09-30 — all 23 boxes, both §5 conventions ruled)
 
 ### What it makes true
 
@@ -189,6 +189,31 @@ data touched (both fingerprints above).
   not been built on this machine (a large download, deferred pending the
   operator's decision recorded under B-12) — and must never be reported as
   PASS until that image exists here.
+
+### Operator visual gate — SIGNED PASS 2026-09-30
+
+The operator walked `gate_pr6_visual.md` against the live stack. **All 23 boxes
+PASS; $0.00, no provider call.** The operator's ruling, verbatim:
+
+> PASS — tick all boxes and sign; keep the `null → no crane` convention and
+> add the risk to NEXT.md §2 Debts
+
+Both §5 conventions are therefore ruled rather than left open: the corrected
+element-scope seam sentence stands, and `install.crane_day_rate: null` keeps
+its "no crane on this job" reading, with its measured consequence recorded as
+**D-30**.
+
+| Section | What was measured |
+|---|---|
+| §1 JSON BOM | `HTTP=200` on `620543b0-dd0f-40ed-aa1c-bf0719a9118e` — the mixed-material 409 is gone; `drivers.materials = basalt_slab, bronze_cast`; 2 element records; 16 lines, every id prefixed by its element; exactly one `install_crew` / `install_crane` / `install_transport`; `complete=false` with all seven `totals.*` fields null |
+| §2 text BOM | read with `curl.exe` (as this gate warns, `Invoke-WebRequest` hangs on the `.txt` route); one `FABRICATION — <id> (<material>)` heading per element; `JOINTS (each billed ONCE …)`; the cross-material joint is `RATE MISSING` naming `joints.cross_material_owner` with no amount on either side; one shared `INSTALL` group; `NO TOTAL — THIS BOM IS INCOMPLETE` |
+| §3 confirmed budget | fixture built for the walk at $0: intake `dc49cafd-b5a3-4b9b-a686-415631e547eb` → design `9aa8be99-c1b0-48c4-bc76-6329d01e5c73`; with **no** query parameter `source = "confirmed brief intake"`, `source_detail` naming the intake and both field provenances, `status = not_performed`; an operator edit → `draft` → the `budget` block vanishes; re-confirm → it returns |
+| §4 checklist | live API `missing_count = 47` (35 material + 12 shared); first recommendation is basalt per m³/kg; the B-4 worksheet carries no invented price |
+| §5 conventions | box 1 verified byte-for-byte, with its guards read in the source (`backend/app/costing/bom.py:631-634`, `gate_pr6_auto.py` §2, `test_uncut_element_seam_explanation_is_element_scoped`); box 2 ruled KEEP, risk carried as D-30 |
+
+**Side effect, stated:** the §3 walk created one intake (left confirmed, height
+1.25 m) and one design on the live database. Both were deliberately left in
+place, following the standing rule about test designs.
 
 ---
 

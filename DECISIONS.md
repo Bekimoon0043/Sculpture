@@ -5703,12 +5703,29 @@ scratch directories under `data/render_scratch/` (220 present, 36 created
 during this chain) — D-1/D-29 already record that these trees are never
 reaped, and nothing is deleted without an operator instruction.
 
-**Status / not claimed.** BUILT + AUTO-GATED, visual PENDING — PR-6 is not
-closed until the operator walks `gate_pr6_visual.md`. No client-ready quote
-is claimed while B-3's 47 entries are null. No frontend costing screen is
-claimed (D-23 remains for PR-7B/B-10). `gate_phase9b_auto.py` is not part of
-this slice and remains **NOT RUN** on this machine: the render-worker
-(Blender) image has not been built here — a large download deliberately
-deferred pending the operator's decision recorded under B-12 — and an unrun
-gate is never reported as PASS. B-12 itself is a separate item: this
-machine's `data/` directory is still empty.
+**Addendum 2026-09-30 — the operator walked and SIGNED the visual gate; PR-6
+CLOSED.** All 23 boxes PASS; the sign-off, the verbatim ruling and the
+measured evidence are in `gate_pr6_visual.md`, and the same run is recorded in
+`PRODUCTION_V1_REPORT.md`. The two conventions that walk surfaced were ruled,
+not deferred: (1) the corrected element-scope seam sentence stands as the fix
+already recorded above; (2) `install.crane_day_rate: null` **keeps** its "no
+crane on this job" reading — the operator's commercial ruling — with its
+measured consequence carried as **D-30**: that rate is outside the 47-entry
+census and `backend/app/costing/bom.py:398-401` treats the null as a fact
+about the job, so a card filled in every other respect can reach `complete`
+with no crane cost. Changing `null` to mean "rate missing, ask me" is the
+alternative and would be its own slice. The §3 walk required a fixture that
+did not exist on this machine, so one was created on the live stack at $0 —
+intake `dc49cafd-b5a3-4b9b-a686-415631e547eb`, design
+`9aa8be99-c1b0-48c4-bc76-6329d01e5c73` — and both were deliberately left in
+place.
+
+**Status / not claimed.** CLOSED 2026-09-30: auto gate PASS (44/44) **and** an
+operator-signed visual gate. No client-ready quote is claimed while B-3's 47
+entries are null. No frontend costing screen is claimed (D-23 remains for
+PR-7B/B-10). `gate_phase9b_auto.py` is not part of this slice and remains
+**NOT RUN** on this machine: the render-worker (Blender) image has not been
+built here — a large download deliberately deferred pending the operator's
+decision recorded under B-12 — and an unrun gate is never reported as PASS.
+B-12 itself is a separate item: this machine's `data/` directory is still
+empty.

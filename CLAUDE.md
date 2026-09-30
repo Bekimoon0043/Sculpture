@@ -183,8 +183,10 @@ lattice, and an owner mesh/lattice reference is still required.**
 new `stainless_316l_cast` material, `gate_sca1_auto.py` (roster script
 31, 63/63); the organic liquid forms of the owner's reference are NOT
 claimed. Same deferred in-container caveat.**
-**PR-6 (costing tie-off, ADR-074) is BUILT, auto-gated and definitively
-chained 2026-09-28/29, visual pending: `gate_pr6_auto.py` is roster script 32,
+**PR-6 (costing tie-off, ADR-074) is CLOSED 2026-09-30 — built and definitively
+chained 2026-09-28/29, then walked and SIGNED by the operator
+(`gate_pr6_visual.md`, all 23 boxes PASS; the `null` crane convention kept with
+its risk carried as D-30): `gate_pr6_auto.py` is roster script 32,
 now 44/44 after a false client-facing sentence found during visual preparation
 was fixed and guarded; on pinned image `e5e5b4ecfa22` the in-container roster
 is 29/29 gates
