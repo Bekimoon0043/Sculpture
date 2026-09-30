@@ -178,6 +178,13 @@ reaches the same number as the API that sealed it.
 **Re-exporting the same design twice gives an identical `content_digest` and an
 identical `package_sha256`** — verified, not assumed.
 
+**Boundary, measured later in this same session (evidence in §13):** that stays
+true for the *same design row*, and only for it. Two **different** rows built from
+this one request give byte-identical geometry and a **different** `content_digest`,
+because the package's manifest, warrant and BOM carry the row's `design_id` and
+creation time. `spec_hash` is the geometry identity; `content_digest` is the
+delivery identity. Read §13 before quoting this paragraph.
+
 ### The class is `pre_fabrication`, and it says why
 
 The package will not call itself fabrication-capable:
@@ -273,8 +280,9 @@ failure of the sculpture and it is not a hidden pass.
 
 **What you can look at today, at $0:**
 
-- the viewport UI at **http://localhost:5173** — the design is already listed
-  (`GET /api/geometry/assembly/designs` returns it with `scene_glb_url`);
+- the viewport UI at **http://localhost:5173** — the Designer workspace opens on
+  the newest design in the selected project, so this sculpture renders on load,
+  pickable element by element. §12 gives the exact calls and what you see;
 - `data/sculpture_runs/098f640e-.../luxexchange_v1.zip` → its `SVG` plan and
   elevation sheet opens in any browser;
 - the `GLB`, in the three.js viewport or any viewer.
@@ -326,7 +334,125 @@ Design Spec is a separate, paid step, and — per `NEXT.md` — the last live at
 HALTED when a provider dropped mid-call and its reservation went UNCERTAIN at a
 $3.27 bound against the $5 cap. Run `/lf-spend` before spending on it.
 
-**Side effect to be aware of:** each build inserts a design row. Repeated builds
-left several rows for this sculpture (same `spec_hash`, different `design_id`);
-they are visible in the UI's design list and can be pruned from the operator's
-own database whenever convenient.
+**Side effect to be aware of:** each build inserts a design row. This sculpture
+now has **7 rows sharing one `spec_hash`** (26 designs exist on this machine in
+total; 25 of them ungrouped). They are visible in the UI's design list and can be
+pruned from the operator's own database whenever convenient — `spec_hash` is the
+geometry identity, so every redundant row is provably the same sculpture. Do
+**not** prune or dedupe by `content_digest`: §13 shows that number moves between
+rows of the same sculpture.
+
+**Follow-up in the same session — "put it on the page":** the committed driver
+gained `--project` / `--project-brief`, the sculpture was rebuilt under a real
+project row, and the viewport now opens on it **by name** (§12). Nothing under
+`backend/`, `config/`, `schemas/`, `tests/` or `docker*` was touched for that
+either; `scripts/build_sculpture.py` is the only edited file, and the edit is
+additive (a new optional flag plus one helper).
+
+---
+
+## 12. Opening it on the page — and giving it a name
+
+`http://localhost:5173` is a single-page app, and "which design you see" is decided
+by the Designer Workspace's own load rules (`DesignerWorkspace.tsx`): it lists the
+designs in the selected **project scope**, then restores the newest one — or the
+design this browser last had open, if it is still in that scope. A design row has
+no filename, so without a project the history strip can only name it by its parts
+(`plinth + basin_round + sculptural_column + torus_ring`).
+
+The sculpture was therefore rebuilt under a real project, using the platform's own
+project API, with `project_id` injected as exactly the metadata the route documents
+("never part of the canonical geometry payload/spec hash"):
+
+```
+BUILD  sculptures\entoto_halo\request.json
+PROJECT  Entoto Halo  (71a3349f-32cb-47ec-a201-226a1871263a)  - grouping, not geometry
+  design_id    4b06ce9f-8a05-443f-997b-e2f24424d304
+  spec_hash    f328b46d983e68cf7889b4cee543b6b432ec2f548a90a5735892d4dac018df41
+  step_sha256  9537b6ae058d1868eb0f764848d46cc6211dd28a704153fe739fbef4d601d250
+  glb_sha256   b36e4046836a3315ec21afd1aee5549bdc8941fbe80f0052d89762dd083d5ed0
+  fused bodies 1   total mass 5,072.0 kg   bbox [1200, 1200, 1360] mm
+```
+
+**Those are the numbers already recorded earlier in this report** (the STEP row of
+§6 is `9537b6ae…`): the grouped run moved no geometry, which is the whole point of
+keeping grouping out of the canonical payload. The verdict is unchanged too —
+`needs_input`, `passed: false`, the same four gates.
+
+What the page returns today. Every row is the call the workspace actually makes
+(`frontend/src/api/client.ts`), not a paraphrase:
+
+| the workspace asks | the answer |
+|---|---|
+| `GET /api/geometry/assembly/projects` | 1 project, **Entoto Halo**, `open`, 1 variant |
+| `GET /api/geometry/assembly/designs?project_id=71a3349f…` | 1 design, `4b06ce9f…`, 5,072.00 kg, `needs_input` |
+| `GET /api/geometry/assembly/latest/manifest` | elements `p1, b1, c1, t1` — the document the Designer restores |
+| `GET /api/geometry/assembly/latest/scene.glb` | HTTP 200, 649,616 bytes, magic `glTF`; node names are the element ids |
+| `GET /api/geometry/assembly/latest/validation` | `needs_input`; `assembly_mesh` pass, `hydraulics` pass, `structure_static_v1` / `fabrication` `needs_input` |
+| `GET /api/geometry/assembly/latest/exports` | `package_built: true`, class `pre_fabrication`, 9 entries included, last job `completed` |
+
+Because the page now shows `4b06ce9f…` rather than the older row, the export job was
+re-run **on that design** (one export job, no new design row) and the served bytes
+match their seal:
+
+```
+disk     c6e8e2d94e0cc4a058326920b5a84a94c370661d89623c1281b9a6f9363e28ed
+served   c6e8e2d94e0cc4a058326920b5a84a94c370661d89623c1281b9a6f9363e28ed
+seal     c6e8e2d94e0cc4a058326920b5a84a94c370661d89623c1281b9a6f9363e28ed
+```
+
+`docs/operator/13_building_a_sculpture.md` now documents the `--project` flag, the
+command, and what to expect on screen. **Cost of this step: $0.00.**
+
+---
+
+## 13. A second real finding — `content_digest` identifies the delivery, not the geometry
+
+Found while checking that the page's export tab had something in it. **Re-exporting
+the *same* design stays byte-identical** — §6 verified that and the platform's own
+tests assert it. But **different design rows** of this one request — same
+`spec_hash f328b46d…`, byte-identical STEP `9537b6ae…` — seal **different** digests:
+
+| design row | `content_digest` | `package_sha256` |
+|---|---|---|
+| `098f640e…` (the run documented in §6) | `3ccee796…` | `6df5d52c…` |
+| `49b2999f…` | `088452e6…` | `72ec9cd2…` |
+| `4b06ce9f…` (this session) | `0b99159d…` | `c6e8e2d9…` |
+
+Extracting two of those packages and comparing member by member says exactly why.
+**Every geometry and validation member is identical:**
+
+```
+SAME     exports/assembly.PRE-FABRICATION.step      9537b6ae058d1868
+SAME     exports/assembly.PRE-FABRICATION.glb       b36e4046836a3315
+SAME     exports/assembly.PRE-FABRICATION.{brep,stl,dxf,svg,obj,ply}
+SAME     validation/{assembly_mesh,structure_static_v1,hydraulics,fabrication}.json
+SAME     assembly_manifest.json   README_DWG_SKP.txt   verify_luxexchange.py
+DIFFERS  luxexchange_v1.json     -> "created_at", "design_id"
+DIFFERS  costing/bom.json        -> "design_id", "generated_at"
+DIFFERS  ENGINEERING_WARRANT.txt -> "design_id : ..."
+DIFFERS  provenance.json         (excluded from the digest by design)
+```
+
+`content_digest` is the sha256 of `CHECKSUMS.sha256`, so it moves exactly when one
+of those identity-bearing members moves. The behaviour itself is **defensible** — a
+package that states which design row it belongs to, and when it was sealed, is more
+useful to a fabricator than an anonymous one. But two consequences need an operator
+ruling, and **neither is fixed here**:
+
+1. **`ADR-038` keys DesignDNA precedents on `content_digest`.** Two provably
+   identical sculptures built as separate rows are therefore *two* precedents, and
+   the "identical deliverable is deduped on digest" guarantee
+   (`tests/test_designdna.py:101`) only fires when the *same row* is accepted twice.
+   **`spec_hash` is the geometry identity; `content_digest` is the delivery
+   identity.** §6's wording is corrected above to say so.
+2. **The package's own description** in `luxexchange.py` — "one number that
+   identifies the whole package" — remains true; a reader who treats that number as
+   a fingerprint of the **sculpture** would be wrong.
+
+**Proposed as a second debt for the operator to number** (§10's bearing footprint is
+the first). This needs a ruling before a patch: either the digest drops
+`design_id`/timestamps and becomes a geometry identity, or `ADR-038` names
+`spec_hash` as the dedup key and `content_digest` as the delivery key. Changing what
+the digest means invalidates every package already sealed on this machine, so it is
+not a sculpture-run decision and it was not taken unilaterally here.

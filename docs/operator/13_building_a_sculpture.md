@@ -97,12 +97,25 @@ Add switches as you need them:
 | `--bom` | fetches the bill of materials (and the readable text version) |
 | `--out DIR` | where the captured evidence goes (default `data\sculpture_runs\<design_id>`) |
 | `--base URL` | a different API address (default `http://localhost:8000`) |
+| `--project NAME` | puts the build in that project, creating it if it does not exist — this is what gives the piece a **name** on the page (Step 5) |
+| `--project-brief TEXT` | the brief text for a project this run creates |
 
 The full run for the example:
 
 ```bat
 python scripts\build_sculpture.py sculptures\entoto_halo\request.json --twice --exports --bom
 ```
+
+To build it **into the page under its own name**, add the project flag:
+
+```bat
+python scripts\build_sculpture.py sculptures\entoto_halo\request.json --project "Entoto Halo"
+```
+
+Grouping is metadata. `project_id` is never part of the canonical geometry
+payload, so the run prints the **same** `spec_hash` and the **same** STEP digest
+as the run without the flag. If adding a project ever moved those numbers, that
+would be a bug worth reporting — not something to accept.
 
 ---
 
@@ -166,6 +179,28 @@ there to prevent.
 | the export files | `data\exports\<design_id>\…` |
 | the package for the fabricator | `data\exports\<design_id>\luxexchange_v1.zip` |
 | the evidence of your run | `data\sculpture_runs\<design_id>\` (build, exports, BOM, package) |
+
+### On the page — what opening it actually does
+
+http://localhost:5173 is a single-page app: the **Designer** view lists the designs
+in the selected **project**, then restores the newest one (or the one this browser
+last had open, if it is still in that project). So opening the page with no further
+clicks shows your piece in the viewport, selectable part by part — **as long as the
+build is in a project** (`--project`, above). Without one it lands in *Ungrouped*,
+where it can only be labelled by its primitives.
+
+What you should see for the example file:
+
+| where | what |
+|---|---|
+| status bar | backend connected, the design's short id, a **NEEDS INPUT** badge, `spend $0.00` |
+| viewport | the fused sculpture; click `p1`, `b1`, `c1`, `t1` to select a part |
+| right rail → Design | the four elements and their parameters, editable |
+| right rail → Checks | the gate rows: mesh and hydraulics **pass**, structure and fabrication **needs input**, each naming what is missing |
+| right rail → Output | the sealed **PRE-FABRICATION** package, one download per format |
+
+If it opens on an older design instead, pick your project in the project selector at
+the top of the Designer: that reloads the scope and opens the newest build in it.
 
 The `.zip` is self-contained: a fabricator who has never met this platform can
 unzip it and run `verify_luxexchange.py` to prove every file is intact and

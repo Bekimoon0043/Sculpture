@@ -17,6 +17,18 @@ Rebuild it (stack up, `$0`, no API key):
 python scripts\build_sculpture.py sculptures\entoto_halo\request.json --twice --exports --bom
 ```
 
+Rebuild it **into the page under its own name** (the Designer workspace at
+http://localhost:5173 opens on the newest design in the selected project, so the
+project is what makes the page show `Entoto Halo` instead of a list of primitives):
+
+```bat
+python scripts\build_sculpture.py sculptures\entoto_halo\request.json ^
+  --project "Entoto Halo" --project-brief "Wet plaza fountain, Entoto arrival plaza, Addis Ababa"
+```
+
+Grouping is metadata only: the `spec_hash` (`f328b46d…`) and the STEP digest
+(`9537b6ae…`) are identical with and without it.
+
 The full record — measured masses, joint seats, every gate verdict, the sealed
 package digests, and what is deliberately *not* certified — is
 [`SCULPTURE_1_ENTOTO_HALO.md`](../../SCULPTURE_1_ENTOTO_HALO.md) at the repo root.

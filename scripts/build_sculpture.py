@@ -17,6 +17,13 @@ What it does, in order:
 4. With ``--twice`` build the SAME request a second time and compare the
    canonical STEP digest. Rule 5: identical request + seed + image must give a
    byte-identical STEP. A mismatch is reported as a FAIL, never smoothed over.
+5. With ``--project NAME`` group the build under that project, creating the
+   project when it does not exist. Grouping is METADATA — ``project_id`` is
+   documented in routes_assembly as "never part of the canonical geometry
+   payload/spec hash" — so the run prints the id and the spec_hash, and the
+   spec_hash must be the same one the ungrouped build produced. This is the
+   only way an operator-authored design gets a human name in the viewport:
+   the Designer Workspace labels a design by its project, not by a filename.
 
 It never invents a verdict. ``overall_status`` is printed exactly as the
 platform returns it, so a ``needs_input`` design reads as ``needs_input`` here
@@ -26,6 +33,8 @@ Usage (host, stack up):
 
     python scripts/build_sculpture.py sculptures/entoto_halo/request.json
     python scripts/build_sculpture.py sculptures/entoto_halo/request.json --twice --exports --bom
+    python scripts/build_sculpture.py sculptures/entoto_halo/request.json ^
+        --project "Entoto Halo" --project-brief "wet plaza fountain, Entoto"
 """
 
 from __future__ import annotations
@@ -67,6 +76,38 @@ def _get(url: str) -> tuple[int, bytes]:
             return response.status, response.read()
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read()
+
+
+def _resolve_project(
+    base: str, name: str, brief: str
+) -> tuple[str | None, str | None]:
+    """The project a build may be grouped under, created when it is absent.
+
+    Returns ``(project_id, error)``. Matching is case-insensitive on the
+    trimmed name: re-running the same command must reuse the project rather
+    than pile up look-alikes. An archived project is refused instead of
+    silently reopened — that is the operator's decision, not this script's.
+    """
+    status, blob = _get(f"{base}/api/geometry/assembly/projects")
+    if status != 200:
+        return None, f"could not list projects (HTTP {status})"
+    wanted = name.strip().casefold()
+    for project in json.loads(blob.decode("utf-8"))["projects"]:
+        if project["name"].strip().casefold() == wanted:
+            if project["status"] != "open":
+                return None, (
+                    f"project {project['name']!r} is {project['status']}; "
+                    f"reopen it with PATCH /api/geometry/assembly/projects/"
+                    f"{project['project_id']} ({{'status': 'open'}}) first"
+                )
+            return project["project_id"], None
+    status, created = _post(
+        f"{base}/api/geometry/assembly/projects",
+        {"name": name.strip(), "brief_text": brief.strip()},
+    )
+    if status != 201 or not isinstance(created, dict):
+        return None, f"could not create project {name!r} (HTTP {status})"
+    return created["project_id"], None
 
 
 def _print_build(build: dict[str, Any]) -> None:
@@ -140,6 +181,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="run the export job and download the package")
     parser.add_argument("--bom", action="store_true",
                         help="fetch the bill of materials (json + text)")
+    parser.add_argument("--project", default=None,
+                        help="group the build under this project name, "
+                             "creating the project when it does not exist "
+                             "(metadata only - the spec_hash must not move)")
+    parser.add_argument("--project-brief", default="",
+                        help="brief text for a project this run creates")
     parser.add_argument("--out", type=Path, default=None,
                         help="directory for captured evidence "
                              "(default data/sculpture_runs/<design_id>)")
@@ -156,8 +203,22 @@ def main(argv: list[str] | None = None) -> int:
     base = args.base.rstrip("/")
     failures: list[str] = []
 
+    project_id: str | None = None
+    if args.project:
+        project_id, project_error = _resolve_project(
+            base, args.project, args.project_brief)
+        if project_id is None:
+            print(f"RESULT: build not attempted - {project_error}")
+            return 1
+        # Metadata, not geometry (routes_assembly: project_id is "never part
+        # of the canonical geometry payload/spec hash"). The spec_hash this
+        # run reports must therefore equal the ungrouped build's.
+        payload = {**payload, "project_id": project_id}
+
     print("=" * 78)
     print(f"BUILD  {args.request}")
+    if project_id:
+        print(f"PROJECT  {args.project}  ({project_id})  - grouping, not geometry")
     print("=" * 78)
     status, build = _post(f"{base}/api/geometry/assembly/build", payload)
     if status != 200 or not isinstance(build, dict) or "design_id" not in build:
